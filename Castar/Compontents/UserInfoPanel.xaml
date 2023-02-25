@@ -1,0 +1,253 @@
+﻿<UserControl x:Class="Castar.Compontents.UserInfoPanel"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" 
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008" 
+             xmlns:local="clr-namespace:Castar.Compontents" 
+             xmlns:converters="clr-namespace:Castar.Converters"
+             mc:Ignorable="d" 
+             d:DesignHeight="450" d:DesignWidth="800">
+    <UserControl.Resources>
+        <converters:DrawingColorToSolidColorBrushConverter x:Key="DrawingColorToSolidColorBrushConverter"/>
+        <converters:DrawingImageToBitmapConverter x:Key="DrawingImageToBitmapConverter"/>
+        <converters:SexConverter x:Key="SexConverter"/>
+        <converters:HEXConverter x:Key="HEXConverter"/>
+    </UserControl.Resources>
+    <Grid>
+        <Grid Tag="NotEditableContent">
+            <Grid.Style>
+                <Style TargetType="Grid">
+                    <Setter Property="Visibility" Value="Visible"/>
+                    <Style.Triggers>
+                        <DataTrigger Binding="{Binding IsEditContent, RelativeSource={RelativeSource AncestorType=UserControl}}" Value="true">
+                            <Setter Property="Visibility" Value="Collapsed"/>
+                        </DataTrigger>
+                    </Style.Triggers>
+                </Style>
+            </Grid.Style>
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="auto"/>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="*"/>
+            </Grid.ColumnDefinitions>
+            <Grid Grid.Column="0" ToolTip="{Binding Name}">
+                <Grid>
+                    <Grid.OpacityMask>
+                        <VisualBrush Visual="{Binding ElementName=Mask}" AutoLayoutContent="True"
+                                                             Stretch="UniformToFill" AlignmentX="Center" AlignmentY="Center"/>
+                    </Grid.OpacityMask>
+                    <Border Name="Mask" Background="{StaticResource Foreground.Gray}"
+                        Width="{Binding SizeImage,RelativeSource={RelativeSource AncestorType=UserControl}}"
+                        CornerRadius="200" 
+                        Height="{Binding Width,RelativeSource={RelativeSource Mode=Self}}" BorderThickness="1"/>
+                    <Image Source="{Binding Image,Mode=OneWay,Converter={StaticResource DrawingImageToBitmapConverter}}" 
+                       Width="{Binding ActualWidth,ElementName=Mask}"
+                       Height="{Binding ActualHeight,ElementName=Mask}" Stretch="UniformToFill" 
+                       RenderOptions.BitmapScalingMode="HighQuality" Panel.ZIndex="1"/>
+                </Grid>
+            </Grid>
+            <Grid Grid.Column="1" Margin="10,0,0,0">
+                <Grid.Style>
+                    <Style TargetType="Grid">
+                        <Setter Property="VerticalAlignment" Value="Stretch"/>
+                        <Style.Triggers>
+                            <DataTrigger Binding="{Binding IsShortView,Mode=OneWay,RelativeSource={RelativeSource AncestorType=UserControl}}" Value="True">
+                                <Setter Property="VerticalAlignment" Value="Center"/>
+                            </DataTrigger>
+                        </Style.Triggers>
+                    </Style>
+                </Grid.Style>
+                <Grid.RowDefinitions>
+                    <RowDefinition/>
+                    <RowDefinition/>
+                </Grid.RowDefinitions>
+                <TextBlock Grid.Column="0" Grid.Row="0" Text="{Binding Name,Mode=OneWay}" FontWeight="DemiBold" Margin="0,0,0,5" Typography.Capitals="AllSmallCaps"/>
+                <Grid Grid.Row="1">
+                    <Grid.Style>
+                        <Style TargetType="Grid">
+                            <Setter Property="Visibility" Value="Visible"/>
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding IsShortView,Mode=OneWay,RelativeSource={RelativeSource AncestorType=UserControl}}" Value="True">
+                                    <Setter Property="Visibility" Value="Collapsed"/>
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </Grid.Style>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition/>
+                        <ColumnDefinition/>
+                    </Grid.ColumnDefinitions>
+                    <Grid.RowDefinitions>
+                        <RowDefinition/>
+                        <RowDefinition/>
+                    </Grid.RowDefinitions>
+                    <TextBlock Grid.Column="0" Grid.Row="0" FontSize="10"
+                           Text="{Binding Sex,Converter={StaticResource SexConverter},Mode=OneWay,UpdateSourceTrigger=PropertyChanged}"/>
+                    <Grid Grid.Column="0" Grid.Row="1">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition/>
+                            <ColumnDefinition/>
+                        </Grid.ColumnDefinitions>
+                        <Grid.Resources>
+                            <Style TargetType="TextBlock">
+                                <Setter Property="FontSize" Value="10"/>
+                            </Style>
+                        </Grid.Resources>
+                        <TextBlock Grid.Column="0" Text="ID: "/>
+                        <TextBlock Grid.Column="1" Text="{Binding TelegramId,Mode=OneWay}"/>
+                    </Grid>
+                </Grid>
+            </Grid>
+            <Grid Grid.Column="2" Grid.RowSpan="3">
+                <Grid.Style>
+                    <Style TargetType="Grid">
+                        <Setter Property="Visibility" Value="Visible"/>
+                        <Style.Triggers>
+                            <DataTrigger Binding="{Binding IsShortView,Mode=OneWay,RelativeSource={RelativeSource AncestorType=UserControl}}" Value="True">
+                                <Setter Property="Visibility" Value="Collapsed"/>
+                            </DataTrigger>
+                        </Style.Triggers>
+                    </Style>
+                </Grid.Style>
+                <Border CornerRadius="20" BorderThickness="2" BorderBrush="DarkGray"
+                    Width="20"
+                    Height="20"
+                    Background="{Binding Color,Mode=OneWay,Converter={StaticResource DrawingColorToSolidColorBrushConverter}}"/>
+            </Grid>
+        </Grid>
+        <Grid Tag="EditableContent" MinWidth="400">
+            <Grid.Style>
+                <Style TargetType="Grid">
+                    <Setter Property="Visibility" Value="Collapsed"/>
+                    <Style.Triggers>
+                        <DataTrigger Binding="{Binding IsEditContent, RelativeSource={RelativeSource AncestorType=UserControl}}" Value="true">
+                            <Setter Property="Visibility" Value="Visible"/>
+                        </DataTrigger>
+                    </Style.Triggers>
+                </Style>
+            </Grid.Style>
+            <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="auto" MinWidth="110"/>
+                    <ColumnDefinition Width="*"/>
+                </Grid.ColumnDefinitions>
+                <Grid Grid.Column="0" ToolTip="Выберите новую фотографию">
+                    <Button x:Name="ChoosePhotoButton" 
+                        Width="{Binding ActualWidth,ElementName=MaskEdit}" 
+                        Height="{Binding ActualWidth,ElementName=MaskEdit}" 
+                        Padding="0"
+                        Click="ChooseImageButton_Click">
+                        <Button.Style>
+                            <Style TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
+                                <Setter Property="Border.CornerRadius" Value="200"/>
+                            </Style>
+                        </Button.Style>
+                        <Grid>
+                            <Grid.OpacityMask>
+                                <VisualBrush Visual="{Binding ElementName=MaskEdit}" AutoLayoutContent="True"
+                                                             Stretch="UniformToFill" AlignmentX="Center" AlignmentY="Center"/>
+                            </Grid.OpacityMask>
+                            <Border x:Name="MouseOverBorder" Background="#59000000" Opacity="0" Panel.ZIndex="10" Margin="0,0,0,0">
+                                <Border.Style>
+                                    <Style TargetType="{x:Type Border}">
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding IsMouseOver,ElementName=ChoosePhotoButton}" Value="True">
+                                                <DataTrigger.EnterActions>
+                                                    <BeginStoryboard>
+                                                        <Storyboard>
+                                                            <DoubleAnimation Storyboard.TargetProperty="Opacity" To="1" Duration="0:0:0.2">
+                                                                <DoubleAnimation.EasingFunction>
+                                                                    <CubicEase EasingMode="EaseInOut"/>
+                                                                </DoubleAnimation.EasingFunction>
+                                                            </DoubleAnimation>
+                                                        </Storyboard>
+                                                    </BeginStoryboard>
+                                                </DataTrigger.EnterActions>
+                                                <DataTrigger.ExitActions>
+                                                    <BeginStoryboard>
+                                                        <Storyboard>
+                                                            <DoubleAnimation Storyboard.TargetProperty="Opacity" To="0" Duration="0:0:0.2">
+                                                                <DoubleAnimation.EasingFunction>
+                                                                    <CubicEase EasingMode="EaseInOut"/>
+                                                                </DoubleAnimation.EasingFunction>
+                                                            </DoubleAnimation>
+                                                        </Storyboard>
+                                                    </BeginStoryboard>
+                                                </DataTrigger.ExitActions>
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </Border.Style>
+                                <ContentPresenter Content="{DynamicResource Svg.Camera}" Opacity="0.6"
+                                                  TextElement.Foreground="{StaticResource Foreground.White}" Width="50" Height="50"/>
+                            </Border>
+                            <Border Name="MaskEdit" Background="{StaticResource Foreground.Gray}"
+                        Width="{Binding SizeImage,RelativeSource={RelativeSource AncestorType=UserControl}}"
+                        CornerRadius="200" 
+                        Height="{Binding Width,RelativeSource={RelativeSource Mode=Self}}" BorderThickness="1"/>
+                            <Image Source="{Binding Image,Mode=OneWay,Converter={StaticResource DrawingImageToBitmapConverter}}" 
+                       Width="{Binding ActualWidth,ElementName=MaskEdit}"
+                       Height="{Binding ActualHeight,ElementName=MaskEdit}" Stretch="UniformToFill" 
+                       RenderOptions.BitmapScalingMode="HighQuality" Panel.ZIndex="1"/>
+                        </Grid>
+                    </Button>
+                </Grid>
+            <Grid Grid.Column="1" Margin="10,0,0,0" Grid.IsSharedSizeScope="True" HorizontalAlignment="Center">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition/>
+                    <ColumnDefinition/>
+                </Grid.ColumnDefinitions>
+                <Grid.RowDefinitions>
+                    <RowDefinition/>
+                    <RowDefinition/>
+                    <RowDefinition/>
+                    <RowDefinition/>
+                </Grid.RowDefinitions>
+                <Grid Grid.Column="0" Grid.Row="0" Grid.ColumnSpan="2">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="auto" SharedSizeGroup="textblock"/>
+                        <ColumnDefinition Width="*" SharedSizeGroup="textBox"/>
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Grid.Column="0" VerticalAlignment="Center" Text="Имя"/>
+                    <TextBox Grid.Column="1" Text="{Binding Name}" Margin="10,0,0,0" Width="130"/>
+                </Grid>
+                <Grid Grid.Column="0" Grid.Row="1" Grid.ColumnSpan="2" Margin="0,5,0,0" ToolTip="Уникальный идентификатор пользователя Telegram">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="auto" SharedSizeGroup="textblock"/>
+                        <ColumnDefinition Width="*" SharedSizeGroup="textBox"/>
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Grid.Column="0" VerticalAlignment="Center" Text="Telegram ID"/>
+                    <TextBox Grid.Column="1" Text="{Binding TelegramId}" Margin="10,0,0,0" Width="130"/>
+                </Grid>
+                <Grid Grid.Column="0" Grid.Row="2" Grid.ColumnSpan="2" Margin="0,10,0,0">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition SharedSizeGroup="textblock"/>
+                        <ColumnDefinition/>
+                    </Grid.ColumnDefinitions>
+                    <Grid.RowDefinitions>
+                        <RowDefinition/>
+                        <RowDefinition/>
+                    </Grid.RowDefinitions>
+                    <TextBlock Grid.Column="0" Grid.RowSpan="2" VerticalAlignment="Center" Text="Пол"/>
+                    <RadioButton Grid.Column="1" Grid.Row="0" Tag="0" GroupName="{Binding Id,Mode=OneWay}" Margin="10,0,0,0"
+                                 Checked="SexRadioButton_Checked" Loaded="SexRadioButton_Loaded">Женщина</RadioButton>
+                    <RadioButton Grid.Column="1" Grid.Row="1" Tag="1" GroupName="{Binding Id,Mode=OneWay}" Margin="10,0,0,0"
+                                 Checked="SexRadioButton_Checked" Loaded="SexRadioButton_Loaded" Cursor="Hand">Мужчина</RadioButton>
+                </Grid>
+                <Grid Grid.Column="0" Grid.ColumnSpan="2" Grid.Row="3" Margin="0,10,0,0">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition SharedSizeGroup="textblock"/>
+                        <ColumnDefinition SharedSizeGroup="textBox"/>
+                        <ColumnDefinition Width="auto"/>
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Grid.Column="0" VerticalAlignment="Center" Text="Цвет (HEX)"/>
+                    <TextBox Grid.Column="1" Text="{Binding Color,Converter={StaticResource HEXConverter}}" 
+                             HorizontalContentAlignment="Center"
+                             Margin="10,0,0,0" MinWidth="90" MaxWidth="130"/>
+                    <Border Grid.Column="2" Margin="10,0,0,0"
+                    CornerRadius="20" BorderThickness="3" BorderBrush="DarkGray" Width="25" Height="25"
+                    Background="{Binding Color,Mode=OneWay,Converter={StaticResource DrawingColorToSolidColorBrushConverter}}"/>
+                </Grid>
+            </Grid>
+        </Grid>
+    </Grid>
+</UserControl>

@@ -1,0 +1,119 @@
+//foreach (var whopaid_his_debt in listofwhopaidandhisdept)
+                //{
+                //    foreach (var debt in whopaid_his_debt.Parts)
+                //    {
+                //        if (resultones.Where(x => x.Key == debt.User).Count() > 0)
+                //        {
+                //            foreach (var result_debt in resultones)
+                //            {
+                //                if ((debt.User== result_debt.WhoPaid || debt.User==result_debt.Key) && whopaid_his_debt.WhoPaid==result_debt.WhoPaid)
+                //                {
+                //                    result_debt.Value = result_debt.Value - debt.Sum;
+                //                    if (result_debt.Value < 0)
+                //                    {
+                //                        var whopaid = result_debt.WhoPaid;
+                //                        var key = result_debt.Key;
+                //                        result_debt.WhoPaid = key;
+                //                        result_debt.Key = whopaid;
+                //                        result_debt.Value = Math.Abs(result_debt.Value);
+                //                    }
+                //                    break;
+                //                }
+                //            }
+                //        }
+                //        else
+                //        {
+                //            resultones.Add(new Classes.PartOfPurchaseClass
+                //            {
+                //                WhoPaid = whopaid_his_debt.WhoPaid,
+                //                Key = debt.User,
+                //                Value = debt.Sum,
+                //            });
+                //        }
+                //    }
+                //}
+                //foreach (var user in MySettings.Settings.Users)
+                //{
+                //    double sum_debt = 0;
+                //    User who = null;
+                //    foreach (var whopaid_and_his_debtors in listofwhopaidandhisdept)
+                //    {
+                //        foreach (var debtor in whopaid_and_his_debtors.Parts)
+                //        {
+                //            if (debtor.Sum == 0) continue;
+                //            if (user == debtor.User)
+                //            {
+                //                if (whopaid_and_his_debtors.WhoPaid != debtor.User)
+                //                {
+                //                    if (resultones.Where(x => x.WhoPaid == debtor.User && x.Key == whopaid_and_his_debtors.WhoPaid).Count() > 0)
+                //                    {
+                //                        foreach(var res in resultones)
+                //                        {
+                //                            if(res.WhoPaid==debtor.User && res.Key==whopaid_and_his_debtors.WhoPaid)
+                //                            {
+                //                                res.Value -= debtor.Sum;
+                //                                if(res.Value<0)
+                //                                {
+                //                                    var whopaid = res.WhoPaid;
+                //                                    var key = res.Key;
+                //                                    res.WhoPaid = key;
+                //                                    res.Key = whopaid;
+                //                                    res.Value = Math.Abs(res.Value);
+                //                                }
+                //                            }
+                //                        }
+                //                    }
+                //                    else
+                //                    {
+                //                        if(debtor.Sum==50 || debtor.Sum==10)
+                //                        Console.WriteLine("{0}:{1}=>{2}", user.Name, sum_debt, who != null ? who.Name : null);
+
+                //                        sum_debt += debtor.Sum;
+                //                        who = whopaid_and_his_debtors.WhoPaid;
+                //                    }
+                //                }
+                //            }
+                //        }
+                //    }
+                //    if (who != null)
+                //        resultones.Add(new Classes.PartOfPurchaseClass { Key = user, Value = sum_debt, WhoPaid = who });
+                //    //Console.WriteLine("{0}:{1}=>{2}", user.Name, sum_debt, who != null ? who.Name : null);
+                //}
+				
+				//foreach(var WhoPaidAndParts in ListOfUsersDebtors)
+                //{
+                //    foreach (var Debtor in WhoPaidAndParts.Parts)
+                //    {
+                //        if (Debtor.Sum == 0) continue;
+
+                //        if (!result.Exists(x => x.WhoPaid == Debtor.User || x.WhoPaid== WhoPaidAndParts.WhoPaid))
+                //        {
+                //            result.Add(new Classes.PartOfPurchaseClass
+                //            {
+                //                WhoPaid = WhoPaidAndParts.WhoPaid,
+                //                Key = Debtor.User,
+                //                Value = Debtor.Sum,
+                //            });
+                //            Console.WriteLine("2^{0}:{1}->{2}", Debtor.User.Name, Debtor.Sum, WhoPaidAndParts.WhoPaid.Name);
+                //        }
+                //        else
+                //        {
+                //            Console.WriteLine("3^{0}:{1}->{2}",Debtor.User.Name,Debtor.Sum,WhoPaidAndParts.WhoPaid.Name);
+                //            foreach (var res in result)
+                //            {
+                //                if (res.WhoPaid == Debtor.User && res.Key == WhoPaidAndParts.WhoPaid)
+                //                {
+                //                    res.Value -= Debtor.Sum;
+                //                    if (res.Value < 0)
+                //                    {
+                //                        var whopaid = res.WhoPaid;
+                //                        var key = res.Key;
+                //                        res.WhoPaid = key;
+                //                        res.Key = whopaid;
+                //                        res.Value = Math.Abs(res.Value);
+                //                    }
+                //                }
+                //            }
+                //        }
+                //    }    
+                //}    

@@ -1,0 +1,41 @@
+USE castardb
+GO
+CREATE TRIGGER Users_updatedRecord
+ON Users
+AFTER UPDATE
+AS
+BEGIN
+
+UPDATE Users
+SET ModifiedOn = GETDATE()
+FROM Users c, inserted i where c.Id=i.Id
+END
+
+
+
+
+USE castardb
+GO
+	CREATE TRIGGER Items_UpdateTotalSumPurchase
+ON Items
+	AFTER INSERT,UPDATE,DELETE
+AS
+BEGIN
+	DECLARE @TotalSumItems DECIMAL(24,2);   
+	if exists(SELECT * from inserted)
+		BEGIN
+			IF TRIGGER_NESTLEVEL() <= 1
+				UPDATE Items SET Sum=r.Price*r.Quantity from Items i,inserted r where i.Id=r.Id;
+			SELECT @TotalSumItems = SUM(t.Sum) FROM Items t, inserted i WHERE i.PurchaseId=t.PurchaseId  
+			UPDATE Purchases
+			SET TotalSum = @TotalSumItems
+			FROM Purchases p, inserted i where p.Id=i.PurchaseId
+		END
+	if exists(SELECT * from deleted)
+		BEGIN
+			SELECT @TotalSumItems = SUM(t.Sum) FROM Items t, deleted i WHERE i.PurchaseId=t.PurchaseId  
+			UPDATE Purchases
+			SET TotalSum = @TotalSumItems
+			FROM Purchases p, deleted i where p.Id=i.PurchaseId
+		END
+END

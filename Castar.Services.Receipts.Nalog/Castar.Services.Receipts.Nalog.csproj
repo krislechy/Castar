@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net6.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Folder Include="Models\Nalog\" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Castar.BL\Castar.BL.csproj" />
+    <ProjectReference Include="..\Castar.Services.Receipts\Castar.Services.Receipts.csproj" />
+  </ItemGroup>
+
+</Project>

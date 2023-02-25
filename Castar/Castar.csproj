@@ -1,0 +1,43 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net6.0-windows7.0</TargetFramework>
+    <RootNamespace>Castar</RootNamespace>
+    <Nullable>enable</Nullable>
+    <UseWPF>true</UseWPF>
+    <Copyright>krislechy</Copyright>
+    <SupportedOSPlatformVersion>7.0</SupportedOSPlatformVersion>
+    <ApplicationIcon>logo.ico</ApplicationIcon>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <None Remove="logo.ico" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="LiveChartsCore.SkiaSharpView.WPF" Version="2.0.0-beta.501" />
+    <PackageReference Include="System.Drawing.Common" Version="6.0.0" />
+    <PackageReference Include="System.Management" Version="6.0.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Castar.BL\Castar.BL.csproj" />
+    <ProjectReference Include="..\Castar.Logger\Castar.Logger.csproj" />
+    <ProjectReference Include="..\Castar.Services.Receipts.Barcode\Castar.Services.Receipts.Barcode.csproj" />
+    <ProjectReference Include="..\Castar.Services.Receipts.Nalog\Castar.Services.Receipts.Nalog.csproj" />
+    <ProjectReference Include="..\Castar.Services.TelegramBot\Castar.Services.TelegramBot.csproj" />
+    <ProjectReference Include="..\Castar.TrayNotify.Windows\Castar.TrayNotify.Windows.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Resource Include="logo.ico" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Page Update="Styles\ContextMenu.xaml">
+      <XamlRuntime>$(DefaultXamlRuntime)</XamlRuntime>
+    </Page>
+  </ItemGroup>
+
+</Project>

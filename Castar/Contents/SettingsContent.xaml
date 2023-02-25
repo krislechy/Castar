@@ -1,0 +1,296 @@
+﻿<UserControl x:Class="Castar.Contents.SettingsContent"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" 
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008" 
+             xmlns:local="clr-namespace:Castar.Contents"
+             xmlns:converters="clr-namespace:Castar.Converters"
+             xmlns:c="clr-namespace:Castar.Compontents"
+             mc:Ignorable="d" 
+             Name="Настройки" Loaded="Settings_Loaded"
+             d:DesignHeight="850" d:DesignWidth="1200">
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="auto"/>
+            <RowDefinition/>
+        </Grid.RowDefinitions>
+        <c:IslandPanel IsMainTitle="True" Title="{Binding Name,RelativeSource={RelativeSource Mode=FindAncestor,AncestorType=UserControl,AncestorLevel=1}}"/>
+        <Grid Grid.Row="1">
+            <ScrollViewer VerticalScrollBarVisibility="Auto">
+                <WrapPanel>
+                    <WrapPanel.Resources>
+                        <Style TargetType="StackPanel">
+                            <Setter Property="MaxWidth" Value="400"/>
+                            <!--<Setter Property="MaxHeight" Value="600"/>-->
+                        </Style>
+                    </WrapPanel.Resources>
+                    <c:IslandPanel Title="Системные" ImageSvg="{DynamicResource Svg.Tools}" MaxWidth="350">
+                        <StackPanel>
+                            <CheckBox IsEnabled="True" IsChecked="{Binding Settings.Systems.IsHideInTray}" 
+                                      Content="При закрытии сворачивать в трей"/>
+                            <CheckBox IsEnabled="True" IsChecked="{Binding Settings.Systems.IsAutoRun}" 
+                                      Content="Запускать приложение при запуске системы"/>
+                            <Separator/>
+                            <ToggleButton Style="{StaticResource ToggleButtonIOS}" Tag="{Binding Settings.TelegramBot.Status,Mode=OneWay}"
+                                          Content="Состояние Telegram Бот" IsChecked="{Binding Settings.Systems.IsEnableTelegramBot}" Cursor="Hand"/>
+                            <ToggleButton Style="{StaticResource ToggleButtonIOS}" Tag="{x:Null}"
+                                          Content="Состояние сервиса ФНС" IsChecked="{Binding Settings.Systems.IsEnableNalogFNS}" Cursor="Hand"/>
+                        </StackPanel>
+                    </c:IslandPanel>
+                    <c:IslandPanel Title="База данных" ImageSvg="{DynamicResource Svg.DataBase}" MaxWidth="350">
+                        <StackPanel Margin="0,0,0,10">
+                            <c:WarningPanel TextColor="{DynamicResource Foreground.Gray}" SvgColor="{DynamicResource Warning.Svg.Brush}">
+                                Для применения изменений перезапустите приложение
+                            </c:WarningPanel>
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="auto"/>
+                                </Grid.ColumnDefinitions>
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="auto"/>
+                                    <RowDefinition Height="auto"/>
+                                    <RowDefinition/>
+                                    <RowDefinition/>
+                                    <RowDefinition/>
+                                </Grid.RowDefinitions>
+                                <Grid Grid.Row="0" Grid.Column="0" Grid.ColumnSpan="3">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="auto"/>
+                                        <ColumnDefinition/>
+                                    </Grid.ColumnDefinitions>
+                                    <Grid.RowDefinitions>
+                                        <RowDefinition/>
+                                        <RowDefinition/>
+                                        <RowDefinition/>
+                                    </Grid.RowDefinitions>
+                                    <TextBlock Grid.Column="0" Grid.Row="0" Grid.ColumnSpan="2" HorizontalAlignment="Center"
+                                               Text="Расположение прикрепляемой базы данных" Foreground="{DynamicResource Foreground.White}"/>
+                                    <TextBlock Grid.Column="0" Grid.Row="1" Grid.ColumnSpan="2" Text="Тип базы MSSQL, файл: *.mdf" FontSize="10"/>
+                                    <Grid Grid.Row="2" Grid.ColumnSpan="2" Margin="0,5,0,0">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition/>
+                                            <ColumnDefinition Width="auto"/>
+                                        </Grid.ColumnDefinitions>
+                                        <Grid.RowDefinitions>
+                                            <RowDefinition/>
+                                            <RowDefinition/>
+                                        </Grid.RowDefinitions>
+                                        <TextBox Text="{Binding Settings.DataBase.AttachDBFileName}" Grid.Row="0" Grid.Column="0"/>
+                                        <Button Grid.Row="0" Grid.Column="1" ToolTip="Указать путь расположения файла базы данных"
+                                        Content="{DynamicResource Svg.Folder}" Click="OpenSelectionFolderButton_Click" Cursor="Hand"/>
+                                        <TextBlock Grid.Row="1" Grid.Column="0" Grid.ColumnSpan="2" 
+                                           Text="Физический путь к файлу базы данных" FontSize="10"/>
+                                    </Grid>
+                                </Grid>
+                                <Grid Grid.Row="3" Grid.ColumnSpan="3" Margin="0,5,0,0">
+                                    <Grid.RowDefinitions>
+                                        <RowDefinition Height="auto"/>
+                                        <RowDefinition Height="auto"/>
+                                        <RowDefinition/>
+                                    </Grid.RowDefinitions>
+                                    <TextBlock Grid.Row="0" Text="Экземпляр SQL сервера" HorizontalAlignment="Center"
+                                               Foreground="{DynamicResource Foreground.White}" Grid.ColumnSpan="4"/>
+                                    <TextBlock Grid.Row="1" Text="Стандартное значение: .\SQLEXPRESS" Margin="0,0,0,5"
+                                               HorizontalAlignment="Left" Grid.ColumnSpan="4" FontSize="10"/>
+                                    <TextBox Text="{Binding Settings.DataBase.DataSource}" Grid.Row="2" HorizontalContentAlignment="Center"/>
+                                </Grid>
+                                <Grid Grid.Row="4" Grid.ColumnSpan="3" Margin="0,5,0,0">
+                                    <Grid.RowDefinitions>
+                                        <RowDefinition/>
+                                        <RowDefinition/>
+                                        <RowDefinition/>
+                                    </Grid.RowDefinitions>
+                                    <TextBlock Grid.Row="0" Text="Логин и пароль" HorizontalAlignment="Center" Foreground="{DynamicResource Foreground.White}" Grid.ColumnSpan="4"/>
+                                    <TextBlock Grid.Row="1" Text="Не указывайте если база данных не защищена логином и паролем" 
+                                               HorizontalAlignment="Center" Grid.ColumnSpan="4" FontSize="10"/>
+                                    <Grid Grid.Row="2" Margin="0,5,0,0" Grid.IsSharedSizeScope="True">
+                                        <Grid.RowDefinitions>
+                                            <RowDefinition/>
+                                            <RowDefinition/>
+                                        </Grid.RowDefinitions>
+                                        <Grid Grid.Row="0">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="auto" SharedSizeGroup="Group1" MinWidth="60"/>
+                                                <ColumnDefinition/>
+                                            </Grid.ColumnDefinitions>
+                                            <TextBlock Grid.Column="0" Text="Логин" Margin="0,0,0,0" VerticalAlignment="Center"/>
+                                            <TextBox Text="{Binding Settings.DataBase.Login}" Grid.Column="1"/>
+                                        </Grid>
+                                        <Grid Grid.Row="1" Margin="0,5,0,0">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="auto" SharedSizeGroup="Group1" MinWidth="60"/>
+                                                <ColumnDefinition/>
+                                            </Grid.ColumnDefinitions>
+                                            <TextBlock Grid.Column="0" Text="Пароль" Margin="0,0,0,0" VerticalAlignment="Center"/>
+                                            <PasswordBox Grid.Column="1" PasswordChanged="DataBasePasswordBox_PasswordChanged" Loaded="DataBasePasswordBox_Loaded"/>
+                                        </Grid>
+                                    </Grid>
+                                </Grid>
+                            </Grid>
+                        </StackPanel>
+                    </c:IslandPanel>
+                    <c:IslandPanel Title="Пользователи" ImageSvg="{DynamicResource Svg.Users}">
+                        <StackPanel>
+                            <ListView IsEnabled="True" MaxHeight="250" SelectionMode="Single"
+                                      ItemsSource="{Binding Users,Mode=TwoWay,UpdateSourceTrigger=PropertyChanged}" 
+                                      MouseDoubleClick="UsersListView_MouseDoubleClick">
+                                <ListView.ContextMenu>
+                                    <ContextMenu>
+                                        <MenuItem Header="Удалить пользователя" Icon="{StaticResource Svg.Remove}"
+                                                  Click="DeleteUserButton_Click"/>
+                                    </ContextMenu>
+                                </ListView.ContextMenu>
+                                <ListView.ItemContainerStyle>
+                                    <Style TargetType="{x:Type ListViewItem}" BasedOn="{StaticResource {x:Type ListViewItem}}">
+                                        <Setter Property="Margin" Value="0,2.5,0,2.5"/>
+                                        <Setter Property="Border.CornerRadius" Value="5"/>
+                                    </Style>
+                                </ListView.ItemContainerStyle>
+                                <ListView.ItemTemplate>
+                                    <DataTemplate>
+                                        <c:UserInfoPanel HorizontalContentAlignment="Stretch" DataContext="{Binding}" SizeImage="55"/>
+                                    </DataTemplate>
+                                </ListView.ItemTemplate>
+                            </ListView>
+                            <Button Content="+ Добавить нового пользователя" Padding="10,5,10,5" Height="40" Click="NewUserButton_Click"/>
+                        </StackPanel>
+                    </c:IslandPanel>
+                    <c:IslandPanel Title="Telegram Бот" ImageSvg="{DynamicResource Svg.Telegram}" MaxWidth="350">
+                        <StackPanel>
+                            <c:WarningPanel TextColor="{DynamicResource Foreground.Gray}">
+                                <c:WarningPanel.Style>
+                                    <Style TargetType="c:WarningPanel">
+                                        <Setter Property="ObjectContent" Value="Подключено"/>
+                                        <Setter Property="SvgColor" Value="MediumSpringGreen"/>
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding Settings.Systems.IsEnableTelegramBot}" Value="False">
+                                                <Setter Property="ObjectContent" Value="Отключено"/>
+                                                <Setter Property="SvgColor" Value="OrangeRed"/>
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </c:WarningPanel.Style>
+                            </c:WarningPanel>
+                            <Grid Grid.IsSharedSizeScope="True">
+                                <Grid.RowDefinitions>
+                                    <RowDefinition/>
+                                    <RowDefinition/>
+                                </Grid.RowDefinitions>
+                                <Grid Grid.Row="0" Margin="0,5,0,0">
+                                    <Grid.RowDefinitions>
+                                        <RowDefinition/>
+                                        <RowDefinition/>
+                                    </Grid.RowDefinitions>
+                                    <TextBlock Grid.Row="0" Text="Telegram Бот Token" HorizontalAlignment="Center" Margin="0,0,0,5"
+                                               Foreground="{DynamicResource Foreground.White}"/>
+                                    <Grid Grid.Row="1" Margin="0,5,0,0">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="auto" SharedSizeGroup="Group1" MinWidth="60"/>
+                                            <ColumnDefinition/>
+                                        </Grid.ColumnDefinitions>
+                                        <TextBlock Grid.Column="0" Text="Token" Margin="0,0,5,0" VerticalAlignment="Center"/>
+                                        <TextBox Grid.Column="1" Text="{Binding Settings.TelegramBot.TelegramBotApi_KEY}"/>
+                                    </Grid>
+                                </Grid>
+                                <Grid Grid.Row="1" Margin="0,5,0,0">
+                                    <Grid.RowDefinitions>
+                                        <RowDefinition/>
+                                        <RowDefinition/>
+                                    </Grid.RowDefinitions>
+                                    <TextBlock Grid.Row="0" Text="Emoji's обновлений" HorizontalAlignment="Center" Margin="0,0,0,5"
+                                               Foreground="{DynamicResource Foreground.White}" Grid.ColumnSpan="3"/>
+                                    <Grid Grid.Row="1">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition/>
+                                            <ColumnDefinition/>
+                                            <ColumnDefinition/>
+                                        </Grid.ColumnDefinitions>
+                                        <Grid.RowDefinitions>
+                                            <RowDefinition/>
+                                            <RowDefinition/>
+                                            <RowDefinition/>
+                                            <RowDefinition/>
+                                            <RowDefinition/>
+                                            <RowDefinition/>
+                                        </Grid.RowDefinitions>
+                                        <Grid.Resources>
+                                            <Style TargetType="TextBox" BasedOn="{StaticResource {x:Type TextBox}}">
+                                                <Setter Property="Margin" Value="2.5,2.5,2.5,2.5"/>
+                                            </Style>
+                                        </Grid.Resources>
+                                        <TextBlock Grid.Column="1" Grid.Row="0" Text="Доход" Margin="0,0,0,0" VerticalAlignment="Center" HorizontalAlignment="Center"/>
+                                        <TextBlock Grid.Column="2" Grid.Row="0" Text="Расход" Margin="0,0,0,0" VerticalAlignment="Center" HorizontalAlignment="Center"/>
+                                        
+                                        <TextBlock Grid.Column="0" Grid.Row="1" Text="Добавление" Margin="0,0,2.5,0" VerticalAlignment="Center"/>
+                                        <TextBlock Grid.Column="0" Grid.Row="2" Text="Обновление" Margin="0,0,2.5,0" VerticalAlignment="Center"/>
+                                        <TextBlock Grid.Column="0" Grid.Row="3" Text="Удаление" Margin="0,0,2.5,0" VerticalAlignment="Center"/>
+                                        <TextBlock Grid.Column="0" Grid.Row="5" Text="Позиция товара" Margin="0,0,2.5,0" VerticalAlignment="Center"/>
+                                        
+                                        <TextBox Grid.Column="1" Grid.Row="1" HorizontalContentAlignment="Center"
+                                             MaxLength="2" Text="{Binding Settings.TelegramBot.IncomeCreateEmoji}"/>
+                                        <TextBox Grid.Column="1" Grid.Row="2" HorizontalContentAlignment="Center"
+                                             MaxLength="2" Text="{Binding Settings.TelegramBot.IncomeUpdateEmoji}"/>
+                                        <TextBox Grid.Column="1" Grid.Row="3" HorizontalContentAlignment="Center"
+                                             MaxLength="2" Text="{Binding Settings.TelegramBot.IncomeDeleteEmoji}"/>
+
+                                        <TextBox Grid.Column="2" Grid.Row="1" HorizontalContentAlignment="Center"
+                                             MaxLength="2" Text="{Binding Settings.TelegramBot.PurchaseCreateEmoji}"/>
+                                        <TextBox Grid.Column="2" Grid.Row="2" HorizontalContentAlignment="Center"
+                                             MaxLength="2" Text="{Binding Settings.TelegramBot.PurchaseUpdateEmoji}"/>
+                                        <TextBox Grid.Column="2" Grid.Row="3" HorizontalContentAlignment="Center"
+                                             MaxLength="2" Text="{Binding Settings.TelegramBot.PurchaseDeleteEmoji}"/>
+                                        <Separator Grid.Row="4" Grid.ColumnSpan="3"/>
+                                        <TextBox Grid.Column="1" Grid.Row="5" Grid.ColumnSpan="2" HorizontalContentAlignment="Center"
+                                             MaxLength="2" Text="{Binding Settings.TelegramBot.ItemEmoji}"/>
+                                    </Grid>
+                                </Grid>
+                            </Grid>
+                        </StackPanel>
+                    </c:IslandPanel>
+                    <c:IslandPanel Title="ФНС Проверка чека" ImageSvg="{DynamicResource Svg.NalogFNS}">
+                        <StackPanel>
+                            <c:WarningPanel TextColor="{DynamicResource Foreground.Gray}">
+                                <c:WarningPanel.Style>
+                                    <Style TargetType="c:WarningPanel">
+                                        <Setter Property="ObjectContent" Value="Подключено"/>
+                                        <Setter Property="SvgColor" Value="MediumSpringGreen"/>
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding Settings.Systems.IsEnableNalogFNS}" Value="False">
+                                                <Setter Property="ObjectContent" Value="Отключено"/>
+                                                <Setter Property="SvgColor" Value="OrangeRed"/>
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </c:WarningPanel.Style>
+                            </c:WarningPanel>
+                            <Grid Grid.IsSharedSizeScope="True" Margin="0,5,0,0">
+                                <Grid.RowDefinitions>
+                                    <RowDefinition/>
+                                    <RowDefinition/>
+                                </Grid.RowDefinitions>
+                                <Grid Grid.Row="0">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="auto" SharedSizeGroup="group1"/>
+                                        <ColumnDefinition/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Grid.Column="0" Text="ИНН" VerticalAlignment="Center"/>
+                                    <TextBox Grid.Column="1" Margin="10,0,0,0" Text="{Binding Settings.NalogFNS.INN}"/>
+                                </Grid>
+                                <Grid Grid.Row="1" Margin="0,5,0,0">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="auto" SharedSizeGroup="group1"/>
+                                        <ColumnDefinition/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Grid.Column="0" Text="Пароль" VerticalAlignment="Center"/>
+                                    <PasswordBox Grid.Column="1" Margin="10,0,0,0" PasswordChanged="NalogFNSPasswordBox_PasswordChanged" Loaded="NalogFNSPasswordBox_Loaded"/>
+                                </Grid>
+                            </Grid>
+                        </StackPanel>
+                    </c:IslandPanel>
+                </WrapPanel>
+            </ScrollViewer>
+        </Grid>
+    </Grid>
+</UserControl>

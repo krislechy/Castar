@@ -1,0 +1,42 @@
+﻿<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <Viewbox x:Key="Svg.Close" Stretch="Uniform" x:Shared="false" Width="16" Height="16">
+        <Canvas Width="33.866666" Height="33.866666" Style="{StaticResource DynamicHighlight}">
+            <Canvas.RenderTransform>
+                <TranslateTransform X="-31.75" Y="-15.696918"/>
+            </Canvas.RenderTransform>
+            <Path StrokeThickness="4.12404" StrokeLineJoin="Round" Data="M 59.225419 25.831783 39.768198 45.289004 c -0.414523 0.414523 -1.063607 0.432867 -1.455344 0.04113 -0.391737 -0.391737 -0.373392 -1.040821 0.04113 -1.455344 L 57.811206 24.417569 c 0.414523 -0.414524 1.063606 -0.432867 1.455343 -0.04113 0.391738 0.391737 0.373394 1.04082 -0.04113 1.455344 z"/>
+            <Path StrokeThickness="4.12407" StrokeLineJoin="Round" Data="m 59.266667 45.330251 c -0.391737 0.391738 -1.022477 0.391738 -1.414214 0 L 38.312736 25.790534 c -0.391737 -0.391737 -0.391737 -1.022476 0 -1.414213 0.391737 -0.391738 1.022477 -0.391738 1.414214 0 l 19.539717 19.539717 c 0.391737 0.391737 0.391737 1.022476 0 1.414213 z"/>
+        </Canvas>
+    </Viewbox>
+    <Viewbox x:Key="Svg.Minimize" Stretch="Uniform" x:Shared="false">
+        <Canvas Width="33.866666" Height="33.866666" Style="{StaticResource DynamicHighlight}">
+            <Canvas.RenderTransform>
+                <TranslateTransform X="-31.75" Y="-15.696918"/>
+            </Canvas.RenderTransform>
+            <Path StrokeThickness="6.00001" StrokeLineJoin="Round" Data="m 41.275002 43.213585 h 14.816663 c 0.586317 0 1.058335 0.446 1.058335 1 v 0.116666 c 0 0.554 -0.472018 1 -1.058335 1 H 41.275002 c -0.586317 0 -1.058335 -0.446 -1.058335 -1 v -0.116666 c 0 -0.554 0.472018 -1 1.058335 -1 z"/>
+        </Canvas>
+    </Viewbox>
+    <Viewbox x:Key="Svg.Maximize.1" Stretch="Uniform" x:Shared="false" Width="18" Height="18">
+        <Canvas Width="33.866666" Height="33.866666" Style="{StaticResource DynamicHighlight}">
+            <Canvas.RenderTransform>
+                <TranslateTransform X="-31.75" Y="-15.696918"/>
+            </Canvas.RenderTransform>
+            <Path StrokeThickness="26.8918" StrokeLineJoin="Round" Data="M 32 40 C 27.567993 40 24 43.567998 24 48 L 24 104 C 24 108.432 27.567993 112 32 112 L 96 112 C 100.43201 112 104 108.432 104 104 L 104 48 C 104 43.567998 100.43201 40 96 40 L 32 40 z M 40 48 L 88 48 C 92.432003 48 96 51.567999 96 56 L 96 96 C 96 100.432 92.432003 104 88 104 L 40 104 C 35.567997 104 32 100.432 32 96 L 32 56 C 32 51.567999 35.567997 48 40 48 z ">
+                <Path.RenderTransform>
+                    <MatrixTransform Matrix="0.26458333 0 0 0.26458333 31.75 15.696918"/>
+                </Path.RenderTransform>
+            </Path>
+        </Canvas>
+    </Viewbox>
+    <Viewbox x:Key="Svg.Maximize.2" Stretch="Uniform" x:Shared="false" Width="18" Height="18">
+        <Canvas Width="33.866666" Height="33.866666" Style="{StaticResource DynamicHighlight}">
+            <Canvas.RenderTransform>
+                <TranslateTransform X="-31.75" Y="-15.696918"/>
+            </Canvas.RenderTransform>
+            <Path StrokeThickness="7.11512" StrokeLineJoin="Round" Data="m 40.216667 26.280251 c -1.172636 0 -2.116667 0.944033 -2.116667 2.116667 v 14.816666 c 0 1.172634 0.944031 2.116667 2.116667 2.116667 H 57.15 c 1.172636 0 2.116666 -0.944033 2.116666 -2.116667 V 28.396918 c 0 -1.172634 -0.94403 -2.116667 -2.116666 -2.116667 z m 2.116666 2.116667 h 12.7 c 1.172634 0 2.116667 0.944033 2.116667 2.116666 v 10.583334 c 0 1.172633 -0.944033 2.116666 -2.116667 2.116666 h -12.7 c -1.172634 0 -2.116666 -0.944033 -2.116666 -2.116666 V 30.513584 c 0 -1.172633 0.944032 -2.116666 2.116666 -2.116666 z"/>
+            <Path StrokeThickness="6.00001" StrokeLineJoin="Round" Data="m 43.391665 22.046919 h 19.05 c 0.586316 0 1.058333 0.472017 1.058333 1.058333 0 0.586317 -0.472017 1.058333 -1.058333 1.058333 h -19.05 c -0.586316 0 -1.058333 -0.472016 -1.058333 -1.058333 0 -0.586316 0.472017 -1.058333 1.058333 -1.058333 z"/>
+            <Path StrokeThickness="6.00001" StrokeLineJoin="Round" Data="m 62.441665 22.046919 c 0.586316 0 1.058333 0.472016 1.058333 1.058332 v 16.933335 c 0 0.586316 -0.472017 1.058332 -1.058333 1.058332 -0.586317 0 -1.058334 -0.472016 -1.058334 -1.058332 V 23.105251 c 0 -0.586316 0.472017 -1.058332 1.058334 -1.058332 z"/>
+        </Canvas>
+    </Viewbox>
+</ResourceDictionary>

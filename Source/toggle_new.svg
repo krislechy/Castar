@@ -1,0 +1,65 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<svg
+   xmlns:dc="http://purl.org/dc/elements/1.1/"
+   xmlns:cc="http://creativecommons.org/ns#"
+   xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"
+   xmlns:svg="http://www.w3.org/2000/svg"
+   xmlns="http://www.w3.org/2000/svg"
+   xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd"
+   xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"
+   inkscape:version="1.0 (4035a4fb49, 2020-05-01)"
+   sodipodi:docname="toggle_new.svg"
+   id="svg10"
+   version="1.1"
+   width="29.460457pt"
+   viewBox="0 0 29.460457 17.621701"
+   height="17.6217pt">
+  <metadata
+     id="metadata16">
+    <rdf:RDF>
+      <cc:Work
+         rdf:about="">
+        <dc:format>image/svg+xml</dc:format>
+        <dc:type
+           rdf:resource="http://purl.org/dc/dcmitype/StillImage" />
+        <dc:title></dc:title>
+      </cc:Work>
+    </rdf:RDF>
+  </metadata>
+  <defs
+     id="defs14" />
+  <sodipodi:namedview
+     fit-margin-bottom="0"
+     fit-margin-right="0"
+     fit-margin-left="0"
+     fit-margin-top="0"
+     inkscape:current-layer="svg10"
+     inkscape:window-maximized="1"
+     inkscape:window-y="-8"
+     inkscape:window-x="-8"
+     inkscape:cy="9.2572347"
+     inkscape:cx="25.604736"
+     inkscape:zoom="12.609375"
+     showgrid="false"
+     id="namedview12"
+     inkscape:window-height="705"
+     inkscape:window-width="1366"
+     inkscape:pageshadow="2"
+     inkscape:pageopacity="0"
+     guidetolerance="10"
+     gridtolerance="10"
+     objecttolerance="10"
+     borderopacity="1"
+     bordercolor="#666666"
+     pagecolor="#ffffff"
+     inkscape:document-rotation="0" />
+  <path
+     d="M 7.7323387,1.0706292 H 21.847073 c 4.217815,0 7.613384,3.395569 7.613384,7.6133833 0,4.2178145 -3.395569,7.6133835 -7.613384,7.6133835 H 7.7323387 c -4.2178143,0 -7.61338327,-3.395569 -7.61338327,-7.6133835 0,-4.2178143 3.39556897,-7.6133833 7.61338327,-7.6133833 z"
+     style="opacity:0.994;fill:#2b0000;stroke-width:26.25"
+     id="rect2421" />
+  <path
+     style="fill:#ffffff;stroke:#4d4d4d;stroke-width:1.69645;stroke-miterlimit:4;stroke-dasharray:none;stroke-opacity:1"
+     id="path4"
+     fill="#fafafa"
+     d="m 16.773475,8.8105609 c 0,4.3978401 -3.565074,7.9629151 -7.9629134,7.9629151 -4.3972812,0 -7.9623366,-3.565075 -7.9623366,-7.9629151 0,-4.39728 3.5650554,-7.9623359 7.9623366,-7.9623359 4.3978394,0 7.9629134,3.5650559 7.9629134,7.9623359 z m 0,0" />
+</svg>

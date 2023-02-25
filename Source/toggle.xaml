@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--This file is compatible with Silverlight-->
+<Canvas xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" Name="svg10" Width="33.750004" Height="17.621706">
+  <Canvas.RenderTransform>
+    <TranslateTransform X="0" Y="0"/>
+  </Canvas.RenderTransform>
+  <Canvas.Resources/>
+  <!--Unknown tag: metadata-->
+  <!--Unknown tag: sodipodi:namedview-->
+  <Canvas Name="g2410">
+    <Path xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" Name="path2441" Fill="#FD008080" StrokeThickness="0.0646266" Data="m 21.84332 1.2279456 c -3.206714 1.0288447 -5.527949 4.0345896 -5.527949 7.5826229 0 3.5485545 2.321327 6.5543835 5.528138 7.5831915 H 7.5827201 C 3.402686 16.39376 2.0709154e-6 12.99256 2.0709154e-6 8.8107578 2.0709154e-6 4.629209 3.402686 1.2279456 7.5827201 1.2279456 Z"/>
+    <Path xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" Name="path2443" Fill="#FDFAFAFA" StrokeThickness="1.69646" Stroke="#FF008080" StrokeMiterLimit="4" Data="m 16.976523 8.8105634 c 0 4.3978396 3.565074 7.9629136 7.962916 7.9629136 4.39728 0 7.962336 -3.565074 7.962336 -7.9629136 0 -4.3972812 -3.565056 -7.96233584 -7.962336 -7.96233584 -4.397842 0 -7.962916 3.56505464 -7.962916 7.96233584 z m 0 0"/>
+  </Canvas>
+  <Canvas Name="g2420">
+    <Path xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" Name="path2" Fill="#FF4D4D4D" StrokeThickness="0.0646264" Data="m 11.906684 1.227946 c 3.206712 1.028845 5.527948 4.03459 5.527948 7.582624 0 3.548555 -2.321327 6.554382 -5.528138 7.583191 h 14.260788 c 4.180035 0 7.582719 -3.4012 7.582719 -7.583002 0 -4.181549 -3.402684 -7.582813 -7.582719 -7.582813 z"/>
+    <Path xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" Name="path4" Fill="#FFFAFAFA" StrokeThickness="1.69645" Stroke="#FF4D4D4D" StrokeMiterLimit="4" Data="m 16.773479 8.810564 c 0 4.39784 -3.565074 7.962915 -7.9629137 7.962915 -4.3972812 0 -7.9623366 -3.565075 -7.9623366 -7.962915 0 -4.39728 3.5650554 -7.962336 7.9623366 -7.962336 4.3978397 0 7.9629137 3.565056 7.9629137 7.962336 z m 0 0"/>
+  </Canvas>
+</Canvas>

@@ -1,0 +1,135 @@
+﻿<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <Style x:Key="ToggleButtonIOS" TargetType="{x:Type ToggleButton}">
+        <Setter Property="Foreground" Value="{StaticResource Foreground.White}"/>
+        <Setter Property="VerticalContentAlignment" Value="Center"/>
+        <Setter Property="Margin" Value="0,5,0,5"/>
+        <Setter Property="Cursor" Value="Hand"/>
+        <Setter Property="FontWeight" Value="Normal"/>
+        <Setter Property="FontSize" Value="14"/>
+        <Setter Property="Tag" Value="{x:Null}"/>
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="{x:Type ToggleButton}">
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="auto"/>
+                            <ColumnDefinition/>
+                        </Grid.ColumnDefinitions>
+                        <Grid Grid.Column="0" Width="35">
+                            <Border x:Name="Border" CornerRadius="7" SnapsToDevicePixels="true"
+                            Background="{StaticResource Foreground.Gray}"
+                                BorderBrush="{StaticResource Foreground.Gray}"
+                            Width="30" Height="14.5">
+                            </Border>
+                            <Ellipse x:Name="Ellipse" Fill="{StaticResource Main.Background.lvl2}" Stretch="Uniform"
+                                 Margin="-10 1 2 1"
+                                 Stroke="{StaticResource Foreground.Gray}" StrokeThickness="1.6"
+                                     Width="19" Height="19"
+                                 HorizontalAlignment="Stretch">
+                            </Ellipse>
+                        </Grid>
+                        <Grid Grid.Column="1" Margin="5,0,0,0">
+                            <Grid.RowDefinitions>
+                                <RowDefinition/>
+                                <RowDefinition/>
+                            </Grid.RowDefinitions>
+                            <ContentPresenter Grid.Row="0" Content="{TemplateBinding Content}"
+                                              RecognizesAccessKey="True" SnapsToDevicePixels="{TemplateBinding SnapsToDevicePixels}" 
+                                          TextElement.Foreground="{TemplateBinding Foreground}" 
+                                          VerticalAlignment="{TemplateBinding VerticalContentAlignment}"/>
+                            <TextBlock Grid.Row="1" Text="{TemplateBinding Tag}" FontSize="10" Foreground="{StaticResource Foreground.Gray}">
+                                <TextBlock.Style>
+                                    <Style TargetType="TextBlock">
+                                        <Setter Property="Visibility" Value="Visible"/>
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding Tag,RelativeSource={RelativeSource Mode=TemplatedParent}}" Value="{x:Null}">
+                                                <Setter Property="Visibility" Value="Collapsed"/>
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </TextBlock.Style>
+                            </TextBlock>
+                        </Grid>
+                    </Grid>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsChecked" Value="True">
+                            <Trigger.EnterActions>
+                                <BeginStoryboard>
+                                    <Storyboard>
+                                        <ColorAnimation Storyboard.TargetName="Border"
+                                                    Storyboard.TargetProperty="(Border.Background).(SolidColorBrush.Color)"
+                                                    To="{StaticResource Highlight.Color}"
+                                                    Duration="0:0:0.1" />
+                                        <ColorAnimation Storyboard.TargetName="Ellipse"
+                                                    Storyboard.TargetProperty="(Ellipse.Stroke).(SolidColorBrush.Color)"
+                                                    To="{StaticResource Highlight.Color}"
+                                                    Duration="0:0:0.1" />
+                                        <ThicknessAnimation Storyboard.TargetName="Ellipse"
+                                                        Storyboard.TargetProperty="Margin"
+                                                        To="13 1 2 1"
+                                                        Duration="0:0:0.1" />
+                                    </Storyboard>
+                                </BeginStoryboard>
+                            </Trigger.EnterActions>
+                            <Trigger.ExitActions>
+                                <BeginStoryboard>
+                                    <Storyboard>
+                                        <ColorAnimation Storyboard.TargetName="Border"
+                                                    Storyboard.TargetProperty="(Border.Background).(SolidColorBrush.Color)"
+                                                    To="{StaticResource Foreground.Gray.Color}"
+                                                    Duration="0:0:0.1" />
+                                        <ColorAnimation Storyboard.TargetName="Ellipse"
+                                                    Storyboard.TargetProperty="(Ellipse.Stroke).(SolidColorBrush.Color)"
+                                                    To="{StaticResource Foreground.Gray.Color}"
+                                                    Duration="0:0:0.1" />
+                                        <ThicknessAnimation Storyboard.TargetName="Ellipse"
+                                                        Storyboard.TargetProperty="Margin"
+                                                        To="-10 1 2 1"
+                                                        Duration="0:0:0.1" />
+                                    </Storyboard>
+                                </BeginStoryboard>
+                            </Trigger.ExitActions>
+                        </Trigger>
+                        <!--<EventTrigger RoutedEvent="Checked">
+                            <BeginStoryboard>
+                                <Storyboard>
+                                    <ColorAnimation Storyboard.TargetName="Border"
+                                                    Storyboard.TargetProperty="(Border.Background).(SolidColorBrush.Color)"
+                                                    To="{StaticResource Highlight.Color}"
+                                                    Duration="0:0:0.1" />
+                                    <ColorAnimation Storyboard.TargetName="Ellipse"
+                                                    Storyboard.TargetProperty="(Ellipse.Stroke).(SolidColorBrush.Color)"
+                                                    To="{StaticResource Highlight.Color}"
+                                                    Duration="0:0:0.1" />
+                                    <ThicknessAnimation Storyboard.TargetName="Ellipse"
+                                                        Storyboard.TargetProperty="Margin"
+                                                        To="13 1 2 1"
+                                                        Duration="0:0:0.1" />
+                                </Storyboard>
+                            </BeginStoryboard>
+                        </EventTrigger>
+                        <EventTrigger RoutedEvent="Unchecked">
+                            <BeginStoryboard>
+                                <Storyboard>
+                                    <ColorAnimation Storyboard.TargetName="Border"
+                                                    Storyboard.TargetProperty="(Border.Background).(SolidColorBrush.Color)"
+                                                    To="{StaticResource Foreground.Gray.Color}"
+                                                    Duration="0:0:0.1" />
+                                    <ColorAnimation Storyboard.TargetName="Ellipse"
+                                                    Storyboard.TargetProperty="(Ellipse.Stroke).(SolidColorBrush.Color)"
+                                                    To="{StaticResource Foreground.Gray.Color}"
+                                                    Duration="0:0:0.1" />
+                                    <ThicknessAnimation Storyboard.TargetName="Ellipse"
+                                                        Storyboard.TargetProperty="Margin"
+                                                        To="-10 1 2 1"
+                                                        Duration="0:0:0.1" />
+                                </Storyboard>
+                            </BeginStoryboard>
+                        </EventTrigger>-->
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+</ResourceDictionary>

@@ -1,0 +1,70 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!-- Created with Inkscape (http://www.inkscape.org/) -->
+
+<svg
+   width="128"
+   height="128"
+   viewBox="0 0 33.866666 33.866666"
+   version="1.1"
+   id="svg5"
+   inkscape:version="1.1.2 (b8e25be833, 2022-02-05)"
+   sodipodi:docname="maximize.svg"
+   xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"
+   xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd"
+   xmlns="http://www.w3.org/2000/svg"
+   xmlns:svg="http://www.w3.org/2000/svg">
+  <sodipodi:namedview
+     id="namedview7"
+     pagecolor="#ffc2df"
+     bordercolor="#666666"
+     borderopacity="1.0"
+     inkscape:pageshadow="2"
+     inkscape:pageopacity="0"
+     inkscape:pagecheckerboard="0"
+     inkscape:document-units="mm"
+     showgrid="true"
+     width="64mm"
+     showguides="true"
+     inkscape:guide-bbox="true"
+     inkscape:lockguides="false"
+     fit-margin-top="0"
+     fit-margin-left="0"
+     fit-margin-right="0"
+     fit-margin-bottom="0"
+     units="px"
+     inkscape:zoom="5.6568542"
+     inkscape:cx="69.119688"
+     inkscape:cy="74.334601"
+     inkscape:window-width="2400"
+     inkscape:window-height="1271"
+     inkscape:window-x="2391"
+     inkscape:window-y="-9"
+     inkscape:window-maximized="1"
+     inkscape:current-layer="layer1">
+    <inkscape:grid
+       type="xygrid"
+       id="grid1502"
+       empspacing="8" />
+    <sodipodi:guide
+       position="16.933333,16.933333"
+       orientation="0,-1"
+       id="guide1504" />
+    <sodipodi:guide
+       position="16.933333,16.933333"
+       orientation="1,0"
+       id="guide1506" />
+  </sodipodi:namedview>
+  <defs
+     id="defs2" />
+  <g
+     inkscape:label="Слой 1"
+     inkscape:groupmode="layer"
+     id="layer1"
+     transform="translate(-31.75,-15.696918)">
+    <path
+       id="rect1012"
+       style="fill:#ff8080;stroke-width:26.8918;stroke-linejoin:round"
+       d="M 32 40 C 27.567993 40 24 43.567998 24 48 L 24 104 C 24 108.432 27.567993 112 32 112 L 96 112 C 100.43201 112 104 108.432 104 104 L 104 48 C 104 43.567998 100.43201 40 96 40 L 32 40 z M 40 48 L 88 48 C 92.432003 48 96 51.567999 96 56 L 96 96 C 96 100.432 92.432003 104 88 104 L 40 104 C 35.567997 104 32 100.432 32 96 L 32 56 C 32 51.567999 35.567997 48 40 48 z "
+       transform="matrix(0.26458333,0,0,0.26458333,31.75,15.696918)" />
+  </g>
+</svg>

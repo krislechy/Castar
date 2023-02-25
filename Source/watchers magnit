@@ -1,0 +1,229 @@
+ public class Magnit
+        {
+            HttpClient client;
+            private async Task<List<string>> GetTransactions()
+            {
+                try
+                {
+                    var list = new List<string>();
+                    string customer = MySettings.Settings.MagnitCustomer;
+                    WebRequestHandler handler = new WebRequestHandler();
+                    handler.AllowAutoRedirect = false;
+                    client = new HttpClient(handler);
+                    client.DefaultRequestHeaders.Add("Accept", "application/json, text/plain, */*");
+                    client.DefaultRequestHeaders.Add("Authorization", MySettings.Settings.MagnitKey);
+                    client.DefaultRequestHeaders.Add("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/85.0.4183.83 Safari/537.36");
+
+                    var card_response = await client.GetAsync("https://moy.magnit.ru/transactions?customerId=" + customer);
+                    if (card_response.StatusCode == System.Net.HttpStatusCode.OK)
+                    {
+                        var card_transactions_response = await client.GetAsync("https://moy.magnit.ru/b2c/me/account/transactions?firstResult=0&maxResults=10&orderField=date:desc&type=ER");
+                        if (card_transactions_response.StatusCode == System.Net.HttpStatusCode.OK)
+                        {
+
+                            var content = await card_transactions_response.Content.ReadAsStringAsync();
+                            var json = JsonConvert.DeserializeObject<List<ExpandoObject>>(content);
+                            foreach (var s in json)
+                            {
+                                if (s == null) continue;
+                                string id = "";
+                                DateTime? created_at = null;
+                                double sum = 0;
+                                foreach (KeyValuePair<string, object> o in s)
+                                {
+                                    if (o.Value == null) continue;
+                                    switch (o.Key)
+                                    {
+                                        case ("date"):
+                                            {
+                                                Console.WriteLine(o.Value.ToString());
+                                                var isdt = DateTime.TryParse(o.Value.ToString(), out DateTime result_dt);
+                                                if (isdt)
+                                                    created_at = result_dt;
+                                                else continue;
+                                                break;
+                                            }
+                                        case ("totalValue"):
+                                            {
+                                                Console.WriteLine(o.Value.ToString());
+                                                var isdouble = Double.TryParse(o.Value.ToString(), out double result_sum);
+                                                if (isdouble)
+                                                    sum = Math.Round(result_sum, 2);
+                                                else continue;
+                                                break;
+                                            }
+                                        case ("transactionId"):
+                                            {
+                                                id = o.Value.ToString();
+                                                break;
+                                            }
+                                    }
+                                }
+                                if (!CheckExistIDTransactions(id, TypeIDTransactions.magnit) && !await db.CheckExist(created_at.Value, sum))
+                                    list.Add(id);
+                            }
+                        }
+                        else
+                        {
+                            Console.WriteLine(card_transactions_response.StatusCode);
+                            logger.Write(logger.TypeLogs.magnit, String.Format("{0}: {1}", card_transactions_response.StatusCode, card_transactions_response.StatusCode.ToString()));
+                        }
+                    }
+                    else
+                    {
+                        Console.WriteLine(card_response.StatusCode);
+                        logger.Write(logger.TypeLogs.magnit, String.Format("{0}: {1}", card_response.StatusCode, card_response.StatusCode.ToString()));
+                    }
+                    return list;
+                }
+                catch (Exception ex)
+                {
+                    logger.Write(logger.TypeLogs.magnit, String.Format("{0}", ex.ToString()));
+                }
+                return null;
+            }
+            private async Task<Task> GetTransaction()
+            {
+                try
+                {
+                    var transactions = await GetTransactions();
+                    if (transactions != null && transactions.Count() > 0)
+                    {
+                        foreach (var t in transactions)
+                        {
+                            var transaction_response = await client.GetAsync("https://moy.magnit.ru/b2c/me/account/transactions/" + t);
+                            var content = await transaction_response.Content.ReadAsStringAsync();
+                            var json = JsonConvert.DeserializeObject<ExpandoObject>(content);
+                            PurchaseClass purchase;
+                            List<ItemClass> items = new List<ItemClass>();
+                            DateTime? created_at = null;
+                            double sum = 0;
+                            foreach (KeyValuePair<string, object> s in json)
+                            {
+                                if (s.Value == null) continue;
+                                Console.WriteLine(s.Key);
+                                switch (s.Key)
+                                {
+                                    case ("processDate"):
+                                        {
+                                            Console.WriteLine(s.Value.ToString());
+                                            var isdt = DateTime.TryParse(s.Value.ToString(), out DateTime result_dt);
+                                            if (isdt)
+                                                created_at = result_dt;
+                                            else continue;
+                                            break;
+                                        }
+                                    case ("totalValue"):
+                                        {
+                                            Console.WriteLine(s.Value.ToString());
+                                            var isdouble = Double.TryParse(s.Value.ToString(), out double result_sum);
+                                            if (isdouble)
+                                                sum = Math.Round(result_sum, 2);
+                                            else continue;
+                                            break;
+                                        }
+                                    case ("products"):
+                                        {
+                                            var results = s.Value as List<object>;
+                                            foreach (var r in results)
+                                            {
+                                                if (r == null) continue;
+                                                var exp = r as ExpandoObject;
+                                                string title = "";
+                                                double price_sum = 0;
+                                                double amount = 0;
+                                                foreach (KeyValuePair<string, object> re in exp)
+                                                {
+                                                    if (re.Value == null) continue;
+                                                    Console.WriteLine(re.Key);
+                                                    switch (re.Key)
+                                                    {
+                                                        case ("name"):
+                                                            {
+                                                                Console.WriteLine(re.Value.ToString());
+                                                                if (!String.IsNullOrEmpty(re.Value.ToString()))
+                                                                    title = re.Value.ToString();
+                                                                else title = "Безымянный";
+                                                                break;
+                                                            }
+                                                        case ("value"):
+                                                            {
+                                                                Console.WriteLine(re.Value.ToString());
+                                                                var isdouble = Double.TryParse(re.Value.ToString(), out double result_sum);
+                                                                if (isdouble)
+                                                                    price_sum = result_sum;
+                                                                else continue;
+                                                                break;
+                                                            }
+                                                        case ("quantity"):
+                                                            {
+                                                                Console.WriteLine(re.Value.ToString());
+                                                                var isdouble = Double.TryParse(re.Value.ToString(), out double result_amount);
+                                                                if (isdouble)
+                                                                    amount = result_amount;
+                                                                else continue;
+                                                                break;
+                                                            }
+                                                    }
+                                                }
+                                                items.Add(new ItemClass
+                                                {
+                                                    name = title,
+                                                    price = Math.Round(price_sum / amount, 2),
+                                                    quantity = amount,
+                                                    sum = Math.Round(price_sum, 2),
+                                                });
+                                            }
+                                            break;
+                                        }
+                                }
+                            }
+                            if (items != null)
+                            {
+                                purchase = new PurchaseClass
+                                {
+                                    dt = created_at.Value,
+                                    sum = sum,
+                                    name = "Магнит",
+                                    whopaid = WeAre.Неизвестно,
+                                    items = items,
+                                };
+                                var result = await db.AddPurchase(WeAre.Неизвестно, purchase, false);
+                                if (result == CallbackPurchasesAdding.OK)
+                                {
+                                    string items_text = "";
+                                    int id = 1;
+                                    foreach (var i in items)
+                                    {
+                                        items_text += String.Format("🔅 {0}. {1} [{2}]\n", id, i.name, i.sum.ToString("C2"));
+                                        id++;
+                                    }
+                                    string text = String.Format("Покупка автоматически добавлена из \"Магнит\" на сумму {1}:\n{0}", items_text, sum.ToString("C2"));
+                                    await tbc.UpdateMainWindowAndShowPopup(text, MainWindow.PopupCanvasType.PurchaseAdding);
+                                    await tbc.SendMessageBoth("⚙️ " + text);
+                                    WriteIDTransactions(t, TypeIDTransactions.magnit);
+                                }
+                            }
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    logger.Write(logger.TypeLogs.pyaterochka, String.Format("{0}", ex.ToString()));
+                }
+                return Task.CompletedTask;
+            }
+            public async void StartWatch()
+            {
+                if (MySettings.Settings.ToWatchMagnit)
+                {
+                    var task = await GetTransaction();
+                    if (task.IsCompleted)
+                        Console.WriteLine(task.IsCompleted);
+                }
+                Console.WriteLine("Magnit waiting: {0},{1}", MySettings.Settings.ToWatchMagnit, MySettings.Settings.MagnitTimeOut);
+                await Task.Delay(MySettings.Settings.MagnitTimeOut);
+                Console.WriteLine("Magnit started");
+                StartWatch();
+            }
+        }

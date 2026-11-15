@@ -32,6 +32,9 @@ public partial class SettingsContent : UserControl
     private string savedConnectionStatus = CastarServerClient.ConnectionNotEstablished;
     private string pendingKey = "";
     private PasswordBox? keyInput;
+    private PasswordBox? telegramTokenInput;
+    private PasswordBox? nalogInnInput;
+    private PasswordBox? nalogPasswordInput;
 
     public SettingsContent(ClientSettings settings, CastarServerClient server, GitHubUpdateService updateService)
     {
@@ -41,6 +44,12 @@ public partial class SettingsContent : UserControl
         context = new SettingsContext(settings, new ServerSettingsViewModel(server))
         {
             UpdateStatus = $"Текущая версия {updateService.InstalledVersion}"
+        };
+        context.ServerConfiguration.CredentialsCleared += (_, _) =>
+        {
+            telegramTokenInput?.Clear();
+            nalogInnInput?.Clear();
+            nalogPasswordInput?.Clear();
         };
         context.PropertyChanged += (_, change) =>
         {
@@ -116,6 +125,24 @@ public partial class SettingsContent : UserControl
 
     private async void UpdateServer_Click(object sender, RoutedEventArgs e) =>
         await context.ServerConfiguration.Updates.StartAsync();
+
+    private void TelegramToken_PasswordChanged(object sender, RoutedEventArgs e)
+    {
+        telegramTokenInput = (PasswordBox)sender;
+        context.ServerConfiguration.EnterTelegramToken(telegramTokenInput.Password);
+    }
+
+    private void NalogInn_PasswordChanged(object sender, RoutedEventArgs e)
+    {
+        nalogInnInput = (PasswordBox)sender;
+        context.ServerConfiguration.EnterNalogInn(nalogInnInput.Password);
+    }
+
+    private void NalogPassword_PasswordChanged(object sender, RoutedEventArgs e)
+    {
+        nalogPasswordInput = (PasswordBox)sender;
+        context.ServerConfiguration.EnterNalogPassword(nalogPasswordInput.Password);
+    }
 
     private void ApiKey_PasswordChanged(object sender, RoutedEventArgs e)
     {

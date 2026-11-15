@@ -16,10 +16,15 @@ namespace Castar.Domain.Models.SettingsModel
     public class SettingsModel
     {
         private ReceiptSettings receipts = new();
+        private NalogFNS nalogFNS = new();
 
         public Systems Systems { get; set; } = new();
         public TelegramBot TelegramBot { get; set; } = new();
-        public NalogFNS NalogFNS { get; set; } = new();
+        public NalogFNS NalogFNS
+        {
+            get => Volatile.Read(ref nalogFNS);
+            set => Volatile.Write(ref nalogFNS, value);
+        }
         public ReceiptSettings Receipts
         {
             get => Volatile.Read(ref receipts);

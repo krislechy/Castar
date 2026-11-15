@@ -38,11 +38,24 @@
                             <CheckBox Content="Telegram-бот" IsChecked="{Binding TelegramEnabled}"
                                       IsEnabled="{Binding CanEditTelegram}"/>
                             <TextBlock Text="{Binding TelegramStatus}" Style="{StaticResource ViewStatus}"/>
+                            <StackPanel Visibility="{Binding SupportsCredentials, Converter={StaticResource ServerConnectionVisibility}}">
+                                <TextBlock Text="Токен Telegram" Style="{StaticResource FormFieldLabel}"/>
+                                <PasswordBox AutomationProperties.Name="Токен Telegram" PasswordChanged="TelegramToken_PasswordChanged"/>
+                            </StackPanel>
                             <CheckBox Content="Обработка чеков" IsChecked="{Binding ReceiptsEnabled}"/>
                             <TextBlock Text="Поставщик чеков" Style="{StaticResource FormFieldLabel}"/>
                             <ComboBox ItemsSource="{Binding ReceiptProviders}" DisplayMemberPath="Label"
                                       SelectedValuePath="Id" SelectedValue="{Binding ReceiptProvider}"
                                       AutomationProperties.Name="Поставщик чеков"/>
+                            <StackPanel Visibility="{Binding SupportsCredentials, Converter={StaticResource ServerConnectionVisibility}}">
+                                <TextBlock Text="{Binding NalogStatus}" Style="{StaticResource ViewStatus}"/>
+                                <TextBlock Text="ИНН ФНС" Style="{StaticResource FormFieldLabel}"/>
+                                <PasswordBox AutomationProperties.Name="ИНН ФНС" PasswordChanged="NalogInn_PasswordChanged"/>
+                                <TextBlock Text="Пароль ФНС" Style="{StaticResource FormFieldLabel}"/>
+                                <PasswordBox AutomationProperties.Name="Пароль ФНС" PasswordChanged="NalogPassword_PasswordChanged"/>
+                                <TextBlock Text="{Binding NalogInputError}" Style="{StaticResource ViewStatus}"
+                                           AutomationProperties.LiveSetting="Polite"/>
+                            </StackPanel>
                         </StackPanel>
                         <StackPanel Orientation="Horizontal">
                             <Button Content="Сохранить" Style="{StaticResource FormAction}"

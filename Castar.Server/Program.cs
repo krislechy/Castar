@@ -55,8 +55,11 @@ builder.Services.AddSingleton<BudgetEventPublisher>();
 builder.Services.AddHostedService(provider => provider.GetRequiredService<BudgetEventPublisher>());
 builder.Services.AddSingleton(settings);
 builder.Services.AddSingleton<IReceiptProvider, SerbiaReceiptProvider>();
-builder.Services.AddSingleton<IReceiptProvider>(_ => new Nalog(
-    new NetworkCredential(settings.NalogFNS.INN, settings.NalogFNS.Password)));
+builder.Services.AddSingleton<IReceiptProvider>(_ => new Nalog(() =>
+{
+    var credentials = settings.NalogFNS;
+    return new NetworkCredential(credentials.INN, credentials.Password);
+}));
 builder.Services.AddSingleton<ServerSettings>();
 builder.Services.AddSingleton<ApiKeyStore>();
 if (!verifyingUpdate && !string.IsNullOrWhiteSpace(configuration["Castar:LocalAdminDirectory"]))
@@ -111,7 +114,7 @@ try
 }
 catch (Exception error) when (error is IOException or InvalidDataException or JsonException or UnauthorizedAccessException)
 {
-    Console.Error.WriteLine($"Cannot load Castar Server settings. {error.Message}");
+    Console.Error.WriteLine($"Cannot load Castar Server settings ({error.GetType().Name}).");
     return 2;
 }
 

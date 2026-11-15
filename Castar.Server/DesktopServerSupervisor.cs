@@ -325,7 +325,7 @@ internal sealed class DesktopServerSupervisor
                 RejectLink(source);
                 var destination = Path.Combine(backup, i.ToString(System.Globalization.CultureInfo.InvariantCulture));
                 using var input = File.OpenRead(source);
-                using var output = new FileStream(destination, FileMode.CreateNew, FileAccess.Write, FileShare.None);
+                using var output = ServerSettings.CreatePrivateFile(destination);
                 await input.CopyToAsync(output, token);
                 FinishCopy(source, destination, output);
             }
@@ -351,7 +351,7 @@ internal sealed class DesktopServerSupervisor
             var temporary = destination + ".restore-" + Guid.NewGuid().ToString("N");
             try
             {
-                CopyDurable(snapshot, temporary);
+                CopyDurable(snapshot, temporary, destination.EndsWith(".settings.json", StringComparison.Ordinal));
                 File.Move(temporary, destination, overwrite: true);
             }
             finally
@@ -361,12 +361,15 @@ internal sealed class DesktopServerSupervisor
         }
     }
 
-    private static void CopyDurable(string source, string destination)
+    private static void CopyDurable(string source, string destination, bool privateSettings)
     {
         using var input = File.OpenRead(source);
-        using var output = new FileStream(destination, FileMode.CreateNew, FileAccess.Write, FileShare.None);
+        using var output = ServerSettings.CreatePrivateFile(destination);
         input.CopyTo(output);
-        FinishCopy(source, destination, output);
+        if (privateSettings)
+            output.Flush(flushToDisk: true);
+        else
+            FinishCopy(source, destination, output);
     }
 
     private static void FinishCopy(string source, string destination, FileStream output)

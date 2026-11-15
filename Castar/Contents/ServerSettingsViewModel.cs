@@ -22,20 +22,46 @@ internal sealed class ServerSettingsViewModel(CastarServerClient server) : BaseS
     private bool telegramEnabled;
     private bool receiptsEnabled;
     private string? receiptProvider;
+    private string telegramToken = "";
+    private string nalogInn = "";
+    private string nalogPassword = "";
     private string status = "";
 
     public bool HasConnection => connection is not null;
     public ServerUpdateViewModel Updates { get; } = new(server);
     public bool CanReload => active && HasConnection && request is null;
     public bool CanEdit => CanReload && saved is not null;
-    public bool CanEditTelegram => CanEdit && (saved?.TelegramConfigured == true || TelegramEnabled);
+    public bool SupportsCredentials => saved?.NalogConfigured is not null;
+    public bool CanEditTelegram => CanEdit && (SupportsCredentials || saved?.TelegramConfigured == true || TelegramEnabled);
     public bool CanSave => CanEdit && !requiresReload && !recheckAfterSave && saved is { } current
         && ReceiptProviders.Any(provider => provider.Id == ReceiptProvider)
-        && (!TelegramEnabled || current.TelegramConfigured)
+        && (!TelegramEnabled || current.TelegramConfigured || HasTelegramToken)
+        && (telegramToken.Length == 0 || HasTelegramToken)
+        && (!HasNalogInput || HasNalogCredentials)
+        && (!RequiresNalogCredentials || current.NalogConfigured == true || HasNalogCredentials)
         && (TelegramEnabled != current.TelegramEnabled || ReceiptsEnabled != current.ReceiptsEnabled
-            || ReceiptProvider != current.ReceiptProvider);
-    public string TelegramStatus => saved?.TelegramConfigured == false ? "На сервере не задан токен Telegram." : "";
+            || ReceiptProvider != current.ReceiptProvider || HasTelegramToken || HasNalogCredentials);
+    public string TelegramStatus => saved?.TelegramConfigured switch
+    {
+        true when SupportsCredentials => "Токен Telegram задан.",
+        false => "На сервере не задан токен Telegram.",
+        _ => ""
+    };
+    public string NalogStatus => saved?.NalogConfigured switch
+    {
+        true => "ИНН и пароль ФНС заданы.",
+        false => "ИНН и пароль ФНС не заданы.",
+        _ => ""
+    };
+    public string NalogInputError => HasNalogInput && !HasNalogCredentials ? "Введите ИНН и пароль вместе." : "";
     public ProviderOption[] ReceiptProviders { get; private set; } = [];
+    public event EventHandler? CredentialsCleared;
+
+    private bool HasTelegramToken => SupportsCredentials && !string.IsNullOrWhiteSpace(telegramToken);
+    private bool HasNalogInput => nalogInn.Length != 0 || nalogPassword.Length != 0;
+    private bool HasNalogCredentials => SupportsCredentials && !string.IsNullOrWhiteSpace(nalogInn)
+        && !string.IsNullOrWhiteSpace(nalogPassword);
+    private bool RequiresNalogCredentials => SupportsCredentials && ReceiptsEnabled && ReceiptProvider == "nalog";
 
     public bool TelegramEnabled
     {
@@ -72,6 +98,10 @@ internal sealed class ServerSettingsViewModel(CastarServerClient server) : BaseS
 
     public string Status { get => status; private set => SetField(ref status, value); }
 
+    public void EnterTelegramToken(string value) => SetCredential(ref telegramToken, value);
+    public void EnterNalogInn(string value) => SetCredential(ref nalogInn, value);
+    public void EnterNalogPassword(string value) => SetCredential(ref nalogPassword, value);
+
     public Task OpenAsync(string address, string? protectedKey)
     {
         active = true;
@@ -79,6 +109,7 @@ internal sealed class ServerSettingsViewModel(CastarServerClient server) : BaseS
         if (connection != next)
         {
             CancelRequest();
+            ClearCredentials();
             connection = next;
             OnPropertyChanged(nameof(HasConnection));
             ApplySettings(null);
@@ -100,6 +131,7 @@ internal sealed class ServerSettingsViewModel(CastarServerClient server) : BaseS
         if (request is not null)
             Status = "";
         CancelRequest();
+        ClearCredentials();
         NotifyActions();
     }
 
@@ -112,7 +144,11 @@ internal sealed class ServerSettingsViewModel(CastarServerClient server) : BaseS
         if (!CanSave || saved is null || ReceiptProvider is null)
             return Task.CompletedTask;
 
-        var update = new ServerSettingsWriteDto(TelegramEnabled, ReceiptsEnabled, ReceiptProvider, saved.Revision);
+        var update = new ServerSettingsWriteDto(TelegramEnabled, ReceiptsEnabled, ReceiptProvider, saved.Revision)
+        {
+            TelegramToken = HasTelegramToken ? telegramToken.Trim() : null,
+            NalogCredentials = HasNalogCredentials ? new NalogCredentialsWriteDto(nalogInn.Trim(), nalogPassword) : null
+        };
         return RunAsync(token => server.SaveServerSettingsAsync(update, token), "Сохранение…", isSave: true);
     }
 
@@ -129,6 +165,8 @@ internal sealed class ServerSettingsViewModel(CastarServerClient server) : BaseS
             if (request == current)
             {
                 ApplySettings(result);
+                if (isSave)
+                    ClearCredentials();
                 Status = "";
             }
         }
@@ -165,6 +203,8 @@ internal sealed class ServerSettingsViewModel(CastarServerClient server) : BaseS
     private void ApplySettings(ServerSettingsDto? value)
     {
         saved = value;
+        if (!SupportsCredentials)
+            ClearCredentials();
         requiresReload = false;
         recheckAfterSave = false;
         TelegramEnabled = value?.TelegramEnabled ?? false;
@@ -179,6 +219,30 @@ internal sealed class ServerSettingsViewModel(CastarServerClient server) : BaseS
         receiptProvider = value?.ReceiptProvider;
         OnPropertyChanged(nameof(ReceiptProvider));
         OnPropertyChanged(nameof(TelegramStatus));
+        OnPropertyChanged(nameof(NalogStatus));
+        OnPropertyChanged(nameof(SupportsCredentials));
+    }
+
+    private void SetCredential(ref string field, string value)
+    {
+        var next = SupportsCredentials && active ? value : "";
+        if (field == next)
+            return;
+
+        field = next;
+        OnPropertyChanged(nameof(NalogInputError));
+        OnPropertyChanged(nameof(CanSave));
+    }
+
+    private void ClearCredentials()
+    {
+        if (telegramToken.Length == 0 && !HasNalogInput)
+            return;
+
+        telegramToken = nalogInn = nalogPassword = "";
+        CredentialsCleared?.Invoke(this, EventArgs.Empty);
+        OnPropertyChanged(nameof(NalogInputError));
+        OnPropertyChanged(nameof(CanSave));
     }
 
     private void NotifyActions()

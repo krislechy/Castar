@@ -1,3 +1,4 @@
+using System.Net;
 using Castar.Api;
 using Castar.BL;
 using Castar.DAL.Repositories.DataBase;
@@ -16,8 +17,7 @@ public static class CastarEndpoints
         var api = endpoints.MapGroup("/api");
         api.AddEndpointFilter(HandleDatabaseConflicts);
         api.MapGet("/settings", (ServerSettings settings) => Results.Ok(settings.Read()));
-        api.MapPut("/settings", (ServerSettings settings, ServerSettingsWriteDto requested, CancellationToken token) =>
-            settings.UpdateAsync(requested, token));
+        api.MapPut("/settings", UpdateServerSettingsAsync);
         api.MapGet("/users", GetUsers);
         api.MapGet("/users/{id:guid}", GetUser);
         api.MapPost("/users", CreateUser).AddEndpointFilter(SerializeUserWrites);
@@ -32,6 +32,22 @@ public static class CastarEndpoints
 
         api.MapGet("/purchases", GetPurchases);
         return api;
+    }
+
+    private static Task<IResult> UpdateServerSettingsAsync(ServerSettings settings, ServerSettingsWriteDto requested,
+        HttpContext context, CancellationToken token)
+    {
+        if ((requested.TelegramToken is not null || requested.NalogCredentials is not null) && !context.Request.IsHttps)
+        {
+            var address = context.Connection.RemoteIpAddress;
+            if (address?.IsIPv4MappedToIPv6 == true)
+                address = address.MapToIPv4();
+            if (address is null || !IPAddress.IsLoopback(address))
+                return Task.FromResult(Results.Problem(statusCode: StatusCodes.Status403Forbidden,
+                    detail: "Для передачи токена или пароля подключитесь по HTTPS."));
+        }
+
+        return settings.UpdateAsync(requested, token);
     }
 
     private static async ValueTask<object?> HandleDatabaseConflicts(

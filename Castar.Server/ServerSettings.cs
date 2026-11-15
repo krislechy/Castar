@@ -1,3 +1,5 @@
+using System.Security.AccessControl;
+using System.Security.Principal;
 using System.Text.Json;
 using Castar.Api;
 using Castar.Domain.Models.SettingsModel;
@@ -10,8 +12,8 @@ internal sealed class ServerSettings : IDisposable
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
     private readonly SettingsModel settings;
     private readonly string path;
-    private readonly bool telegramConfigured;
-    private readonly bool nalogConfigured;
+    private readonly string? defaultTelegramToken;
+    private readonly NalogCredentialsWriteDto? defaultNalogCredentials;
     private readonly string[] providers;
     private readonly SemaphoreSlim writes = new(1);
     private ServerSettingsWriteDto current;
@@ -20,8 +22,9 @@ internal sealed class ServerSettings : IDisposable
     {
         this.settings = settings;
         path = CastarData.GetSqlitePath(configuration) + ".settings.json";
-        telegramConfigured = !string.IsNullOrWhiteSpace(settings.TelegramBot.TelegramBotApi_KEY);
-        nalogConfigured = !string.IsNullOrWhiteSpace(settings.NalogFNS.INN) && !string.IsNullOrWhiteSpace(settings.NalogFNS.Password);
+        defaultTelegramToken = settings.TelegramBot.TelegramBotApi_KEY;
+        if (!string.IsNullOrWhiteSpace(settings.NalogFNS.INN) && !string.IsNullOrWhiteSpace(settings.NalogFNS.Password))
+            defaultNalogCredentials = new(settings.NalogFNS.INN, settings.NalogFNS.Password);
         this.providers = providers.Select(provider => provider.Id).Order(StringComparer.Ordinal).ToArray();
         current = new(settings.Systems.IsEnableTelegramBot, settings.Receipts.IsEnabled, settings.Receipts.Provider,
             Random.Shared.Next(1, int.MaxValue));
@@ -34,14 +37,14 @@ internal sealed class ServerSettings : IDisposable
         {
             var saved = await JsonSerializer.DeserializeAsync<ServerSettingsWriteDto>(input, JsonOptions);
             var provider = FindProvider(saved?.ReceiptProvider);
-            if (saved is null || saved.Revision <= 0 || provider is null)
+            if (saved is null || saved.Revision <= 0 || provider is null || ValidateCredentials(saved) is not null)
                 throw new InvalidDataException($"Invalid server settings in {path}.");
 
             Apply(saved with { ReceiptProvider = provider });
             return;
         }
 
-        if (current.TelegramEnabled && !telegramConfigured)
+        if (current.TelegramEnabled && !HasTelegramToken(current))
             throw new InvalidDataException("Set Castar__Telegram__Token when enabling the Telegram bot.");
 
         var configuredProvider = FindProvider(current.ReceiptProvider);
@@ -67,14 +70,6 @@ internal sealed class ServerSettings : IDisposable
 
     public async Task<IResult> UpdateAsync(ServerSettingsWriteDto requested, CancellationToken cancellationToken)
     {
-        if (requested.TelegramEnabled && !telegramConfigured)
-            return Results.Problem(statusCode: StatusCodes.Status400BadRequest, detail: "На сервере не задан токен Telegram.");
-        var provider = FindProvider(requested.ReceiptProvider);
-        if (provider is null)
-            return Results.Problem(statusCode: StatusCodes.Status400BadRequest, detail: "Выберите доступного поставщика чеков.");
-        if (requested.ReceiptsEnabled && provider == Nalog.ProviderId && !nalogConfigured)
-            return Results.Problem(statusCode: StatusCodes.Status400BadRequest, detail: "На сервере не заданы ИНН и пароль ФНС.");
-
         await writes.WaitAsync(cancellationToken);
         try
         {
@@ -84,7 +79,22 @@ internal sealed class ServerSettings : IDisposable
                     detail: "Настройки изменились на сервере. Обновите их и повторите попытку.");
             }
 
-            var next = requested with { ReceiptProvider = provider };
+            var provider = FindProvider(requested.ReceiptProvider);
+            if (provider is null)
+                return Invalid("Выберите доступного поставщика чеков.");
+            if (ValidateCredentials(requested) is { } error)
+                return Invalid(error);
+
+            var next = requested with
+            {
+                ReceiptProvider = provider,
+                TelegramToken = requested.TelegramToken ?? current.TelegramToken,
+                NalogCredentials = requested.NalogCredentials ?? current.NalogCredentials
+            };
+            if (next.TelegramEnabled && !HasTelegramToken(next))
+                return Invalid("На сервере не задан токен Telegram.");
+            if (next.ReceiptsEnabled && provider == Nalog.ProviderId && EffectiveNalogCredentials(next) is null)
+                return Invalid("На сервере не заданы ИНН и пароль ФНС.");
             if (next == current)
                 return Results.Ok(ToDto(current));
 
@@ -105,23 +115,47 @@ internal sealed class ServerSettings : IDisposable
         return providers.FirstOrDefault(provider => string.Equals(provider, identifier, StringComparison.OrdinalIgnoreCase));
     }
 
+    private static IResult Invalid(string detail) =>
+        Results.Problem(statusCode: StatusCodes.Status400BadRequest, detail: detail);
+
+    private static string? ValidateCredentials(ServerSettingsWriteDto value)
+    {
+        if (value.TelegramToken is { } token)
+        {
+            var separator = token.IndexOf(':');
+            if (separator is < 1 or > 20 || token.Length - separator is < 21 or > 129
+                || token[..separator].Any(character => !char.IsAsciiDigit(character))
+                || token[(separator + 1)..].Any(character => !char.IsAsciiLetterOrDigit(character) && character is not '_' and not '-'))
+                return "Некорректный формат токена Telegram.";
+        }
+
+        if (value.NalogCredentials is { } credentials &&
+            (credentials.Inn is not { Length: 10 or 12 } || credentials.Inn.Any(character => !char.IsAsciiDigit(character))
+             || string.IsNullOrWhiteSpace(credentials.Password) || credentials.Password.Length > 1024
+             || credentials.Password.Any(char.IsControl)))
+            return "Укажите ИНН и пароль ФНС в допустимом формате.";
+
+        return null;
+    }
+
+    private bool HasTelegramToken(ServerSettingsWriteDto value) =>
+        !string.IsNullOrWhiteSpace(value.TelegramToken ?? defaultTelegramToken);
+
+    private NalogCredentialsWriteDto? EffectiveNalogCredentials(ServerSettingsWriteDto value) =>
+        value.NalogCredentials ?? defaultNalogCredentials;
+
     private ServerSettingsDto ToDto(ServerSettingsWriteDto value) => new(
-        value.TelegramEnabled, telegramConfigured, value.ReceiptsEnabled, value.ReceiptProvider, providers, value.Revision);
+        value.TelegramEnabled, HasTelegramToken(value), value.ReceiptsEnabled, value.ReceiptProvider, providers, value.Revision)
+    {
+        NalogConfigured = EffectiveNalogCredentials(value) is not null
+    };
 
     private async Task SaveAsync(ServerSettingsWriteDto value, CancellationToken cancellationToken)
     {
         var temporaryPath = path + "." + Guid.NewGuid().ToString("N") + ".tmp";
-        var options = new FileStreamOptions
-        {
-            Mode = FileMode.CreateNew,
-            Access = FileAccess.Write,
-            Options = FileOptions.Asynchronous
-        };
-        if (!OperatingSystem.IsWindows())
-            options.UnixCreateMode = UnixFileMode.UserRead | UnixFileMode.UserWrite;
         try
         {
-            await using (var file = new FileStream(temporaryPath, options))
+            await using (var file = CreatePrivateFile(temporaryPath, FileOptions.Asynchronous))
             {
                 await JsonSerializer.SerializeAsync(file, value, JsonOptions, cancellationToken);
                 file.Flush(flushToDisk: true);
@@ -137,10 +171,38 @@ internal sealed class ServerSettings : IDisposable
         }
     }
 
+    internal static FileStream CreatePrivateFile(string path, FileOptions options = FileOptions.None)
+    {
+        if (OperatingSystem.IsWindows())
+        {
+            using var identity = WindowsIdentity.GetCurrent();
+            var account = identity.User ?? throw new InvalidOperationException("Cannot identify the Castar Server Windows account.");
+            var security = new FileSecurity();
+            security.SetAccessRuleProtection(isProtected: true, preserveInheritance: false);
+            security.AddAccessRule(new FileSystemAccessRule(account, FileSystemRights.FullControl, AccessControlType.Allow));
+            return new FileInfo(path).Create(FileMode.CreateNew, FileSystemRights.Write, FileShare.None,
+                4096, options, security);
+        }
+
+        return new FileStream(path, new FileStreamOptions
+        {
+            Mode = FileMode.CreateNew,
+            Access = FileAccess.Write,
+            Options = options,
+            UnixCreateMode = UnixFileMode.UserRead | UnixFileMode.UserWrite
+        });
+    }
+
     private void Apply(ServerSettingsWriteDto value)
     {
+        var credentials = EffectiveNalogCredentials(value);
+        settings.NalogFNS = new() { INN = credentials?.Inn, Password = credentials?.Password };
         settings.Receipts = new ReceiptSettings { IsEnabled = value.ReceiptsEnabled, Provider = value.ReceiptProvider };
-        settings.Systems.IsEnableTelegramBot = value.TelegramEnabled;
+        if (!value.TelegramEnabled)
+            settings.Systems.IsEnableTelegramBot = false;
+        settings.TelegramBot.TelegramBotApi_KEY = value.TelegramToken ?? defaultTelegramToken;
+        if (value.TelegramEnabled)
+            settings.Systems.IsEnableTelegramBot = true;
         Volatile.Write(ref current, value);
     }
 

@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.IO;
 using System.Linq;
@@ -18,9 +19,9 @@ namespace Castar.Updates;
 
 public sealed class GitHubUpdateService : IDisposable
 {
-    private const string InstallerName = "Castar-Setup-win-x64.exe";
+    private const string PackageName = "Castar-Update-win-x64.zip";
     private const string ReleaseBase = "https://github.com/krislechy/Castar/releases";
-    private const long MaxInstallerBytes = 512L * 1024 * 1024;
+    private const long MaxPackageBytes = 512L * 1024 * 1024;
     private static readonly Uri LatestReleaseUrl = new("https://api.github.com/repos/krislechy/Castar/releases/latest");
     private readonly HttpClient _client;
 
@@ -79,33 +80,33 @@ public sealed class GitHubUpdateService : IDisposable
             return null;
         }
 
-        var installer = release.Assets?.Find(asset => asset?.Name == InstallerName);
-        if (installer is null || installer.State != "uploaded")
-            throw new InvalidDataException("В выпуске GitHub отсутствует установщик Castar для Windows x64.");
+        var package = release.Assets?.Find(asset => asset?.Name == PackageName);
+        if (package is null || package.State != "uploaded")
+            throw new InvalidDataException("В выпуске GitHub отсутствует архив обновления Castar для Windows x64.");
 
-        if (installer.Size is <= 0 or > MaxInstallerBytes
-            || !string.Equals(installer.BrowserDownloadUrl, InstallerUrl(tag).AbsoluteUri, StringComparison.Ordinal)
-            || !TryParseDigest(installer.Digest, out var digest))
+        if (package.Size is <= 0 or > MaxPackageBytes
+            || !string.Equals(package.BrowserDownloadUrl, PackageUrl(tag).AbsoluteUri, StringComparison.Ordinal)
+            || !TryParseDigest(package.Digest, out var digest))
         {
-            throw new InvalidDataException("В выпуске GitHub отсутствуют корректные данные для проверки установщика.");
+            throw new InvalidDataException("В выпуске GitHub отсутствуют корректные данные для проверки архива обновления.");
         }
 
-        return new CastarUpdate(version, tag, new Uri($"{ReleaseBase}/tag/{tag}"), installer.Size, digest);
+        return new CastarUpdate(version, tag, new Uri($"{ReleaseBase}/tag/{tag}"), package.Size, digest);
     }
 
-    public async Task<string> DownloadAsync(CastarUpdate update, CancellationToken cancellationToken = default)
+    public async Task<string> DownloadAsync(CastarUpdate update, CancellationToken cancellationToken = default, IProgress<long>? progress = null)
     {
         ArgumentNullException.ThrowIfNull(update);
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         timeout.CancelAfter(TimeSpan.FromMinutes(10));
         var token = timeout.Token;
-        using var response = await OpenInstallerAsync(InstallerUrl(update.TagName), token).ConfigureAwait(false);
+        using var response = await OpenPackageAsync(PackageUrl(update.TagName), token).ConfigureAwait(false);
         if (response.Content.Headers.ContentLength is long reportedSize && reportedSize != update.SizeBytes)
-            throw new InvalidDataException("Размер установщика отличается от указанного в выпуске GitHub.");
+            throw new InvalidDataException("Размер архива обновления отличается от указанного в выпуске GitHub.");
 
         var directory = Directory.CreateTempSubdirectory($"Castar-{update.TagName}-").FullName;
-        var temporaryFile = Path.Combine(directory, "installer.download");
-        var installerFile = Path.Combine(directory, InstallerName);
+        var temporaryFile = Path.Combine(directory, "package.download");
+        var packageFile = Path.Combine(directory, PackageName);
         try
         {
             using var digest = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
@@ -115,28 +116,35 @@ public sealed class GitHubUpdateService : IDisposable
             {
                 var buffer = new byte[64 * 1024];
                 long bytesWritten = 0;
+                var lastReport = Stopwatch.StartNew();
+                progress?.Report(0);
                 while (await content.ReadAsync(buffer, token).ConfigureAwait(false) is var count and > 0)
                 {
                     bytesWritten += count;
                     if (bytesWritten > update.SizeBytes)
-                        throw new InvalidDataException("Размер установщика превышает указанный в выпуске GitHub.");
+                        throw new InvalidDataException("Размер архива обновления превышает указанный в выпуске GitHub.");
 
                     digest.AppendData(buffer, 0, count);
                     await output.WriteAsync(buffer.AsMemory(0, count), token).ConfigureAwait(false);
+                    if (lastReport.ElapsedMilliseconds >= 100 || bytesWritten == update.SizeBytes)
+                    {
+                        progress?.Report(bytesWritten);
+                        lastReport.Restart();
+                    }
                 }
 
                 if (bytesWritten != update.SizeBytes)
-                    throw new InvalidDataException("Установщик загружен не полностью.");
+                    throw new InvalidDataException("Архив обновления загружен не полностью.");
 
                 await output.FlushAsync(token).ConfigureAwait(false);
             }
 
             if (!CryptographicOperations.FixedTimeEquals(digest.GetHashAndReset(), Convert.FromHexString(update.Sha256)))
-                throw new InvalidDataException("Контрольная сумма SHA-256 установщика отличается от указанной в выпуске GitHub.");
+                throw new InvalidDataException("Контрольная сумма SHA-256 архива обновления отличается от указанной в выпуске GitHub.");
 
             token.ThrowIfCancellationRequested();
-            File.Move(temporaryFile, installerFile);
-            return installerFile;
+            File.Move(temporaryFile, packageFile);
+            return packageFile;
         }
         catch
         {
@@ -156,7 +164,7 @@ public sealed class GitHubUpdateService : IDisposable
         }
     }
 
-    private async Task<HttpResponseMessage> OpenInstallerAsync(Uri uri, CancellationToken cancellationToken)
+    private async Task<HttpResponseMessage> OpenPackageAsync(Uri uri, CancellationToken cancellationToken)
     {
         for (var redirects = 0; redirects <= 3; redirects++)
         {
@@ -173,17 +181,17 @@ public sealed class GitHubUpdateService : IDisposable
                 if (response.StatusCode is not (HttpStatusCode.MovedPermanently or HttpStatusCode.Found
                     or HttpStatusCode.SeeOther or HttpStatusCode.TemporaryRedirect or HttpStatusCode.PermanentRedirect))
                 {
-                    throw new HttpRequestException("GitHub не вернул установщик Castar.", null, response.StatusCode);
+                    throw new HttpRequestException("GitHub не вернул архив обновления Castar.", null, response.StatusCode);
                 }
 
                 if (response.Headers.Location is not { IsAbsoluteUri: true } location || !IsReleaseAssetsUri(location))
-                    throw new InvalidDataException("GitHub вернул неподдерживаемый адрес загрузки установщика.");
+                    throw new InvalidDataException("GitHub вернул неподдерживаемый адрес загрузки архива обновления.");
 
                 uri = location;
             }
         }
 
-        throw new InvalidDataException("GitHub вернул слишком много перенаправлений при загрузке установщика.");
+        throw new InvalidDataException("GitHub вернул слишком много перенаправлений при загрузке архива обновления.");
     }
 
     private static bool IsReleaseAssetsUri(Uri uri) =>
@@ -192,7 +200,7 @@ public sealed class GitHubUpdateService : IDisposable
         && (uri.AbsolutePath.StartsWith("/github-production-release-asset/", StringComparison.Ordinal)
             || uri.AbsolutePath.StartsWith("/github-production-release-asset-2e65be/", StringComparison.Ordinal));
 
-    private static Uri InstallerUrl(string tag) => new($"{ReleaseBase}/download/{tag}/{InstallerName}");
+    private static Uri PackageUrl(string tag) => new($"{ReleaseBase}/download/{tag}/{PackageName}");
 
     private static bool TryParseReleaseTag([NotNullWhen(true)] string? tag, [NotNullWhen(true)] out Version? version)
     {

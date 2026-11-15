@@ -54,6 +54,19 @@
                 <c:IslandPanel Title="Обновления Castar" ImageSvg="{DynamicResource Svg.Tools}">
                     <StackPanel>
                         <TextBlock Text="{Binding UpdateStatus}" Style="{StaticResource ViewStatus}"/>
+                        <ProgressBar Minimum="0" Maximum="100" Value="{Binding UpdateDownloadPercent, Mode=OneWay}"
+                                     AutomationProperties.Name="Ход загрузки обновления">
+                            <ProgressBar.Style>
+                                <Style TargetType="ProgressBar" BasedOn="{StaticResource {x:Type ProgressBar}}">
+                                    <Setter Property="Visibility" Value="Collapsed"/>
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding IsDownloadingUpdate}" Value="True">
+                                            <Setter Property="Visibility" Value="Visible"/>
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </ProgressBar.Style>
+                        </ProgressBar>
                         <Button Content="Проверить обновления" Style="{StaticResource FormAction}" Click="CheckForUpdates_Click"/>
                     </StackPanel>
                 </c:IslandPanel>

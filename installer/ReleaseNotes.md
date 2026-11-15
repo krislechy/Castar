@@ -1,9 +1,19 @@
-Castar 0.2.0 разделяет Windows-клиент и сервер.
+Castar 0.3.0 обновляет Windows-клиент из настроек и показывает ход загрузки.
 
-- `Castar-Setup-win-x64.exe` устанавливает клиент для Windows. Укажите адрес сервера и API-ключ в настройках.
-- `Castar-Server-win-x64.zip` и `Castar-Server-linux-x64.tar.gz` содержат сервер со средой .NET. Сервер хранит данные и обрабатывает сообщения Telegram и чеки.
-- В клиенте открывается вкладка «Расходы» с покупками и позициями чеков. Списки используют общие стили Castar.
-- Бот читает QR через ZXing-C++ и принимает фотографии и исходные изображения, отправленные как файл Telegram.
-- Для переноса данных укажите существующую базу SQLite на сервере или воспользуйтесь серверной командой импорта из SQL Server.
+## Первая установка Windows-клиента
 
-Порядок запуска, подключение по HTTPS и перенос базы описаны в [инструкции по развёртыванию](https://github.com/krislechy/Castar/blob/v0.2.0/Castar.Server/DEPLOYMENT.md).
+Установите [.NET Desktop Runtime 11 для Windows x64](https://dotnet.microsoft.com/download/dotnet/11.0#desktop-runtime-11.0.0), затем запустите `Castar-FirstInstall-win-x64.exe`. После установки укажите адрес сервера и API-ключ в настройках Castar.
+
+## Переход с v0.2.0
+
+Один раз установите .NET Desktop Runtime 11 x64 отдельно. Скачайте `Castar-Update-win-x64.zip`, распакуйте его во временную папку и полностью закройте прежний Castar. Откройте PowerShell в распакованной папке и выполните команду. Если Castar установлен по другому пути, укажите его каталог первым аргументом.
+
+```powershell
+.\Castar.Updater.exe "$env:LOCALAPPDATA\Programs\Castar" (Get-Location).Path
+```
+
+Помощник обновит файлы в существующем каталоге, сохранит настройки и запустит новую версию. Следующие выпуски устанавливаются из раздела обновлений в Castar.
+
+## Сервер
+
+`Castar-Server-win-x64.zip` и `Castar-Server-linux-x64.tar.gz` содержат сервер со своей средой выполнения. Порядок запуска, подключение по HTTPS и перенос базы описаны в [инструкции по развёртыванию](https://github.com/krislechy/Castar/blob/v0.3.0/Castar.Server/DEPLOYMENT.md).

@@ -205,6 +205,8 @@ public partial class SettingsContent : UserControl
         private string address = settings.ServerUrl;
         private string connectionStatus = "";
         private string updateStatus = "";
+        private int updateDownloadPercent;
+        private bool isDownloadingUpdate;
         private string usersStatus = "";
         private ObservableCollection<User> users = [];
 
@@ -212,6 +214,8 @@ public partial class SettingsContent : UserControl
         public string ServerAddress { get => address; set => SetField(ref address, value); }
         public string ConnectionStatus { get => connectionStatus; set => SetField(ref connectionStatus, value); }
         public string UpdateStatus { get => updateStatus; set => SetField(ref updateStatus, value); }
+        public int UpdateDownloadPercent { get => updateDownloadPercent; set => SetField(ref updateDownloadPercent, value); }
+        public bool IsDownloadingUpdate { get => isDownloadingUpdate; set => SetField(ref isDownloadingUpdate, value); }
         public string UsersStatus { get => usersStatus; set => SetField(ref usersStatus, value); }
         public ObservableCollection<User> Users { get => users; set => SetField(ref users, value); }
     }

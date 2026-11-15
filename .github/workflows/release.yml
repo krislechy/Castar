@@ -17,7 +17,7 @@ jobs:
       - uses: actions/setup-dotnet@baa11fbfe1d6520db94683bd5c7a3818018e4309 # v5.1.0
         with:
           global-json-file: global.json
-      - name: Publish Castar
+      - name: Publish the Windows client and update package
         shell: pwsh
         run: |
           $version = dotnet msbuild Castar/Castar.csproj -getProperty:Version
@@ -25,7 +25,32 @@ jobs:
             throw "The tag must match Castar.csproj Version."
           }
           "CASTAR_VERSION=$version" >> $env:GITHUB_ENV
-          dotnet publish Castar/Castar.csproj -c Release -r win-x64 --self-contained -o "${{ runner.temp }}/castar-publish"
+          $publishPath = Join-Path $env:RUNNER_TEMP 'castar-publish'
+          dotnet publish Castar/Castar.csproj -c Release -r win-x64 --self-contained false -o $publishPath
+          if ($LASTEXITCODE -ne 0) { throw "Castar client publish failed." }
+          dotnet publish Castar.Updater/Castar.Updater.csproj -c Release -r win-x64 --self-contained false -o $publishPath
+          if ($LASTEXITCODE -ne 0) { throw "Castar update helper publish failed." }
+
+          $clientConfig = Get-Content -LiteralPath (Join-Path $publishPath 'Castar.runtimeconfig.json') -Raw | ConvertFrom-Json
+          $helperConfig = Get-Content -LiteralPath (Join-Path $publishPath 'Castar.Updater.runtimeconfig.json') -Raw | ConvertFrom-Json
+          $clientFrameworks = @($clientConfig.runtimeOptions.frameworks) + @($clientConfig.runtimeOptions.framework)
+          $helperFrameworks = @($helperConfig.runtimeOptions.frameworks) + @($helperConfig.runtimeOptions.framework)
+          if ('Microsoft.WindowsDesktop.App' -notin $clientFrameworks.name -or
+              'Microsoft.NETCore.App' -notin $helperFrameworks.name) {
+            throw "Castar and its update helper must use an installed runtime."
+          }
+          foreach ($runtimeFile in 'hostfxr.dll', 'hostpolicy.dll', 'coreclr.dll', 'System.Private.CoreLib.dll') {
+            if (Test-Path -LiteralPath (Join-Path $publishPath $runtimeFile)) {
+              throw "Unexpected embedded runtime file: $runtimeFile"
+            }
+          }
+
+          $files = Get-ChildItem -LiteralPath $publishPath -File -Force -Recurse |
+            ForEach-Object { [IO.Path]::GetRelativePath($publishPath, $_.FullName).Replace('\', '/') } |
+            Sort-Object
+          [IO.File]::WriteAllLines((Join-Path $publishPath 'Castar.UpdateFiles.txt'), [string[]]$files)
+          $updateArchive = Join-Path $env:RUNNER_TEMP 'Castar-Update-win-x64.zip'
+          [IO.Compression.ZipFile]::CreateFromDirectory($publishPath, $updateArchive)
       - name: Build and verify the installer
         shell: pwsh
         run: |
@@ -41,7 +66,7 @@ jobs:
           if ($setup.ExitCode -ne 0) { throw "Inno Setup installation failed." }
           & (Join-Path $compilerPath 'ISCC.exe') "/DCastarVersion=$env:CASTAR_VERSION" "/DPublishDir=$publishPath" "/O$env:RUNNER_TEMP" installer/Castar.iss
           if ($LASTEXITCODE -ne 0) { throw "Installer compilation failed." }
-          $installer = Join-Path $env:RUNNER_TEMP 'Castar-Setup-win-x64.exe'
+          $installer = Join-Path $env:RUNNER_TEMP 'Castar-FirstInstall-win-x64.exe'
           $setup = Start-Process -FilePath $installer -ArgumentList "/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /DIR=`"$installPath`"" -WindowStyle Hidden -Wait -PassThru
           if ($setup.ExitCode -ne 0 -or !(Test-Path (Join-Path $installPath 'Castar.exe'))) {
             throw "Castar installer smoke test failed."
@@ -50,10 +75,51 @@ jobs:
           if ($fileVersion.Split('+')[0] -ne $env:CASTAR_VERSION) {
             throw "Installed executable version does not match the release."
           }
+      - name: Verify the archived update against an installed client
+        shell: pwsh
+        run: |
+          $updateArchive = Join-Path $env:RUNNER_TEMP 'Castar-Update-win-x64.zip'
+          $payloadPath = Join-Path $env:RUNNER_TEMP 'castar-update-smoke'
+          $installPath = Join-Path $env:RUNNER_TEMP 'castar-smoke'
+          [IO.Compression.ZipFile]::ExtractToDirectory($updateArchive, $payloadPath)
+          $manifestName = 'Castar.UpdateFiles.txt'
+          $manifest = Get-Content -LiteralPath (Join-Path $payloadPath $manifestName)
+          $files = Get-ChildItem -LiteralPath $payloadPath -File -Force -Recurse |
+            ForEach-Object { [IO.Path]::GetRelativePath($payloadPath, $_.FullName).Replace('\', '/') } |
+            Where-Object { $_ -ne $manifestName }
+          if (Compare-Object $manifest $files) { throw "The update manifest does not match the archive." }
+
+          $installedDll = Join-Path $installPath 'Castar.dll'
+          $installedSettings = Join-Path $installPath 'Castar.Settings.xml'
+          $installedUninstaller = Get-ChildItem -LiteralPath $installPath -Filter 'unins*.exe' -File | Select-Object -First 1
+          if (!$installedUninstaller) { throw "The first installer did not supply an uninstaller." }
+          $obsoleteDll = Join-Path $installPath 'Castar.Obsolete.dll'
+          Set-Content -LiteralPath $installedDll -Value 'previous assembly'
+          Set-Content -LiteralPath $installedSettings -Value '<Settings />'
+          Set-Content -LiteralPath $obsoleteDll -Value 'obsolete assembly'
+          Add-Content -LiteralPath (Join-Path $installPath $manifestName) -Value 'Castar.Obsolete.dll'
+          $settingsHash = (Get-FileHash -LiteralPath $installedSettings).Hash
+          $uninstallerHash = (Get-FileHash -LiteralPath $installedUninstaller.FullName).Hash
+
+          & (Join-Path $payloadPath 'Castar.Updater.exe') $installPath $payloadPath --no-restart
+          if ($LASTEXITCODE -ne 0) { throw "The update helper failed." }
+          $payloadDllHash = (Get-FileHash -LiteralPath (Join-Path $payloadPath 'Castar.dll')).Hash
+          if ((Get-FileHash -LiteralPath $installedDll).Hash -ne $payloadDllHash -or
+              (Test-Path -LiteralPath $obsoleteDll) -or
+              (Get-FileHash -LiteralPath $installedSettings).Hash -ne $settingsHash -or
+              (Get-FileHash -LiteralPath $installedUninstaller.FullName).Hash -ne $uninstallerHash) {
+            throw "The update did not replace the client or preserve the existing settings and uninstaller."
+          }
+          $payloadManifestHash = (Get-FileHash -LiteralPath (Join-Path $payloadPath $manifestName)).Hash
+          if ((Get-FileHash -LiteralPath (Join-Path $installPath $manifestName)).Hash -ne $payloadManifestHash) {
+            throw "The update manifest was not installed."
+          }
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: castar-client-win-x64
-          path: ${{ runner.temp }}/Castar-Setup-win-x64.exe
+          path: |
+            ${{ runner.temp }}/Castar-FirstInstall-win-x64.exe
+            ${{ runner.temp }}/Castar-Update-win-x64.zip
           if-no-files-found: error
 
   server:
@@ -190,7 +256,8 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           gh release create "$GITHUB_REF_NAME" \
-            release-assets/Castar-Setup-win-x64.exe \
+            release-assets/Castar-FirstInstall-win-x64.exe \
+            release-assets/Castar-Update-win-x64.zip \
             release-assets/Castar-Server-win-x64.zip \
             release-assets/Castar-Server-linux-x64.tar.gz \
             --verify-tag --latest --title "Castar ${GITHUB_REF_NAME#v}" --notes-file installer/ReleaseNotes.md

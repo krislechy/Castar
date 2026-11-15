@@ -15,7 +15,6 @@ namespace Castar.Domain.Models.SettingsModel
     public class SettingsModel
     {
         public Systems Systems { get; set; } = new();
-        public DataBase DataBase { get; set; } = new() { Engine = DatabaseEngine.Sqlite };
         public TelegramBot TelegramBot { get; set; } = new();
         public NalogFNS NalogFNS { get; set; } = new();
         public ReceiptSettings Receipts { get; set; } = new();
@@ -35,7 +34,6 @@ namespace Castar.Domain.Models.SettingsModel
             //    }
             //}
             this.Systems.PropertyChanged += (q, e) => handler();
-            this.DataBase.PropertyChanged += (q, e) => handler();
             this.TelegramBot.PropertyChanged += (_, e) =>
             {
                 if (e.PropertyName != nameof(TelegramBot.Status))
@@ -102,71 +100,6 @@ namespace Castar.Domain.Models.SettingsModel
         {
             get => this.isEnableNalogFNS;
             set => SetField(ref isEnableNalogFNS, value);
-        }
-    }
-    public enum DatabaseEngine
-    {
-        SqlServer,
-        Sqlite
-    }
-
-    [Serializable]
-    [XmlSerializerAssembly("Castar.Domain.XmlSerializers")]
-    public sealed class DataBase : BaseSettingsModel
-    {
-        private DatabaseEngine engine;
-        public DatabaseEngine Engine
-        {
-            get => engine;
-            set => SetField(ref engine, value);
-        }
-        private string sqlitePath = "";
-        public string SqlitePath
-        {
-            get => sqlitePath;
-            set => SetField(ref sqlitePath, value);
-        }
-        [XmlIgnore]
-        private string dataSource = @".\SQLEXPRESS";
-        public string DataSource
-        {
-            get => this.dataSource;
-            set => SetField(ref dataSource, value);
-        }
-        [XmlIgnore]
-        private string pathToDataBase = "";
-        public string AttachDBFileName
-        {
-            get => this.pathToDataBase;
-            set => SetField(ref pathToDataBase, value);
-        }
-        private string databaseName = "";
-        public string DatabaseName
-        {
-            get => databaseName;
-            set => SetField(ref databaseName, value);
-        }
-        private bool trustServerCertificate;
-        public bool TrustServerCertificate
-        {
-            get => trustServerCertificate;
-            set => SetField(ref trustServerCertificate, value);
-        }
-        [XmlIgnore]
-        private string login = "";
-        [Encryption]
-        public string Login
-        {
-            get => this.login;
-            set => SetField(ref login, value);
-        }
-        [XmlIgnore]
-        private string? password;
-        [Encryption]
-        public string? Password
-        {
-            get => this.password;
-            set => SetField(ref password, value);
         }
     }
     [Serializable]

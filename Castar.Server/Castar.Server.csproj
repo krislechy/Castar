@@ -3,7 +3,7 @@
     <TargetFramework>net11.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
-    <Version>0.3.0</Version>
+    <Version>0.4.0</Version>
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="..\Castar.Api\Castar.Api.csproj" />
@@ -11,7 +11,5 @@
     <ProjectReference Include="..\Castar.DAL\Castar.DAL.csproj" />
     <ProjectReference Include="..\Castar.Services.Receipts.Nalog\Castar.Services.Receipts.Nalog.csproj" />
     <ProjectReference Include="..\Castar.Services.TelegramBot\Castar.Services.TelegramBot.csproj" />
-    <None Include="..\DataBase\UpgradeCastar.sql" Link="DataBase\UpgradeCastar.sql"
-          CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 </Project>

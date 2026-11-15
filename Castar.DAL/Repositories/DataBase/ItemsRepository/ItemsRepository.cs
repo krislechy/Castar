@@ -3,13 +3,12 @@ using Microsoft.EntityFrameworkCore;
 
 namespace Castar.DAL.Repositories.DataBase
 {
-    public sealed class ItemsRepository(IDbContextFactory<CastarDbContext> contextFactory)
-        : BaseRepository<Item>(contextFactory), IItemsRepository
+    public sealed class ItemsRepository(CastarDbContext db)
+        : BaseRepository<Item>(db), IItemsRepository
     {
         public async Task<IReadOnlyList<Item>> List(DateTime start, DateTime finish, bool includeUser)
         {
-            await using var db = await ContextFactory.CreateDbContextAsync();
-            var items = db.Items.AsNoTrackingWithIdentityResolution()
+            var items = Context.Items.AsNoTrackingWithIdentityResolution()
                 .Where(x => x.Purchase!.AddedOn >= start && x.Purchase.AddedOn <= finish);
 
             if (!includeUser)
@@ -23,24 +22,22 @@ namespace Castar.DAL.Repositories.DataBase
 
         public override async Task<Item> Add(Item item, CancellationToken cancellationToken = default)
         {
-            await using var db = await ContextFactory.CreateDbContextAsync(cancellationToken);
-            var purchase = await FindPurchase(db, item.PurchaseId, cancellationToken);
-            PurchasesRepository.ThrowIfFiscal(db, purchase);
+            var purchase = await FindPurchase(Context, item.PurchaseId, cancellationToken);
+            PurchasesRepository.ThrowIfFiscal(Context, purchase);
             item.Purchase = purchase;
             purchase.Items.Add(item);
-            db.Items.Add(item);
-            db.Entry(item).Property<int?>(CastarDbContext.LineNumber).CurrentValue =
-                purchase.Items.Max(x => db.Entry(x).Property<int?>(CastarDbContext.LineNumber).CurrentValue) + 1 ?? 0;
+            Context.Items.Add(item);
+            Context.Entry(item).Property<int?>(CastarDbContext.LineNumber).CurrentValue =
+                purchase.Items.Max(x => Context.Entry(x).Property<int?>(CastarDbContext.LineNumber).CurrentValue) + 1 ?? 0;
             purchase.RecalculateManualTotals();
-            await db.SaveChangesAsync(cancellationToken);
+            await Context.SaveChangesAsync(cancellationToken);
             return item;
         }
 
         public override async Task Update(Item item, CancellationToken cancellationToken = default)
         {
-            await using var db = await ContextFactory.CreateDbContextAsync(cancellationToken);
-            var purchase = await FindPurchase(db, item.PurchaseId, cancellationToken);
-            PurchasesRepository.ThrowIfFiscal(db, purchase);
+            var purchase = await FindPurchase(Context, item.PurchaseId, cancellationToken);
+            PurchasesRepository.ThrowIfFiscal(Context, purchase);
             var current = purchase.Items.FirstOrDefault(x => x.Id == item.Id)
                 ?? throw new InvalidOperationException("Товар больше не принадлежит этой покупке.");
             current.Name = item.Name;
@@ -48,28 +45,27 @@ namespace Castar.DAL.Repositories.DataBase
             current.Quantity = item.Quantity;
             current.Price = item.Price;
             purchase.RecalculateManualTotals();
-            await db.SaveChangesAsync(cancellationToken);
+            await Context.SaveChangesAsync(cancellationToken);
             item.Sum = current.Sum;
         }
 
         public override async Task<bool> Delete(Guid id, CancellationToken cancellationToken = default)
         {
-            await using var db = await ContextFactory.CreateDbContextAsync(cancellationToken);
-            var purchaseId = await db.Items.Where(x => x.Id == id).Select(x => (Guid?)x.PurchaseId)
+            var purchaseId = await Context.Items.Where(x => x.Id == id).Select(x => (Guid?)x.PurchaseId)
                 .SingleOrDefaultAsync(cancellationToken);
             if (purchaseId is null)
                 return false;
 
-            var purchase = await FindPurchase(db, purchaseId.Value, cancellationToken);
-            PurchasesRepository.ThrowIfFiscal(db, purchase);
+            var purchase = await FindPurchase(Context, purchaseId.Value, cancellationToken);
+            PurchasesRepository.ThrowIfFiscal(Context, purchase);
             var item = purchase.Items.FirstOrDefault(x => x.Id == id);
             if (item is null)
                 return false;
 
             purchase.Items.Remove(item);
-            db.Items.Remove(item);
+            Context.Items.Remove(item);
             purchase.RecalculateManualTotals();
-            await db.SaveChangesAsync(cancellationToken);
+            await Context.SaveChangesAsync(cancellationToken);
             return true;
         }
 

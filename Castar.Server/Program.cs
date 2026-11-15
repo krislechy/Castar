@@ -9,10 +9,7 @@ using Castar.Services.TelegramBot;
 using Castar.Services.TelegramBot.Commands;
 using Microsoft.EntityFrameworkCore;
 
-var import = args.FirstOrDefault() == "import-sqlite";
-var builder = WebApplication.CreateBuilder(import ? [] : args);
-if (await CastarDatabaseCommands.TryRunAsync(args, builder.Configuration) is { } exitCode)
-    return exitCode;
+var builder = WebApplication.CreateBuilder(args);
 
 var configuration = builder.Configuration;
 var apiKey = configuration["Castar:ApiKey"]?.Trim();
@@ -78,9 +75,8 @@ app.Use(async (context, next) =>
 });
 
 app.MapGet("/health", () => Results.Ok(new { status = "ready" }));
-app.MapGet("/api/status", async (IDbContextFactory<CastarDbContext> factory, CancellationToken token) =>
+app.MapGet("/api/status", async (CastarDbContext database, CancellationToken token) =>
 {
-    await using var database = await factory.CreateDbContextAsync(token);
     return await database.Database.CanConnectAsync(token)
         ? Results.Ok(new { apiVersion = 1 })
         : Results.StatusCode(StatusCodes.Status503ServiceUnavailable);

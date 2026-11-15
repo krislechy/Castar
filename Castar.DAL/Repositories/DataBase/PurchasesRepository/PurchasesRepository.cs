@@ -1,40 +1,32 @@
 using System.Security.Cryptography;
 using System.Text;
 using Castar.Domain.Models.DataBase;
-using Microsoft.Data.SqlClient;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 
 namespace Castar.DAL.Repositories.DataBase
 {
-    public sealed class PurchasesRepository(IDbContextFactory<CastarDbContext> contextFactory)
-        : BaseRepository<Purchase>(contextFactory), IPurchasesRepository
+    public sealed class PurchasesRepository(CastarDbContext db)
+        : BaseRepository<Purchase>(db), IPurchasesRepository
     {
         public async Task<IReadOnlyList<Purchase>> List(DateTime start, DateTime finish, bool includeDetails)
         {
-            await using var db = await ContextFactory.CreateDbContextAsync();
-            var purchases = db.Purchases.AsNoTracking().Where(x => x.AddedOn >= start && x.AddedOn <= finish);
+            var purchases = Context.Purchases.AsNoTracking().Where(x => x.AddedOn >= start && x.AddedOn <= finish);
             if (includeDetails)
                 purchases = WithDetails(purchases);
             return await purchases.ToListAsync();
         }
 
-        public async Task<Purchase?> FindManualByMessage(Guid userId, long messageId, CancellationToken cancellationToken)
-        {
-            await using var db = await ContextFactory.CreateDbContextAsync(cancellationToken);
-            return await WithDetails(db.Purchases)
+        public Task<Purchase?> FindManualByMessage(Guid userId, long messageId, CancellationToken cancellationToken) =>
+            WithDetails(Context.Purchases)
                 .Where(x => x.UserId == userId && EF.Property<long?>(x, CastarDbContext.MessageIdField) == messageId
                     && x.RawData == null && EF.Property<byte[]?>(x, CastarDbContext.ReceiptKey) == null)
                 .OrderBy(x => x.CreatedOn).ThenBy(x => x.Id).FirstOrDefaultAsync(cancellationToken);
-        }
-
         public override async Task<Purchase> Add(Purchase purchase, CancellationToken cancellationToken = default)
         {
-            await using var db = await ContextFactory.CreateDbContextAsync(cancellationToken);
             purchase.RecalculateManualTotals();
-            db.Purchases.Add(purchase);
-            AssignLineNumbers(db, purchase.Items);
-            await db.SaveChangesAsync(cancellationToken);
+            TrackNewPurchase(purchase);
+            await Context.SaveChangesAsync(cancellationToken);
             return purchase;
         }
 
@@ -44,37 +36,38 @@ namespace Castar.DAL.Repositories.DataBase
             ArgumentException.ThrowIfNullOrWhiteSpace(provider);
             ArgumentException.ThrowIfNullOrWhiteSpace(receiptId);
 
-            await using var db = await ContextFactory.CreateDbContextAsync(cancellationToken);
             if (purchase.RawData is { Length: > 0 } rawData)
             {
                 purchase.RawData = PadRawData(rawData);
-                if (await db.Purchases.AnyAsync(x => x.RawData == purchase.RawData, cancellationToken))
+                if (await Context.Purchases.AnyAsync(x => x.RawData == purchase.RawData, cancellationToken))
                     return null;
             }
 
             var key = SHA256.HashData(Encoding.UTF8.GetBytes(string.Concat(provider, "\0", receiptId)));
-            db.Purchases.Add(purchase);
-            AssignLineNumbers(db, purchase.Items);
-            db.Entry(purchase).Property<byte[]>(CastarDbContext.ReceiptKey).CurrentValue = key;
+            TrackNewPurchase(purchase);
+            Context.Entry(purchase).Property<byte[]>(CastarDbContext.ReceiptKey).CurrentValue = key;
             try
             {
-                await db.SaveChangesAsync(cancellationToken);
+                await Context.SaveChangesAsync(cancellationToken);
                 return purchase;
             }
             catch (DbUpdateException exception) when (IsDuplicateReceipt(exception.InnerException))
             {
+                // A Telegram update may contain several receipts. Drop only the failed insert.
+                foreach (var item in purchase.Items.ToArray())
+                    Context.Entry(item).State = EntityState.Detached;
+                Context.Entry(purchase).State = EntityState.Detached;
                 return null;
             }
         }
 
         public override async Task Update(Purchase purchase, CancellationToken cancellationToken = default)
         {
-            await using var db = await ContextFactory.CreateDbContextAsync(cancellationToken);
-            var current = await db.Purchases.Include(x => x.Items)
+            var current = await Context.Purchases.Include(x => x.Items)
                 .SingleOrDefaultAsync(x => x.Id == purchase.Id, cancellationToken)
                 ?? throw new InvalidOperationException("Покупка больше не существует.");
 
-            ThrowIfFiscal(db, current);
+            ThrowIfFiscal(Context, current);
             current.Name = purchase.Name;
             current.RetailPlace = purchase.RetailPlace;
             current.RetailPlaceAddress = purchase.RetailPlaceAddress;
@@ -88,8 +81,8 @@ namespace Castar.DAL.Repositories.DataBase
                 {
                     item.PurchaseId = purchase.Id;
                     item.Purchase = current;
-                    db.Items.Add(item);
-                    db.Entry(item).Property<int?>(CastarDbContext.LineNumber).CurrentValue = index;
+                    Context.Items.Add(item);
+                    Context.Entry(item).Property<int?>(CastarDbContext.LineNumber).CurrentValue = index;
                 }
                 else if (existing.Remove(item.Id, out var currentItem))
                 {
@@ -97,7 +90,7 @@ namespace Castar.DAL.Repositories.DataBase
                     currentItem.Price = item.Price;
                     currentItem.Quantity = item.Quantity;
                     currentItem.Category = item.Category;
-                    db.Entry(currentItem).Property<int?>(CastarDbContext.LineNumber).CurrentValue = index;
+                    Context.Entry(currentItem).Property<int?>(CastarDbContext.LineNumber).CurrentValue = index;
                 }
                 else
                 {
@@ -108,11 +101,11 @@ namespace Castar.DAL.Repositories.DataBase
             foreach (var removed in existing.Values)
             {
                 current.Items.Remove(removed);
-                db.Items.Remove(removed);
+                Context.Items.Remove(removed);
             }
 
             current.RecalculateManualTotals();
-            await db.SaveChangesAsync(cancellationToken);
+            await Context.SaveChangesAsync(cancellationToken);
         }
 
         public async Task<bool> SearchByRawData(byte[]? query)
@@ -120,9 +113,8 @@ namespace Castar.DAL.Repositories.DataBase
             if (query is not { Length: > 0 and <= 100 })
                 return false;
 
-            await using var db = await ContextFactory.CreateDbContextAsync();
             var padded = PadRawData(query);
-            return await db.Purchases.AnyAsync(x => x.RawData == padded);
+            return await Context.Purchases.AnyAsync(x => x.RawData == padded);
         }
 
         private static IQueryable<Purchase> WithDetails(IQueryable<Purchase> purchases) =>
@@ -130,11 +122,17 @@ namespace Castar.DAL.Repositories.DataBase
                 .Include(x => x.Items.OrderBy(i => EF.Property<int?>(i, CastarDbContext.LineNumber))
                     .ThenBy(i => i.CreatedOn).ThenBy(i => i.Id));
 
-        private static void AssignLineNumbers(CastarDbContext db, IEnumerable<Item> items)
+        private void TrackNewPurchase(Purchase purchase)
         {
+            Context.Entry(purchase).State = EntityState.Added;
             var index = 0;
-            foreach (var item in items)
-                db.Entry(item).Property<int?>(CastarDbContext.LineNumber).CurrentValue = index++;
+            foreach (var item in purchase.Items)
+            {
+                item.PurchaseId = purchase.Id;
+                item.Purchase = purchase;
+                Context.Entry(item).State = EntityState.Added;
+                Context.Entry(item).Property<int?>(CastarDbContext.LineNumber).CurrentValue = index++;
+            }
         }
 
         internal static void ThrowIfFiscal(CastarDbContext db, Purchase purchase)
@@ -143,14 +141,9 @@ namespace Castar.DAL.Repositories.DataBase
                 throw new InvalidOperationException("Позиции фискального чека нельзя редактировать вручную.");
         }
 
-        private static bool IsDuplicateReceipt(Exception? exception) => exception switch
-        {
-            SqlException { Number: 2601 or 2627 } sql =>
-                sql.Message.Contains(CastarDbContext.ReceiptIndex, StringComparison.Ordinal),
-            SqliteException { SqliteExtendedErrorCode: 2067 } sqlite =>
-                sqlite.Message.Contains("Purchases.ReceiptKey", StringComparison.Ordinal),
-            _ => false
-        };
+        private static bool IsDuplicateReceipt(Exception? exception) =>
+            exception is SqliteException { SqliteExtendedErrorCode: 2067 } sqlite
+            && sqlite.Message.Contains("Purchases.ReceiptKey", StringComparison.Ordinal);
 
         private static byte[] PadRawData(byte[] rawData)
         {

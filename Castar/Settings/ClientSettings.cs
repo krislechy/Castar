@@ -1,5 +1,6 @@
 using System;
 using System.ComponentModel;
+using System.Diagnostics;
 using System.IO;
 using System.Runtime.CompilerServices;
 using System.Security.Cryptography;
@@ -17,6 +18,7 @@ public sealed class ClientSettings : INotifyPropertyChanged
 
     private bool hideInTray;
     private bool autoRun;
+    private string settingsPath = Path.Combine(DataDirectory, "Castar.Client.xml");
 
     public string ServerUrl { get; set; } = DefaultServerUrl;
     public string? ProtectedApiKey { get; set; }
@@ -55,15 +57,21 @@ public sealed class ClientSettings : INotifyPropertyChanged
     public event PropertyChangedEventHandler? PropertyChanged;
     internal event EventHandler? ConnectionChanged;
 
-    internal static ClientSettings Load()
+    internal static ClientSettings Load() => Load(DataDirectory, AppContext.BaseDirectory);
+
+    internal static ClientSettings Load(string dataDirectory, string installationDirectory)
     {
-        if (File.Exists(SettingsPath))
+        var path = Path.Combine(dataDirectory, "Castar.Client.xml");
+        if (File.Exists(path))
         {
-            using var stream = File.OpenRead(SettingsPath);
-            return (ClientSettings)Serializer.Deserialize(stream)!;
+            using var stream = File.OpenRead(path);
+            var settings = (ClientSettings)Serializer.Deserialize(stream)!;
+            settings.settingsPath = path;
+            return settings;
         }
 
-        foreach (var directory in new[] { AppContext.BaseDirectory, DataDirectory })
+        var migrated = new ClientSettings { settingsPath = path };
+        foreach (var directory in new[] { installationDirectory, dataDirectory })
         {
             var legacyFile = Path.Combine(directory, "Castar.Settings.xml");
             if (!File.Exists(legacyFile))
@@ -71,20 +79,46 @@ public sealed class ClientSettings : INotifyPropertyChanged
             try
             {
                 var systems = XDocument.Load(legacyFile).Root?.Element("Systems");
-                return new ClientSettings
-                {
-                    IsHideInTray = (bool?)systems?.Element("IsHideInTray") ?? false,
-                    IsAutoRun = (bool?)systems?.Element("IsAutoRun") ?? false
-                };
+                if (systems is null)
+                    continue;
+                var tray = ReadLegacyFlag(systems, nameof(IsHideInTray));
+                var autorun = ReadLegacyFlag(systems, nameof(IsAutoRun));
+                if (tray is null && autorun is null)
+                    continue;
+                migrated.IsHideInTray = tray.GetValueOrDefault();
+                migrated.IsAutoRun = autorun.GetValueOrDefault();
             }
             catch (Exception exception) when (exception is IOException or UnauthorizedAccessException
                 or System.Xml.XmlException or FormatException)
             {
                 continue;
             }
+
+            try
+            {
+                migrated.Save(overwrite: false);
+            }
+            catch (IOException) when (File.Exists(path))
+            {
+                // Another instance has created a client file. Use its settings.
+                return Load(dataDirectory, installationDirectory);
+            }
+            catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+            {
+                Trace.TraceWarning("Castar could not persist migrated client settings.");
+            }
+            break;
         }
-        return new ClientSettings();
+        return migrated;
     }
+
+    private static bool? ReadLegacyFlag(XElement systems, string name) =>
+        ((string?)systems.Element(name))?.Trim() switch
+        {
+            "true" or "1" => true,
+            "false" or "0" => false,
+            _ => null
+        };
 
     internal void SaveConnection(Uri server, string apiKey)
     {
@@ -107,15 +141,15 @@ public sealed class ClientSettings : INotifyPropertyChanged
         ConnectionChanged?.Invoke(this, EventArgs.Empty);
     }
 
-    internal void Save()
+    internal void Save(bool overwrite = true)
     {
-        Directory.CreateDirectory(DataDirectory);
-        var temporary = SettingsPath + "." + Guid.NewGuid().ToString("N") + ".tmp";
+        Directory.CreateDirectory(Path.GetDirectoryName(settingsPath)!);
+        var temporary = settingsPath + "." + Guid.NewGuid().ToString("N") + ".tmp";
         try
         {
             using (var stream = File.Open(temporary, FileMode.CreateNew))
                 Serializer.Serialize(stream, this);
-            File.Move(temporary, SettingsPath, overwrite: true);
+            File.Move(temporary, settingsPath, overwrite);
         }
         finally
         {
@@ -123,7 +157,6 @@ public sealed class ClientSettings : INotifyPropertyChanged
         }
     }
 
-    private static string SettingsPath => Path.Combine(DataDirectory, "Castar.Client.xml");
     private static readonly XmlSerializer Serializer = new(typeof(ClientSettings));
 
     private void Set(ref bool field, bool value, [CallerMemberName] string? property = null)

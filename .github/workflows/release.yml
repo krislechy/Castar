@@ -156,9 +156,6 @@ jobs:
           $archivePath = Join-Path $env:RUNNER_TEMP $env:CASTAR_ARCHIVE
           dotnet publish Castar.Server/Castar.Server.csproj -c Release -r $env:CASTAR_RID --self-contained -o $publishPath
           if ($LASTEXITCODE -ne 0) { throw "Castar Server publish failed." }
-          if (!(Test-Path (Join-Path $publishPath 'DataBase/UpgradeCastar.sql'))) {
-            throw "Castar Server publish is missing the SQL Server schema script."
-          }
           Copy-Item -LiteralPath Castar.Server/DEPLOYMENT.md -Destination $publishPath
           if ($IsWindows) {
             [IO.Compression.ZipFile]::CreateFromDirectory($publishPath, $archivePath)
@@ -183,7 +180,6 @@ jobs:
           }
           $env:Castar__ApiKey = [Convert]::ToHexString([Security.Cryptography.RandomNumberGenerator]::GetBytes(32))
           $env:Castar__Telegram__Enabled = 'false'
-          $env:Database__Engine = 'Sqlite'
           $env:Database__SqlitePath = Join-Path $smokePath 'castar-smoke.sqlite'
           $env:ASPNETCORE_URLS = 'http://127.0.0.1:5080'
           $stdout = Join-Path $env:RUNNER_TEMP 'castar-server.stdout.log'

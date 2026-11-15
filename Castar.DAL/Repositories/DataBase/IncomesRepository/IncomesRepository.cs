@@ -3,13 +3,12 @@ using Microsoft.EntityFrameworkCore;
 
 namespace Castar.DAL.Repositories.DataBase
 {
-    public sealed class IncomesRepository(IDbContextFactory<CastarDbContext> contextFactory)
-        : BaseRepository<Income>(contextFactory), IIncomesRepository
+    public sealed class IncomesRepository(CastarDbContext db)
+        : BaseRepository<Income>(db), IIncomesRepository
     {
         public async Task<IReadOnlyList<Income>> List(DateTime start, DateTime finish, bool includeUser)
         {
-            await using var db = await ContextFactory.CreateDbContextAsync();
-            var incomes = db.Incomes.AsNoTracking().Where(x => x.AddedOn >= start && x.AddedOn <= finish);
+            var incomes = Context.Incomes.AsNoTracking().Where(x => x.AddedOn >= start && x.AddedOn <= finish);
             if (includeUser)
                 incomes = incomes.AsNoTrackingWithIdentityResolution().Include(x => x.User);
             return await incomes.ToListAsync();
@@ -18,17 +17,26 @@ namespace Castar.DAL.Repositories.DataBase
         public async Task<IReadOnlyList<Income>> ListByMessage(
             Guid userId, long messageId, CancellationToken cancellationToken)
         {
-            await using var db = await ContextFactory.CreateDbContextAsync(cancellationToken);
-            return await ByMessage(db, userId, messageId).AsNoTracking()
+            return await ByMessage(Context, userId, messageId).AsNoTracking()
                 .OrderBy(x => EF.Property<int?>(x, CastarDbContext.LineNumber))
                 .ThenBy(x => x.CreatedOn).ThenBy(x => x.Id).ToListAsync(cancellationToken);
+        }
+
+        public override async Task Update(Income income, CancellationToken cancellationToken = default)
+        {
+            var current = await FindForUpdate(income.Id, cancellationToken);
+            current.UserId = income.UserId;
+            current.MessageId = income.MessageId;
+            current.Source = income.Source;
+            current.Sum = income.Sum;
+            current.AddedOn = income.AddedOn;
+            await Context.SaveChangesAsync(cancellationToken);
         }
 
         public async Task SaveMessageIncomes(
             Guid userId, long messageId, IReadOnlyList<Income> incomes, CancellationToken cancellationToken)
         {
-            await using var db = await ContextFactory.CreateDbContextAsync(cancellationToken);
-            var existing = await ByMessage(db, userId, messageId).ToDictionaryAsync(x => x.Id, cancellationToken);
+            var existing = await ByMessage(Context, userId, messageId).ToDictionaryAsync(x => x.Id, cancellationToken);
             for (var index = 0; index < incomes.Count; index++)
             {
                 var income = incomes[index];
@@ -36,14 +44,14 @@ namespace Castar.DAL.Repositories.DataBase
                 {
                     income.UserId = userId;
                     income.MessageId = messageId;
-                    db.Entry(income).State = EntityState.Added;
-                    db.Entry(income).Property<int?>(CastarDbContext.LineNumber).CurrentValue = index;
+                    Context.Entry(income).State = EntityState.Added;
+                    Context.Entry(income).Property<int?>(CastarDbContext.LineNumber).CurrentValue = index;
                 }
                 else if (existing.Remove(income.Id, out var current))
                 {
                     current.Source = income.Source;
                     current.Sum = income.Sum;
-                    db.Entry(current).Property<int?>(CastarDbContext.LineNumber).CurrentValue = index;
+                    Context.Entry(current).Property<int?>(CastarDbContext.LineNumber).CurrentValue = index;
                 }
                 else
                 {
@@ -51,8 +59,8 @@ namespace Castar.DAL.Repositories.DataBase
                 }
             }
 
-            db.Incomes.RemoveRange(existing.Values);
-            await db.SaveChangesAsync(cancellationToken);
+            Context.Incomes.RemoveRange(existing.Values);
+            await Context.SaveChangesAsync(cancellationToken);
         }
 
         private static IQueryable<Income> ByMessage(CastarDbContext db, Guid userId, long messageId) =>

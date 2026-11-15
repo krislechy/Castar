@@ -3,36 +3,37 @@ using Microsoft.EntityFrameworkCore;
 
 namespace Castar.DAL.Repositories.DataBase
 {
-    public abstract class BaseRepository<T>(IDbContextFactory<CastarDbContext> contextFactory) : IBaseRepository<T>
+    public abstract class BaseRepository<T>(CastarDbContext db) : IBaseRepository<T>
         where T : BaseDbModel
     {
-        protected IDbContextFactory<CastarDbContext> ContextFactory { get; } = contextFactory;
+        protected CastarDbContext Context { get; } = db;
 
         public virtual async Task<T> Add(T entity, CancellationToken cancellationToken = default)
         {
-            await using var db = await ContextFactory.CreateDbContextAsync(cancellationToken);
-            db.Entry(entity).State = EntityState.Added;
-            await db.SaveChangesAsync(cancellationToken);
+            // Related records are resolved by the service and are already in the database.
+            Context.Entry(entity).State = EntityState.Added;
+            await Context.SaveChangesAsync(cancellationToken);
             return entity;
         }
 
         public virtual async Task<bool> Delete(Guid id, CancellationToken cancellationToken = default)
         {
-            await using var db = await ContextFactory.CreateDbContextAsync(cancellationToken);
-            return await db.Set<T>().Where(x => x.Id == id).ExecuteDeleteAsync(cancellationToken) > 0;
+            var entity = await Context.Set<T>().FindAsync([id], cancellationToken);
+            if (entity is null)
+                return false;
+
+            Context.Set<T>().Remove(entity);
+            await Context.SaveChangesAsync(cancellationToken);
+            return true;
         }
 
-        public async Task<T?> Find(Guid id, CancellationToken cancellationToken = default)
-        {
-            await using var db = await ContextFactory.CreateDbContextAsync(cancellationToken);
-            return await db.Set<T>().AsNoTracking().SingleOrDefaultAsync(x => x.Id == id, cancellationToken);
-        }
+        public Task<T?> Find(Guid id, CancellationToken cancellationToken = default) =>
+            Context.Set<T>().AsNoTracking().SingleOrDefaultAsync(x => x.Id == id, cancellationToken);
 
-        public virtual async Task Update(T entity, CancellationToken cancellationToken = default)
-        {
-            await using var db = await ContextFactory.CreateDbContextAsync(cancellationToken);
-            db.Entry(entity).State = EntityState.Modified;
-            await db.SaveChangesAsync(cancellationToken);
-        }
+        public abstract Task Update(T entity, CancellationToken cancellationToken = default);
+
+        protected async ValueTask<T> FindForUpdate(Guid id, CancellationToken cancellationToken) =>
+            await Context.Set<T>().FindAsync([id], cancellationToken)
+            ?? throw new DbUpdateConcurrencyException("Запись больше не существует.");
     }
 }

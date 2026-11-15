@@ -6,8 +6,7 @@
 
   <ItemGroup>
     <PackageVersion Include="LiveChartsCore.SkiaSharpView.WPF" Version="2.0.5" />
-    <PackageVersion Include="Microsoft.Data.SqlClient" Version="7.1.2" />
-    <PackageVersion Include="Microsoft.EntityFrameworkCore.SqlServer" Version="11.0.0" />
+    <PackageVersion Include="Microsoft.EntityFrameworkCore.Design" Version="11.0.0" />
     <PackageVersion Include="Microsoft.EntityFrameworkCore.Sqlite" Version="11.0.0" />
     <PackageVersion Include="Microsoft.Extensions.DependencyInjection" Version="11.0.0" />
     <PackageVersion Include="SkiaSharp.HarfBuzz" Version="4.156.1" />
@@ -19,14 +18,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <!-- Overrides for older versions selected by SQL Server, SQLite and the chart stack. -->
-    <PackageVersion Include="Microsoft.Bcl.Cryptography" Version="11.0.0" />
-    <PackageVersion Include="Microsoft.IdentityModel.Abstractions" Version="8.23.0" />
-    <PackageVersion Include="Microsoft.IdentityModel.JsonWebTokens" Version="8.23.0" />
-    <PackageVersion Include="Microsoft.IdentityModel.Logging" Version="8.23.0" />
-    <PackageVersion Include="Microsoft.IdentityModel.Protocols" Version="8.23.0" />
-    <PackageVersion Include="Microsoft.IdentityModel.Protocols.OpenIdConnect" Version="8.23.0" />
-    <PackageVersion Include="Microsoft.IdentityModel.Tokens" Version="8.23.0" />
+    <!-- Overrides for older versions selected by SQLite and the chart stack. -->
     <PackageVersion Include="OpenTK" Version="4.9.4" />
     <PackageVersion Include="OpenTK.Compute" Version="4.9.4" />
     <PackageVersion Include="OpenTK.Core" Version="4.9.4" />
@@ -40,11 +32,6 @@
     <PackageVersion Include="OpenTK.Windowing.Desktop" Version="4.9.4" />
     <PackageVersion Include="OpenTK.Windowing.GraphicsLibraryFramework" Version="4.9.4" />
     <PackageVersion Include="SQLite" Version="3.54.1" />
-    <PackageVersion Include="System.Configuration.ConfigurationManager" Version="11.0.0" />
-    <PackageVersion Include="System.Diagnostics.EventLog" Version="11.0.0" />
-    <PackageVersion Include="System.IdentityModel.Tokens.Jwt" Version="8.23.0" />
-    <PackageVersion Include="System.Security.Cryptography.Pkcs" Version="11.0.0" />
     <PackageVersion Include="System.Security.Cryptography.ProtectedData" Version="11.0.0" />
-    <PackageVersion Include="System.Threading.RateLimiting" Version="11.0.0" />
   </ItemGroup>
 </Project>

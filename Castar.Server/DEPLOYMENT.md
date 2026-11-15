@@ -34,9 +34,7 @@ $env:Database__SqlitePath = Join-Path $env:LOCALAPPDATA 'CastarServer\castar.sql
 | --- | --- |
 | `Castar__ApiKey` | Общий ключ клиента и сервера. Клиент присылает его в заголовке `Authorization: Bearer`. |
 | `ASPNETCORE_URLS` | Адрес Kestrel. По умолчанию `http://127.0.0.1:5080`. |
-| `Database__Engine` | `Sqlite` по умолчанию или `SqlServer`. |
 | `Database__SqlitePath` | Путь к постоянному файлу SQLite. По умолчанию `data/castar.sqlite` внутри серверного каталога. |
-| `ConnectionStrings__Castar` | Строка подключения к SQL Server для работы или импорта. |
 | `Castar__Telegram__Enabled` | Задайте `true`, чтобы запустить Telegram-бота на сервере. |
 | `Castar__Telegram__Token` | Токен бота из BotFather. |
 | `Castar__Receipts__Enabled` | Импорт чеков включён по умолчанию. |
@@ -79,5 +77,5 @@ WantedBy=multi-user.target
 ## Перенос данных и обновление
 
 - **SQLite из версии 0.1.0.** Остановите прежний Castar перед копированием. Перенесите базу SQLite в каталог данных сервера и задайте путь через `Database__SqlitePath`. Для установки по умолчанию старый файл находится в `%LOCALAPPDATA%\Castar\castar.sqlite`.
-- **SQL Server.** Для работы с существующим сервером задайте `Database__Engine=SqlServer` и `ConnectionStrings__Castar`. При необходимости примените `DataBase/UpgradeCastar.sql` к выбранной базе. Для импорта в SQLite остановите процессы записи в исходную базу, задайте `ConnectionStrings__Castar` и запустите `./Castar.Server import-sqlite /путь/к/новой.sqlite` или `.\Castar.Server.exe import-sqlite C:\путь\новая.sqlite`. Укажите полученный файл в `Database__SqlitePath` и выберите `Database__Engine=Sqlite`.
-- **Обновление.** Остановите сервер, сделайте резервную копию каталога данных и настроек и распакуйте новый архив в отдельный каталог. Сохраните путь к SQLite, строку подключения и ключи в окружении службы. Запустите новый бинарник и проверьте `/health`, затем обновите Windows-клиент до того же выпуска.
+- **База из прежней конфигурации SQL Server.** До обновления получите файл SQLite. Историческая команда переноса доступна в исходниках тега `v0.3.0`. Затем укажите путь к SQLite в `Database__SqlitePath` и удалите прежние `Database__Engine` и `ConnectionStrings__Castar`. Подробнее в [документации БД](../DataBase/README.md).
+- **Обновление.** Остановите сервер, сделайте резервную копию SQLite и настроек и распакуйте новый архив в отдельный каталог. Сохраните путь к SQLite и ключи в окружении службы. При запуске сервер применяет миграции EF Core. Для базы Castar, созданной до появления миграций, он проверяет схему перед добавлением записи в историю. После запуска проверьте `/health` и `/api/status`, затем обновите Windows-клиент.

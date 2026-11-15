@@ -2,7 +2,6 @@ using Castar.Api;
 using Castar.BL;
 using Castar.DAL.Repositories.DataBase;
 using Castar.Domain.Models.DataBase;
-using Microsoft.Data.SqlClient;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 
@@ -53,7 +52,7 @@ public static class CastarEndpoints
     }
 
     private static bool IsForeignKeyConflict(Exception? error) =>
-        error is SqlException { Number: 547 } or SqliteException { SqliteExtendedErrorCode: 787 };
+        error is SqliteException { SqliteExtendedErrorCode: 787 };
 
     private static async ValueTask<object?> SerializeUserWrites(
         EndpointFilterInvocationContext context, EndpointFilterDelegate next)

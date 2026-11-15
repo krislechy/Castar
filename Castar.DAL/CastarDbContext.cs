@@ -18,9 +18,8 @@ namespace Castar.DAL
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
-            var sqlServer = Database.IsSqlServer();
             var users = modelBuilder.Entity<User>();
-            MapTable(users, "Users", sqlServer);
+            MapTable(users, "Users");
             users.Property(x => x.Name).HasMaxLength(200);
             users.Property(x => x.ColorRaw).HasColumnName("Color");
             users.Property(x => x.ImageRaw).HasColumnName("Image");
@@ -28,7 +27,7 @@ namespace Castar.DAL
             users.Ignore(x => x.Items);
 
             var purchases = modelBuilder.Entity<Purchase>();
-            MapTable(purchases, "Purchases", sqlServer);
+            MapTable(purchases, "Purchases");
             purchases.Ignore(x => x.MessageId);
             purchases.Property<long?>(MessageIdField).HasColumnName("MessageId");
             purchases.HasIndex(nameof(Purchase.UserId), MessageIdField).HasDatabaseName("IX_Purchases_UserId_MessageId");
@@ -46,7 +45,7 @@ namespace Castar.DAL
                 .OnDelete(DeleteBehavior.NoAction).HasConstraintName("FK_Purchases_Users");
 
             var items = modelBuilder.Entity<Item>();
-            MapTable(items, "Items", sqlServer);
+            MapTable(items, "Items");
             items.Property(x => x.Name).HasMaxLength(400);
             items.Property(x => x.Price).HasPrecision(24, 2);
             items.Property(x => x.Sum).HasPrecision(24, 2);
@@ -56,7 +55,7 @@ namespace Castar.DAL
                 .OnDelete(DeleteBehavior.Cascade).HasConstraintName("FK_Items_Purchases");
 
             var incomes = modelBuilder.Entity<Income>();
-            MapTable(incomes, "Incomes", sqlServer);
+            MapTable(incomes, "Incomes");
             incomes.Ignore(x => x.MessageId);
             incomes.Property<long?>(MessageIdField).HasColumnName("MessageId");
             incomes.Property<int?>(LineNumber);
@@ -65,37 +64,23 @@ namespace Castar.DAL
             incomes.Property(x => x.Source).HasMaxLength(400);
             incomes.HasOne(x => x.User).WithMany().HasForeignKey(x => x.UserId)
                 .OnDelete(DeleteBehavior.NoAction).HasConstraintName("FK_Incomes_Users");
-
-            if (sqlServer)
-            {
-                users.Property(x => x.ColorRaw).HasColumnType("binary(4)");
-                users.Property(x => x.ImageRaw).HasColumnType("image");
-                purchases.Property(x => x.AddedOn).HasColumnType("datetime");
-                purchases.Property(x => x.RawData).HasColumnType("binary(100)");
-                purchases.Property(x => x.Currency).HasColumnType("char(3)");
-                purchases.Property<byte[]?>(ReceiptKey).HasColumnType("binary(32)");
-                incomes.Property(x => x.AddedOn).HasColumnType("datetime");
-            }
         }
 
         public override int SaveChanges(bool acceptAllChangesOnSuccess)
         {
-            StampSqliteChanges();
+            StampChanges();
             return base.SaveChanges(acceptAllChangesOnSuccess);
         }
 
         public override Task<int> SaveChangesAsync(
             bool acceptAllChangesOnSuccess, CancellationToken cancellationToken = default)
         {
-            StampSqliteChanges();
+            StampChanges();
             return base.SaveChangesAsync(acceptAllChangesOnSuccess, cancellationToken);
         }
 
-        private void StampSqliteChanges()
+        private void StampChanges()
         {
-            if (!Database.IsSqlite())
-                return;
-
             var now = DateTime.Now;
             foreach (var entry in ChangeTracker.Entries<BaseDbModel>())
             {
@@ -106,21 +91,11 @@ namespace Castar.DAL
             }
         }
 
-        private static void MapTable<TEntity>(EntityTypeBuilder<TEntity> entity, string table, bool sqlServer)
+        private static void MapTable<TEntity>(EntityTypeBuilder<TEntity> entity, string table)
             where TEntity : BaseDbModel
         {
             entity.HasKey(x => x.Id);
-            if (sqlServer)
-            {
-                entity.ToTable(table, "dbo", options => options.UseSqlOutputClause(false));
-                entity.Property(x => x.Id).HasDefaultValueSql("NEWID()");
-                entity.Property(x => x.CreatedOn).HasColumnType("datetime").HasDefaultValueSql("GETDATE()");
-                entity.Property(x => x.ModifiedOn).HasColumnType("datetime").ValueGeneratedOnAddOrUpdate();
-            }
-            else
-            {
-                entity.ToTable(table);
-            }
+            entity.ToTable(table);
         }
     }
 }

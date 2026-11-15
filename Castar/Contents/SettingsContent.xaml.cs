@@ -9,6 +9,7 @@ using System.Collections.ObjectModel;
 using System.IO;
 using System.Linq;
 using System.Security.Cryptography;
+using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
@@ -24,7 +25,7 @@ public partial class SettingsContent : UserControl
     private readonly CastarServerClient server;
     private readonly SettingsContext context;
     private readonly DispatcherTimer polling;
-    private bool loadingUsers;
+    private CancellationTokenSource? usersRequest;
     private bool showingServerSettings;
     private string pendingKey = "";
     private PasswordBox? keyInput;
@@ -51,7 +52,7 @@ public partial class SettingsContent : UserControl
     private async void Settings_Loaded(object sender, RoutedEventArgs e)
     {
         polling.Start();
-        await Task.WhenAll(LoadUsersAsync(), OpenServerSettingsAsync());
+        await OpenServerSettingsAsync();
     }
 
     private void Settings_Unloaded(object sender, RoutedEventArgs e)
@@ -75,7 +76,7 @@ public partial class SettingsContent : UserControl
 
         showingServerSettings = true;
         server.ConnectionChanged += Server_ConnectionChanged;
-        return LoadServerSettingsAsync();
+        return Task.WhenAll(LoadServerSettingsAsync(), LoadUsersAsync());
     }
 
     private void CloseServerSettings()
@@ -86,9 +87,14 @@ public partial class SettingsContent : UserControl
         showingServerSettings = false;
         server.ConnectionChanged -= Server_ConnectionChanged;
         context.ServerConfiguration.Close();
+        ResetUsers();
     }
 
-    private async void Server_ConnectionChanged(object? sender, EventArgs e) => await LoadServerSettingsAsync();
+    private async void Server_ConnectionChanged(object? sender, EventArgs e)
+    {
+        ResetUsers();
+        await Task.WhenAll(LoadServerSettingsAsync(), LoadUsersAsync());
+    }
 
     private Task LoadServerSettingsAsync() =>
         context.ServerConfiguration.OpenAsync(settings.ServerUrl, settings.ProtectedApiKey);
@@ -126,8 +132,6 @@ public partial class SettingsContent : UserControl
             keyInput?.Clear();
             pendingKey = "";
             context.ConnectionStatus = "Подключено";
-            context.Users = [];
-            await LoadUsersAsync();
         }
         catch (Exception error) when (CastarServerClient.IsConnectionError(error))
         {
@@ -145,16 +149,15 @@ public partial class SettingsContent : UserControl
 
     private async Task LoadUsersAsync()
     {
-        if (loadingUsers || settings.ApiKey.Length == 0)
+        if (!showingServerSettings || usersRequest is not null || settings.ApiKey.Length == 0)
             return;
 
-        loadingUsers = true;
+        using var current = new CancellationTokenSource();
+        usersRequest = current;
         try
         {
-            var address = settings.ServerUrl;
-            var key = settings.ProtectedApiKey;
-            var users = await server.GetUsersAsync();
-            if (address != settings.ServerUrl || key != settings.ProtectedApiKey)
+            var users = await server.GetUsersAsync(current.Token);
+            if (usersRequest != current)
                 return;
 
             if (context.Users.Count != users.Count || !context.Users.Zip(users).All(pair =>
@@ -165,16 +168,28 @@ public partial class SettingsContent : UserControl
             {
                 context.Users = users;
             }
-            context.UsersStatus = "";
+            context.UsersAvailable = true;
         }
         catch (Exception error) when (CastarServerClient.IsConnectionError(error))
         {
-            context.UsersStatus = CastarServerClient.DescribeError(error);
+            if (usersRequest == current)
+                ResetUsers();
         }
         finally
         {
-            loadingUsers = false;
+            if (usersRequest == current)
+                usersRequest = null;
         }
+    }
+
+    private void ResetUsers()
+    {
+        var previous = usersRequest;
+        usersRequest = null;
+        previous?.Cancel();
+        context.UsersAvailable = false;
+        if (context.Users.Count > 0)
+            context.Users = [];
     }
 
     private async void UsersListView_MouseDoubleClick(object sender, MouseButtonEventArgs e)
@@ -187,11 +202,10 @@ public partial class SettingsContent : UserControl
 
     private async Task EditUserAsync(User user)
     {
-        if (settings.ApiKey.Length == 0)
-        {
-            context.UsersStatus = "Подключитесь к серверу.";
+        if (!context.UsersAvailable)
             return;
-        }
+
+        var connection = (settings.ServerUrl, settings.ProtectedApiKey);
 
         var isNew = user.Id == Guid.Empty;
         var editor = new UserInfoPanel { IsEditContent = true, SizeImage = 100, DataContext = user };
@@ -203,7 +217,7 @@ public partial class SettingsContent : UserControl
             options.Title = isNew ? "Новый пользователь" : "Изменить пользователя";
             return options;
         });
-        if (accepted != true)
+        if (accepted != true || !context.UsersAvailable || connection != (settings.ServerUrl, settings.ProtectedApiKey))
             return;
 
         user.Name = string.IsNullOrWhiteSpace(user.Name) ? "NONAME" : user.Name.Trim();
@@ -224,9 +238,10 @@ public partial class SettingsContent : UserControl
     private async void DeleteUserButton_Click(object sender, RoutedEventArgs e)
     {
         var menu = (ContextMenu)((MenuItem)sender).Parent;
-        if (((ListView)menu.PlacementTarget).SelectedItem is not User user)
+        if (!context.UsersAvailable || ((ListView)menu.PlacementTarget).SelectedItem is not User user)
             return;
 
+        var connection = (settings.ServerUrl, settings.ProtectedApiKey);
         var accepted = await PopupDialog.Show($"Удалить «{user.Name}»?",
             PopupDialog.TypeDialogEnum.Confirm, options =>
             {
@@ -234,7 +249,7 @@ public partial class SettingsContent : UserControl
                 options.SuccessButton.SuccessConfirmButtonForeground = Brushes.OrangeRed;
                 return options;
             });
-        if (accepted != true)
+        if (accepted != true || !context.UsersAvailable || connection != (settings.ServerUrl, settings.ProtectedApiKey))
             return;
         try
         {
@@ -254,7 +269,7 @@ public partial class SettingsContent : UserControl
         private string updateStatus = "";
         private int updateDownloadPercent;
         private bool isDownloadingUpdate;
-        private string usersStatus = "";
+        private bool usersAvailable;
         private ObservableCollection<User> users = [];
 
         public ClientSettings Settings { get; } = settings;
@@ -264,7 +279,7 @@ public partial class SettingsContent : UserControl
         public string UpdateStatus { get => updateStatus; set => SetField(ref updateStatus, value); }
         public int UpdateDownloadPercent { get => updateDownloadPercent; set => SetField(ref updateDownloadPercent, value); }
         public bool IsDownloadingUpdate { get => isDownloadingUpdate; set => SetField(ref isDownloadingUpdate, value); }
-        public string UsersStatus { get => usersStatus; set => SetField(ref usersStatus, value); }
+        public bool UsersAvailable { get => usersAvailable; set => SetField(ref usersAvailable, value); }
         public ObservableCollection<User> Users { get => users; set => SetField(ref users, value); }
     }
 }

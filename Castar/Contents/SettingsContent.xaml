@@ -2,10 +2,12 @@
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:c="clr-namespace:Castar.Compontents"
+             xmlns:converters="clr-namespace:Castar.Converters"
              Name="Настройки" Loaded="Settings_Loaded" Unloaded="Settings_Unloaded"
              IsVisibleChanged="Settings_IsVisibleChanged">
     <UserControl.Resources>
         <BooleanToVisibilityConverter x:Key="ServerConnectionVisibility"/>
+        <converters:SexConverter x:Key="UserSex"/>
     </UserControl.Resources>
     <Grid>
         <Grid.RowDefinitions>
@@ -68,30 +70,38 @@
                         <CheckBox IsChecked="{Binding Settings.IsAutoRun}" Content="Запускать с Windows"/>
                     </StackPanel>
                 </c:IslandPanel>
-                    <c:IslandPanel Title="Пользователи" ImageSvg="{DynamicResource Svg.Users}">
-                        <StackPanel>
-                            <TextBlock Text="{Binding UsersStatus}" Style="{StaticResource ViewStatus}"/>
-                            <ListView Style="{StaticResource BudgetList}" ItemContainerStyle="{StaticResource BudgetListItem}"
-                                      MaxHeight="250" SelectionMode="Single"
-                                      ItemsSource="{Binding Users,Mode=TwoWay,UpdateSourceTrigger=PropertyChanged}" 
-                                      MouseDoubleClick="UsersListView_MouseDoubleClick">
-                                <ListView.ContextMenu>
-                                    <ContextMenu>
-                                        <MenuItem Header="Удалить" AutomationProperties.Name="Удалить пользователя"
-                                                  Icon="{StaticResource Svg.Remove}"
-                                                  Click="DeleteUserButton_Click"/>
-                                    </ContextMenu>
-                                </ListView.ContextMenu>
-                                <ListView.ItemTemplate>
-                                    <DataTemplate>
-                                        <c:UserInfoPanel HorizontalContentAlignment="Stretch" DataContext="{Binding}" SizeImage="55"/>
-                                    </DataTemplate>
-                                </ListView.ItemTemplate>
-                            </ListView>
-                            <Button Content="Добавить" AutomationProperties.Name="Добавить пользователя"
-                                    Style="{StaticResource FormAction}" Click="NewUserButton_Click"/>
-                        </StackPanel>
-                    </c:IslandPanel>
+                <c:IslandPanel Title="Пользователи" ImageSvg="{DynamicResource Svg.Users}"
+                               Visibility="{Binding UsersAvailable, Converter={StaticResource ServerConnectionVisibility}}">
+                    <StackPanel Width="330">
+                        <UniformGrid Columns="3" Margin="7,0,7,0">
+                            <TextBlock Text="Имя" Style="{StaticResource BudgetTableHeader}"/>
+                            <TextBlock Text="Telegram ID" Style="{StaticResource BudgetTableHeader}"/>
+                            <TextBlock Text="Пол" Style="{StaticResource BudgetTableHeader}"/>
+                        </UniformGrid>
+                        <ListView Style="{StaticResource BudgetList}" MaxHeight="250" SelectionMode="Single"
+                                  AutomationProperties.Name="Пользователи" ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                                  ItemsSource="{Binding Users}" MouseDoubleClick="UsersListView_MouseDoubleClick">
+                            <ListView.ContextMenu>
+                                <ContextMenu>
+                                    <MenuItem Header="Удалить" AutomationProperties.Name="Удалить пользователя"
+                                              Icon="{StaticResource Svg.Remove}" Click="DeleteUserButton_Click"/>
+                                </ContextMenu>
+                            </ListView.ContextMenu>
+                            <ListView.ItemTemplate>
+                                <DataTemplate>
+                                    <UniformGrid Columns="3">
+                                        <TextBlock Text="{Binding Name}" Style="{StaticResource BudgetTableCell}"/>
+                                        <TextBlock Text="{Binding TelegramId}" Style="{StaticResource BudgetTableCell}"/>
+                                        <TextBlock Text="{Binding Sex, Converter={StaticResource UserSex}}"
+                                                   Style="{StaticResource BudgetTableCell}"/>
+                                    </UniformGrid>
+                                </DataTemplate>
+                            </ListView.ItemTemplate>
+                        </ListView>
+                        <Button Content="Добавить" AutomationProperties.Name="Добавить пользователя"
+                                Style="{StaticResource FormAction}" Click="NewUserButton_Click"/>
+                    </StackPanel>
+                </c:IslandPanel>
                 <c:IslandPanel Title="Обновления" ImageSvg="{DynamicResource Svg.Tools}">
                     <StackPanel>
                         <TextBlock Text="{Binding UpdateStatus}" Style="{StaticResource ViewStatus}"/>

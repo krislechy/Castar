@@ -52,23 +52,27 @@
                         <ColumnDefinition/>
                         <ColumnDefinition/>
                     </Grid.ColumnDefinitions>
-                    <Button Style="{DynamicResource System.Button}" Command="{x:Static SystemCommands.MinimizeWindowCommand}" Grid.Column="0" Content="{DynamicResource Svg.Minimize}"/>
+                    <Button Style="{DynamicResource System.Button}" Command="{x:Static SystemCommands.MinimizeWindowCommand}"
+                            Grid.Column="0" Content="{DynamicResource Svg.Minimize}" AutomationProperties.Name="Свернуть"/>
                     <Button Command="{x:Static SystemCommands.MaximizeWindowCommand}" Grid.Column="1">
                         <Button.Style>
                             <Style TargetType="{x:Type Button}" BasedOn="{StaticResource System.Button}">
                                 <Setter Property="Content" Value="{DynamicResource Svg.Maximize.1}"/>
+                                <Setter Property="AutomationProperties.Name" Value="Развернуть"/>
                                 <Style.Triggers>
                                     <DataTrigger Binding="{Binding WindowState,RelativeSource={RelativeSource AncestorType=Window}}" Value="Normal">
                                         <Setter Property="Content" Value="{DynamicResource Svg.Maximize.1}"/>
                                     </DataTrigger>
                                     <DataTrigger Binding="{Binding WindowState,RelativeSource={RelativeSource AncestorType=Window}}" Value="Maximized">
                                         <Setter Property="Content" Value="{DynamicResource Svg.Maximize.2}"/>
+                                        <Setter Property="AutomationProperties.Name" Value="Восстановить размер"/>
                                     </DataTrigger>
                                 </Style.Triggers>
                             </Style>
                         </Button.Style>
                     </Button>
-                    <Button Style="{DynamicResource System.Button}" Click="SystemButtonClose" Grid.Column="2" Foreground="OrangeRed" Content="{DynamicResource Svg.Close}"/>
+                    <Button Style="{DynamicResource System.Button}" Click="SystemButtonClose" Grid.Column="2" Foreground="OrangeRed"
+                            Content="{DynamicResource Svg.Close}" AutomationProperties.Name="Закрыть"/>
                 </Grid>
             </Grid>
             <!--#endregion-->
@@ -84,9 +88,11 @@
                             <ToggleButton Style="{DynamicResource Menu.ToggleButton}" Content="{DynamicResource Svg.Menu.Purchases}"
                                           ToolTip="Расходы" AutomationProperties.Name="Расходы"
                                           Command="{x:Static menuCommands:MenuSelector.MenuSelect}" CommandParameter="Purchases"/>
-                            <ToggleButton Style="{DynamicResource Menu.ToggleButton}" Content="{DynamicResource Svg.Menu.Incomes}" 
+                            <ToggleButton Style="{DynamicResource Menu.ToggleButton}" Content="{DynamicResource Svg.Menu.Incomes}"
+                                          ToolTip="Доходы" AutomationProperties.Name="Доходы"
                                           Command="{x:Static menuCommands:MenuSelector.MenuSelect}" CommandParameter="Incomes"/>
-                            <ToggleButton Style="{DynamicResource Menu.ToggleButton}" Content="{DynamicResource Svg.Menu.Settings}" 
+                            <ToggleButton Style="{DynamicResource Menu.ToggleButton}" Content="{DynamicResource Svg.Menu.Settings}"
+                                          ToolTip="Настройки" AutomationProperties.Name="Настройки"
                                           Command="{x:Static menuCommands:MenuSelector.MenuSelect}" CommandParameter="Settings"/>
                         </StackPanel>
                     </Grid>

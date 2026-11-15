@@ -7,6 +7,7 @@ using System.Reflection;
 using System.Runtime.CompilerServices;
 using System.Security;
 using System.Text;
+using System.Threading;
 using System.Threading.Tasks;
 using System.Xml.Serialization;
 
@@ -14,10 +15,16 @@ namespace Castar.Domain.Models.SettingsModel
 {
     public class SettingsModel
     {
+        private ReceiptSettings receipts = new();
+
         public Systems Systems { get; set; } = new();
         public TelegramBot TelegramBot { get; set; } = new();
         public NalogFNS NalogFNS { get; set; } = new();
-        public ReceiptSettings Receipts { get; set; } = new();
+        public ReceiptSettings Receipts
+        {
+            get => Volatile.Read(ref receipts);
+            set => Volatile.Write(ref receipts, value);
+        }
         public void SetHandlersEvents(Action handler)
         {
             //var properties = typeof(SettingsModel).GetProperties(System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance);

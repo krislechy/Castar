@@ -96,7 +96,7 @@ public partial class PurchasesContent : UserControl
         var range = Dates.RangeDate;
         if (range.StartDate > range.EndDate)
         {
-            ShowStatus("Начало периода должно быть раньше его окончания.");
+            ShowStatus("Дата начала позже даты окончания.");
             Progress.IsLoading = false;
             return;
         }

@@ -15,14 +15,15 @@ public sealed partial class CommandHandler
     private async Task ImportReceiptsAsync(
         ITelegramBotClient bot, Message message, BudgetUser user, string[] codes, CancellationToken cancellationToken)
     {
-        if (!settings.Receipts.IsEnabled)
+        var receiptSettings = settings.Receipts;
+        if (!receiptSettings.IsEnabled)
         {
             await ReplyAsync(bot, message, "Импорт чеков отключён в настройках.", cancellationToken);
             return;
         }
 
         var provider = providers.SingleOrDefault(candidate =>
-            string.Equals(candidate.Id, settings.Receipts.Provider, StringComparison.OrdinalIgnoreCase));
+            string.Equals(candidate.Id, receiptSettings.Provider, StringComparison.OrdinalIgnoreCase));
         if (provider is null)
         {
             await ReplyAsync(bot, message, "В настройках выбран недоступный поставщик чеков.", cancellationToken);

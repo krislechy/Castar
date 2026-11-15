@@ -11,29 +11,33 @@
             <ColumnDefinition/>
             <ColumnDefinition/>
         </Grid.ColumnDefinitions>
-        <ListView x:Name="UsersListView" Grid.Column="0" SelectedValue="{Binding User}"
-                  ItemsSource="{Binding Users,RelativeSource={RelativeSource AncestorType=UserControl}}" MaxHeight="150">
-            <ListView.ItemContainerStyle>
-                <Style TargetType="{x:Type ListViewItem}" BasedOn="{StaticResource {x:Type ListViewItem}}">
-                    <Setter Property="Margin" Value="0,2.5,0,2.5"/>
-                    <Setter Property="Border.CornerRadius" Value="5"/>
-                </Style>
-            </ListView.ItemContainerStyle>
-            <ListView.ItemTemplate>
-                <DataTemplate>
-                    <local:UserInfoPanel DataContext="{Binding}" SizeImage="45" IsShortView="True"/>
-                </DataTemplate>
-            </ListView.ItemTemplate>
-        </ListView>
-        <Grid Grid.Column="1" VerticalAlignment="Center" Margin="10,0,1,2">
-            <Grid.RowDefinitions>
-                <RowDefinition/>
-                <RowDefinition/>
-                <RowDefinition/>
-            </Grid.RowDefinitions>
-            <TextBox Grid.Row="0" Text="{Binding Source}" Margin="0,0,0,0"/>
-            <TextBox Grid.Row="1" Text="{Binding Sum,StringFormat='{}{0:C2}'}" Margin="0,10,0,0"/>
-            <DatePickerTextBox Grid.Row="2" Text="{Binding AddedOn,Mode=TwoWay,UpdateSourceTrigger=PropertyChanged}" Margin="0,10,0,0"/>
-        </Grid>
+        <StackPanel Grid.Column="0">
+            <TextBlock x:Name="IncomeUserLabel" Text="Пользователь" Style="{StaticResource FormFieldLabel}"/>
+            <ListView x:Name="UsersListView" SelectedValue="{Binding User}" MaxHeight="150"
+                      AutomationProperties.LabeledBy="{Binding ElementName=IncomeUserLabel}"
+                      ItemsSource="{Binding Users,RelativeSource={RelativeSource AncestorType=UserControl}}">
+                <ListView.ItemContainerStyle>
+                    <Style TargetType="{x:Type ListViewItem}" BasedOn="{StaticResource {x:Type ListViewItem}}">
+                        <Setter Property="Margin" Value="0,2.5,0,2.5"/>
+                        <Setter Property="Border.CornerRadius" Value="5"/>
+                    </Style>
+                </ListView.ItemContainerStyle>
+                <ListView.ItemTemplate>
+                    <DataTemplate>
+                        <local:UserInfoPanel DataContext="{Binding}" SizeImage="45" IsShortView="True"/>
+                    </DataTemplate>
+                </ListView.ItemTemplate>
+            </ListView>
+        </StackPanel>
+        <StackPanel Grid.Column="1" Margin="10,0,1,2">
+            <TextBlock x:Name="IncomeSourceLabel" Text="Источник" Style="{StaticResource FormFieldLabel}"/>
+            <TextBox Text="{Binding Source}" AutomationProperties.LabeledBy="{Binding ElementName=IncomeSourceLabel}"/>
+            <TextBlock x:Name="IncomeSumLabel" Text="Сумма" Style="{StaticResource FormFieldLabel}"/>
+            <TextBox Text="{Binding Sum,StringFormat='{}{0:C2}'}"
+                     AutomationProperties.LabeledBy="{Binding ElementName=IncomeSumLabel}"/>
+            <TextBlock x:Name="IncomeDateLabel" Text="Дата" Style="{StaticResource FormFieldLabel}"/>
+            <DatePickerTextBox Text="{Binding AddedOn,Mode=TwoWay,UpdateSourceTrigger=PropertyChanged}"
+                               AutomationProperties.LabeledBy="{Binding ElementName=IncomeDateLabel}"/>
+        </StackPanel>
     </Grid>
 </UserControl>

@@ -16,7 +16,7 @@ public static class CastarData
             throw new InvalidOperationException(
                 "Castar поддерживает только SQLite. Укажите путь к перенесённой базе в Database:SqlitePath и удалите Database:Engine.");
         }
-        var path = Path.GetFullPath(configuration["Database:SqlitePath"] ?? "data/castar.sqlite", AppContext.BaseDirectory);
+        var path = GetSqlitePath(configuration);
         var connectionString = new SqliteConnectionStringBuilder { DataSource = path, ForeignKeys = true }.ToString();
         services.AddDbContext<CastarDbContext>(options => options.UseSqlite(connectionString));
 
@@ -30,6 +30,9 @@ public static class CastarData
         services.AddScoped<IUsersService, UsersService>();
         return services;
     }
+
+    internal static string GetSqlitePath(IConfiguration configuration) =>
+        Path.GetFullPath(configuration["Database:SqlitePath"] ?? "data/castar.sqlite", AppContext.BaseDirectory);
 
     public static async Task InitializeCastarDataAsync(this WebApplication app, CancellationToken cancellationToken = default)
     {

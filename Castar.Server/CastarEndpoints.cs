@@ -15,6 +15,9 @@ public static class CastarEndpoints
     {
         var api = endpoints.MapGroup("/api");
         api.AddEndpointFilter(HandleDatabaseConflicts);
+        api.MapGet("/settings", (ServerSettings settings) => Results.Ok(settings.Read()));
+        api.MapPut("/settings", (ServerSettings settings, ServerSettingsWriteDto requested, CancellationToken token) =>
+            settings.UpdateAsync(requested, token));
         api.MapGet("/users", GetUsers);
         api.MapGet("/users/{id:guid}", GetUser);
         api.MapPost("/users", CreateUser).AddEndpointFilter(SerializeUserWrites);

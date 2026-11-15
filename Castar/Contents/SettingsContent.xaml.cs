@@ -25,6 +25,7 @@ public partial class SettingsContent : UserControl
     private readonly SettingsContext context;
     private readonly DispatcherTimer polling;
     private bool loadingUsers;
+    private bool showingServerSettings;
     private string pendingKey = "";
     private PasswordBox? keyInput;
 
@@ -33,10 +34,9 @@ public partial class SettingsContent : UserControl
         this.settings = settings;
         this.server = server;
         this.updateService = updateService;
-        context = new SettingsContext(settings)
+        context = new SettingsContext(settings, new ServerSettingsViewModel(server))
         {
-            UpdateStatus = $"Установлена версия {updateService.InstalledVersion}",
-            ConnectionStatus = settings.ApiKey.Length == 0 ? "Укажите адрес и ключ Castar Server." : ""
+            UpdateStatus = $"Текущая версия {updateService.InstalledVersion}"
         };
         polling = new DispatcherTimer { Interval = TimeSpan.FromSeconds(15) };
         polling.Tick += async (_, _) =>
@@ -51,10 +51,53 @@ public partial class SettingsContent : UserControl
     private async void Settings_Loaded(object sender, RoutedEventArgs e)
     {
         polling.Start();
-        await LoadUsersAsync();
+        await Task.WhenAll(LoadUsersAsync(), OpenServerSettingsAsync());
     }
 
-    private void Settings_Unloaded(object sender, RoutedEventArgs e) => polling.Stop();
+    private void Settings_Unloaded(object sender, RoutedEventArgs e)
+    {
+        polling.Stop();
+        CloseServerSettings();
+    }
+
+    private async void Settings_IsVisibleChanged(object sender, DependencyPropertyChangedEventArgs e)
+    {
+        if (IsVisible)
+            await OpenServerSettingsAsync();
+        else
+            CloseServerSettings();
+    }
+
+    private Task OpenServerSettingsAsync()
+    {
+        if (!IsLoaded || !IsVisible || showingServerSettings)
+            return Task.CompletedTask;
+
+        showingServerSettings = true;
+        server.ConnectionChanged += Server_ConnectionChanged;
+        return LoadServerSettingsAsync();
+    }
+
+    private void CloseServerSettings()
+    {
+        if (!showingServerSettings)
+            return;
+
+        showingServerSettings = false;
+        server.ConnectionChanged -= Server_ConnectionChanged;
+        context.ServerConfiguration.Close();
+    }
+
+    private async void Server_ConnectionChanged(object? sender, EventArgs e) => await LoadServerSettingsAsync();
+
+    private Task LoadServerSettingsAsync() =>
+        context.ServerConfiguration.OpenAsync(settings.ServerUrl, settings.ProtectedApiKey);
+
+    private async void SaveServerSettings_Click(object sender, RoutedEventArgs e) =>
+        await context.ServerConfiguration.SaveAsync();
+
+    private async void ReloadServerSettings_Click(object sender, RoutedEventArgs e) =>
+        await context.ServerConfiguration.ReloadAsync();
 
     private void ApiKey_PasswordChanged(object sender, RoutedEventArgs e)
     {
@@ -66,9 +109,10 @@ public partial class SettingsContent : UserControl
     {
         var button = (Button)sender;
         button.IsEnabled = false;
+        Uri? address = null;
         try
         {
-            var address = CastarServerClient.ParseServerUrl(context.ServerAddress);
+            address = CastarServerClient.ParseServerUrl(context.ServerAddress);
             var key = pendingKey;
             if (key.Length == 0 && Uri.TryCreate(settings.ServerUrl, UriKind.Absolute, out var saved) && saved == address)
                 key = settings.ApiKey;
@@ -78,17 +122,17 @@ public partial class SettingsContent : UserControl
             settings.SaveConnection(address, key);
             keyInput?.Clear();
             pendingKey = "";
-            context.ConnectionStatus = "Подключено к Castar Server.";
+            context.ConnectionStatus = "Подключено";
             context.Users = [];
             await LoadUsersAsync();
         }
         catch (Exception error) when (CastarServerClient.IsConnectionError(error))
         {
-            context.ConnectionStatus = CastarServerClient.DescribeError(error);
+            context.ConnectionStatus = CastarServerClient.DescribeError(error, address);
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException or CryptographicException)
         {
-            context.ConnectionStatus = "Не удалось сохранить подключение на этом компьютере.";
+            context.ConnectionStatus = "Не удалось сохранить настройки подключения.";
         }
         finally
         {
@@ -142,7 +186,7 @@ public partial class SettingsContent : UserControl
     {
         if (settings.ApiKey.Length == 0)
         {
-            context.UsersStatus = "Сначала подключитесь к Castar Server.";
+            context.UsersStatus = "Подключитесь к серверу.";
             return;
         }
 
@@ -153,7 +197,7 @@ public partial class SettingsContent : UserControl
             options.Background = (SolidColorBrush)Application.Current.FindResource("Main.Background.lvl3");
             options.SuccessButton.SuccessConfirmButtonText = isNew ? "Создать" : "Сохранить";
             options.AllowMissClick = false;
-            options.Title = isNew ? "Создание пользователя" : "Редактирование пользователя";
+            options.Title = isNew ? "Новый пользователь" : "Изменить пользователя";
             return options;
         });
         if (accepted != true)
@@ -180,7 +224,7 @@ public partial class SettingsContent : UserControl
         if (((ListView)menu.PlacementTarget).SelectedItem is not User user)
             return;
 
-        var accepted = await PopupDialog.Show($"Удалить пользователя {user.Name}?",
+        var accepted = await PopupDialog.Show($"Удалить «{user.Name}»?",
             PopupDialog.TypeDialogEnum.Confirm, options =>
             {
                 options.SuccessButton.SuccessConfirmButtonText = "Удалить";
@@ -200,7 +244,7 @@ public partial class SettingsContent : UserControl
         }
     }
 
-    private sealed class SettingsContext(ClientSettings settings) : BaseSettingsModel
+    private sealed class SettingsContext(ClientSettings settings, ServerSettingsViewModel serverConfiguration) : BaseSettingsModel
     {
         private string address = settings.ServerUrl;
         private string connectionStatus = "";
@@ -211,6 +255,7 @@ public partial class SettingsContent : UserControl
         private ObservableCollection<User> users = [];
 
         public ClientSettings Settings { get; } = settings;
+        public ServerSettingsViewModel ServerConfiguration { get; } = serverConfiguration;
         public string ServerAddress { get => address; set => SetField(ref address, value); }
         public string ConnectionStatus { get => connectionStatus; set => SetField(ref connectionStatus, value); }
         public string UpdateStatus { get => updateStatus; set => SetField(ref updateStatus, value); }

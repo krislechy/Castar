@@ -31,7 +31,7 @@ public partial class App : Application
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException or InvalidOperationException)
         {
-            MessageBox.Show("Не удалось прочитать настройки клиента Castar. Укажите адрес и ключ сервера.",
+            MessageBox.Show("Не удалось прочитать настройки. Укажите адрес и ключ сервера.",
                 "Castar", MessageBoxButton.OK, MessageBoxImage.Warning);
             settings = new ClientSettings();
         }
@@ -65,7 +65,7 @@ public partial class App : Application
             }
             catch (Exception error) when (error is IOException or UnauthorizedAccessException or System.Security.SecurityException)
             {
-                MessageBox.Show("Не удалось сохранить настройки Castar.",
+                MessageBox.Show("Не удалось сохранить настройки.",
                     "Castar", MessageBoxButton.OK, MessageBoxImage.Warning);
             }
         };

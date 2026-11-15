@@ -130,12 +130,12 @@
                     <ColumnDefinition Width="auto" MinWidth="110"/>
                     <ColumnDefinition Width="*"/>
                 </Grid.ColumnDefinitions>
-                <Grid Grid.Column="0" ToolTip="Выберите новую фотографию">
+                <Grid Grid.Column="0">
                     <Button x:Name="ChoosePhotoButton" 
                         Width="{Binding ActualWidth,ElementName=MaskEdit}" 
                         Height="{Binding ActualWidth,ElementName=MaskEdit}" 
                         Padding="0"
-                        Click="ChooseImageButton_Click">
+                        Click="ChooseImageButton_Click" ToolTip="Сменить фото" AutomationProperties.Name="Сменить фото">
                         <Button.Style>
                             <Style TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
                                 <Setter Property="Border.CornerRadius" Value="200"/>
@@ -210,7 +210,7 @@
                     <TextBlock Grid.Column="0" VerticalAlignment="Center" Text="Имя"/>
                     <TextBox Grid.Column="1" Text="{Binding Name}" Margin="10,0,0,0" Width="130"/>
                 </Grid>
-                <Grid Grid.Column="0" Grid.Row="1" Grid.ColumnSpan="2" Margin="0,5,0,0" ToolTip="Уникальный идентификатор пользователя Telegram">
+                <Grid Grid.Column="0" Grid.Row="1" Grid.ColumnSpan="2" Margin="0,5,0,0">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="auto" SharedSizeGroup="textblock"/>
                         <ColumnDefinition Width="*" SharedSizeGroup="textBox"/>

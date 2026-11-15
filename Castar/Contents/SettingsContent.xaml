@@ -2,7 +2,11 @@
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:c="clr-namespace:Castar.Compontents"
-             Name="Настройки" Loaded="Settings_Loaded" Unloaded="Settings_Unloaded">
+             Name="Настройки" Loaded="Settings_Loaded" Unloaded="Settings_Unloaded"
+             IsVisibleChanged="Settings_IsVisibleChanged">
+    <UserControl.Resources>
+        <BooleanToVisibilityConverter x:Key="ServerConnectionVisibility"/>
+    </UserControl.Resources>
     <Grid>
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto"/>
@@ -11,22 +15,47 @@
         <c:IslandPanel IsMainTitle="True" Title="Настройки"/>
         <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">
             <WrapPanel>
-                <c:IslandPanel Title="Подключение к Castar Server" ImageSvg="{DynamicResource Svg.DataBase}">
+                <c:IslandPanel Title="Подключение" ImageSvg="{DynamicResource Svg.DataBase}">
                     <StackPanel Width="330">
                         <TextBlock Text="Адрес сервера" Style="{StaticResource FormFieldLabel}"/>
                         <TextBox AutomationProperties.Name="Адрес сервера"
                                  Text="{Binding ServerAddress, UpdateSourceTrigger=PropertyChanged}"/>
                         <TextBlock Text="Ключ API" Style="{StaticResource FormFieldLabel}"/>
                         <PasswordBox AutomationProperties.Name="Ключ API" PasswordChanged="ApiKey_PasswordChanged"/>
-                        <Button Content="Проверить и сохранить" Style="{StaticResource FormAction}"
+                        <Button Content="Подключиться" Style="{StaticResource FormAction}"
                                 Click="SaveServerConnection_Click"/>
                         <TextBlock Text="{Binding ConnectionStatus}" Style="{StaticResource ViewStatus}"/>
                     </StackPanel>
                 </c:IslandPanel>
-                <c:IslandPanel Title="Параметры клиента" ImageSvg="{DynamicResource Svg.Tools}">
+                <c:IslandPanel Title="Сервер" ImageSvg="{DynamicResource Svg.DataBase}"
+                               DataContext="{Binding ServerConfiguration}"
+                               Visibility="{Binding HasConnection, Converter={StaticResource ServerConnectionVisibility}}">
+                    <StackPanel Width="330">
+                        <StackPanel IsEnabled="{Binding CanEdit}">
+                            <CheckBox Content="Telegram-бот" IsChecked="{Binding TelegramEnabled}"
+                                      IsEnabled="{Binding CanEditTelegram}"/>
+                            <TextBlock Text="{Binding TelegramStatus}" Style="{StaticResource ViewStatus}"/>
+                            <CheckBox Content="Обработка чеков" IsChecked="{Binding ReceiptsEnabled}"/>
+                            <TextBlock Text="Поставщик чеков" Style="{StaticResource FormFieldLabel}"/>
+                            <ComboBox ItemsSource="{Binding ReceiptProviders}" DisplayMemberPath="Label"
+                                      SelectedValuePath="Id" SelectedValue="{Binding ReceiptProvider}"
+                                      AutomationProperties.Name="Поставщик чеков"/>
+                        </StackPanel>
+                        <StackPanel Orientation="Horizontal">
+                            <Button Content="Сохранить" Style="{StaticResource FormAction}"
+                                    IsEnabled="{Binding CanSave}" Click="SaveServerSettings_Click"
+                                    AutomationProperties.Name="Сохранить настройки сервера"/>
+                            <Button Content="Обновить" Style="{StaticResource FormAction}"
+                                    Margin="8,8,0,0" IsEnabled="{Binding CanReload}" Click="ReloadServerSettings_Click"
+                                    AutomationProperties.Name="Обновить настройки сервера"/>
+                        </StackPanel>
+                        <TextBlock Text="{Binding Status}" Style="{StaticResource ViewStatus}"/>
+                    </StackPanel>
+                </c:IslandPanel>
+                <c:IslandPanel Title="Приложение" ImageSvg="{DynamicResource Svg.Tools}">
                     <StackPanel>
                         <CheckBox IsChecked="{Binding Settings.IsHideInTray}" Content="При закрытии сворачивать в трей"/>
-                        <CheckBox IsChecked="{Binding Settings.IsAutoRun}" Content="Запускать вместе с Windows"/>
+                        <CheckBox IsChecked="{Binding Settings.IsAutoRun}" Content="Запускать с Windows"/>
                     </StackPanel>
                 </c:IslandPanel>
                     <c:IslandPanel Title="Пользователи" ImageSvg="{DynamicResource Svg.Users}">
@@ -38,7 +67,8 @@
                                       MouseDoubleClick="UsersListView_MouseDoubleClick">
                                 <ListView.ContextMenu>
                                     <ContextMenu>
-                                        <MenuItem Header="Удалить пользователя" Icon="{StaticResource Svg.Remove}"
+                                        <MenuItem Header="Удалить" AutomationProperties.Name="Удалить пользователя"
+                                                  Icon="{StaticResource Svg.Remove}"
                                                   Click="DeleteUserButton_Click"/>
                                     </ContextMenu>
                                 </ListView.ContextMenu>
@@ -48,10 +78,11 @@
                                     </DataTemplate>
                                 </ListView.ItemTemplate>
                             </ListView>
-                            <Button Content="Добавить пользователя" Style="{StaticResource FormAction}" Click="NewUserButton_Click"/>
+                            <Button Content="Добавить" AutomationProperties.Name="Добавить пользователя"
+                                    Style="{StaticResource FormAction}" Click="NewUserButton_Click"/>
                         </StackPanel>
                     </c:IslandPanel>
-                <c:IslandPanel Title="Обновления Castar" ImageSvg="{DynamicResource Svg.Tools}">
+                <c:IslandPanel Title="Обновления" ImageSvg="{DynamicResource Svg.Tools}">
                     <StackPanel>
                         <TextBlock Text="{Binding UpdateStatus}" Style="{StaticResource ViewStatus}"/>
                         <ProgressBar Minimum="0" Maximum="100" Value="{Binding UpdateDownloadPercent, Mode=OneWay}"
@@ -67,7 +98,8 @@
                                 </Style>
                             </ProgressBar.Style>
                         </ProgressBar>
-                        <Button Content="Проверить обновления" Style="{StaticResource FormAction}" Click="CheckForUpdates_Click"/>
+                        <Button Content="Проверить" AutomationProperties.Name="Проверить обновления"
+                                Style="{StaticResource FormAction}" Click="CheckForUpdates_Click"/>
                     </StackPanel>
                 </c:IslandPanel>
             </WrapPanel>

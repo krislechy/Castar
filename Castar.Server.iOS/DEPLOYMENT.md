@@ -1,0 +1,90 @@
+# Castar Server на iPhone
+
+Архив `Castar-Server-ios-arm64.tar` содержит сервер, службу наблюдения и приложение Castar для статуса и журналов. Сервер и приложение проверены на iPhone SE первого поколения с iOS 15.7 и rootless-jailbreak. Нужны ARM64, iOS 15 или новее, rootless-окружение в `/var/jb` и доступ к SSH с возможностью выполнять команды через `sudo`. Среда .NET и библиотеки SQLite и QR входят в архив.
+
+## Установка
+
+Скачайте архив из [GitHub Releases](https://github.com/krislechy/Castar/releases). На iPhone понадобятся `bash`, `ldid`, `launchctl`, `uicache`, `tar` и базовые утилиты rootless-окружения. Используйте адрес iPhone в Wi-Fi и порт вашего SSH-сервера.
+
+На Windows в PowerShell выполните команды, подставив адрес iPhone.
+
+```powershell
+scp -P 22 .\Castar-Server-ios-arm64.tar mobile@IPHONE_IP:.
+ssh -p 22 mobile@IPHONE_IP
+```
+
+В сеансе SSH распакуйте архив и установите его.
+
+```sh
+work=$(mktemp -d "$HOME/castar-install.XXXXXXXX")
+tar -xf "$HOME/Castar-Server-ios-arm64.tar" -C "$work"
+sudo /var/jb/usr/bin/bash "$work/install.sh"
+```
+
+Если `ldid` установлен вне стандартного пути, передайте его абсолютный путь.
+
+```sh
+sudo /var/jb/usr/bin/env LDID=/absolute/path/to/ldid /var/jb/usr/bin/bash "$work/install.sh"
+```
+
+Откройте Castar на iPhone. Приложение показывает состояние сервера и последние строки журнала. Кнопка **Остановить** останавливает Castar до явного запуска. Кнопка **Перезапустить** также запускает остановленный сервер. Наблюдатель проверяет доступность API в фоне и перезапускает сервер при сбое. После перезагрузки доступность службы зависит от повторной активации jailbreak.
+
+## Подключение Windows-клиента
+
+После запуска сервера откройте **Ключи API** в Castar на iPhone. Экран показывает адрес сервера, адрес для Windows и действующие ключи. Первоначальный ключ, включая ключ существующей установки, можно скопировать. Новый ключ показывается при выпуске. При необходимости выпустите отдельный ключ для каждого клиента и отзовите его из списка.
+
+### Сертификат HTTPS
+
+Распакуйте архив на Windows. В PowerShell 7.4 или новее подставьте текущий IPv4 iPhone и выполните команды.
+
+```powershell
+.\New-HttpsCertificate.ps1 -Address IPHONE_IP -OutputDirectory .\castar-https
+Import-Certificate -FilePath .\castar-https\castar-iphone.cer -CertStoreLocation Cert:\CurrentUser\Root
+ssh -p 22 mobile@IPHONE_IP 'umask 077; mkdir -p ~/.castar-tls'
+scp -P 22 .\castar-https\https.pfx .\castar-https\https.env mobile@IPHONE_IP:.castar-tls/
+ssh -p 22 mobile@IPHONE_IP
+```
+
+В сеансе на iPhone установите файлы и перезапустите Castar.
+
+```sh
+sudo install -o mobile -g mobile -m 0600 "$HOME/.castar-tls/https.pfx" /var/jb/etc/castar/https.pfx
+sudo install -o mobile -g mobile -m 0600 "$HOME/.castar-tls/https.env" /var/jb/etc/castar/https.env
+sudo /var/jb/usr/bin/launchctl kickstart -k system/org.castar.server
+```
+
+Закройте SSH. Экран **Ключи API** показывает адрес `https://IPHONE_IP:5443` и ключи. Введите адрес и выбранный ключ в Windows-клиенте. Проверка `Invoke-WebRequest https://IPHONE_IP:5443/health` должна вернуть HTTP 200.
+
+Для подключения с другого компьютера импортируйте на нём тот же публичный файл `castar-iphone.cer`. При смене IP или истечении срока сертификата выпустите новый комплект и повторите настройку. Храните `https.pfx` и `https.env` вместе с защищённой резервной копией сервера.
+
+## SQLite и Telegram
+
+- База находится в `/var/jb/var/lib/castar/castar.sqlite`. При первом запуске сервер создаёт её автоматически.
+- Реестр ключей находится в `castar.sqlite.keys.json` рядом с базой. Включите его в резервную копию, чтобы сохранить выданные ключи и список отозванных.
+- Для переноса существующей базы остановите Castar с обеих сторон. Загрузите согласованную копию SQLite на iPhone, сохраните резервную копию имеющейся базы и установите перенесённый файл с владельцем `mobile:mobile` и правами `0600`. Если исходная база использует WAL, перед копированием закройте все соединения и выполните checkpoint либо создайте копию командой SQLite `.backup`.
+- Для Telegram добавьте `Castar__Telegram__Token` в `/var/jb/etc/castar/server.env`, сохраните права файла и перезапустите Castar. Включите Telegram в разделе **Настройки → Сервер** на Windows. Один токен должен обслуживаться одним процессом.
+- В этом же разделе можно включить обработку чеков и выбрать провайдера. По умолчанию используется `serbia`. Эти параметры сохраняются в `castar.sqlite.settings.json` рядом с базой. Остальные параметры перечислены в [инструкции Castar Server](https://github.com/krislechy/Castar/blob/main/Castar.Server/DEPLOYMENT.md).
+
+## Обновление
+
+Перед обновлением остановите сервер в приложении и сделайте резервную копию каталога данных и `server.env`. Повторите распаковку и установку с новым архивом. Установщик заменяет программу и приложение, сохраняет конфигурацию, базу и состояние ручной остановки. Затем запустите Castar и проверьте подключение. После запуска сервер применяет миграции EF Core.
+
+Журналы сервера и наблюдателя находятся в `/var/jb/var/log/castar`. Состояние служб можно посмотреть через SSH.
+
+```sh
+sudo launchctl print system/org.castar.watchdog
+sudo launchctl print system/org.castar.server
+```
+
+## Сборка архива
+
+Для сборки из исходников используйте PowerShell 7.4 или новее, .NET SDK из `global.json`, Zig 0.15.2, LLVM `ld64.lld`, CMake и Ninja. Передайте предоставленный отдельно iPhoneOS SDK для iOS 15 или новее. SDK нужен на машине сборки. Сохраните ссылки SDK на файлы `.tbd` при переносе между файловыми системами.
+
+```powershell
+$bundle = Join-Path $PWD 'out/castar-ios-arm64'
+./Castar.Server.iOS/Build.ps1 -OutputPath $bundle -IosSdk $iosSdk -Zig $zig -Ld64 $ld64
+tar -cf ./out/Castar-Server-ios-arm64.tar -C $bundle .
+Get-FileHash ./out/Castar-Server-ios-arm64.tar -Algorithm SHA256
+```
+
+`$iosSdk`, `$zig` и `$ld64` указывают на каталог SDK и исполняемые файлы Zig и LLD. Если CMake, Ninja или .NET отсутствуют в PATH, передайте `-CMake`, `-Ninja` или `-DotNet`. Сборка загружает и проверяет пакеты NuGet и исходники ZXing-C++. Атрибуции входят в каталог `notices`.

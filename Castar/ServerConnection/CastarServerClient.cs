@@ -10,6 +10,7 @@ using System.Net;
 using System.Net.Http;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
+using System.Net.Sockets;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
@@ -54,22 +55,58 @@ public sealed class CastarServerClient(ClientSettings settings) : IDisposable
     internal static bool IsConnectionError(Exception error) =>
         error is ArgumentException or HttpRequestException or OperationCanceledException or JsonException;
 
-    internal static string DescribeError(Exception error) => error switch
+    internal static string DescribeError(Exception error, Uri? server = null) => error switch
     {
         ArgumentException => error.Message,
-        HttpRequestException requestError when requestError.StatusCode is not null => requestError.Message,
-        OperationCanceledException => "Сервер не ответил вовремя. Проверьте связь и обновите данные.",
+        HttpRequestException requestError => DescribeRequestError(requestError, server),
+        OperationCanceledException { InnerException: TimeoutException } => "Истекло время ожидания ответа сервера.",
+        OperationCanceledException => "Запрос отменён.",
+        JsonException => "Ответ сервера имеет неверный формат.",
         _ => "Не удалось получить ответ Castar Server. Проверьте адрес и доступность сервера."
     };
+
+    private static string DescribeRequestError(HttpRequestException error, Uri? server)
+    {
+        var message = error.HttpRequestError switch
+        {
+            HttpRequestError.NameResolutionError => "Не удалось найти сервер по имени. Проверьте адрес и DNS.",
+            HttpRequestError.SecureConnectionError => "Сбой TLS. Проверьте HTTPS-адрес и сертификат сервера.",
+            HttpRequestError.ProxyTunnelError => "Прокси не установил соединение с сервером.",
+            HttpRequestError.ResponseEnded => "Соединение оборвалось до получения полного ответа.",
+            HttpRequestError.InvalidResponse or HttpRequestError.HttpProtocolError or HttpRequestError.VersionNegotiationError =>
+                "Сервер вернул некорректный ответ HTTP. Проверьте адрес и протокол.",
+            HttpRequestError.ConfigurationLimitExceeded => "Ответ сервера превышает допустимый размер.",
+            _ when error.StatusCode is not null => error.Message,
+            _ => DescribeTransportError(error, server)
+        };
+
+        return error.StatusCode is { } status ? $"{message.TrimEnd('.')} (HTTP {(int)status})." : message;
+    }
+
+    private static string DescribeTransportError(HttpRequestException error, Uri? server)
+    {
+        return (error.GetBaseException() as SocketException)?.SocketErrorCode switch
+        {
+            SocketError.ConnectionRefused when server is { IsLoopback: true } =>
+                $"На порте {server.Port} нет соединения. Проверьте, что Castar Server запущен.",
+            SocketError.ConnectionRefused => "Сервер отклонил TCP-подключение. Проверьте адрес и порт.",
+            SocketError.TimedOut => "Истекло время ожидания TCP-подключения.",
+            SocketError.NetworkUnreachable or SocketError.HostUnreachable or SocketError.NetworkDown =>
+                "Сервер недоступен по сети. Проверьте подключение.",
+            SocketError.ConnectionReset or SocketError.ConnectionAborted => "TCP-соединение оборвалось.",
+            _ when error.HttpRequestError == HttpRequestError.ConnectionError => "Не удалось установить TCP-соединение с сервером.",
+            _ => "Не удалось получить ответ Castar Server. Проверьте адрес и доступность сервера."
+        };
+    }
 
     public async Task TestConnectionAsync(Uri server, string apiKey)
     {
         using var request = CreateRequest(HttpMethod.Get, server, apiKey, "api/status");
         using var response = await TransportFor(request).SendAsync(request);
         EnsureSuccess(response);
-        var status = await response.Content.ReadFromJsonAsync<ServerStatus>();
-        if (status?.ApiVersion != 1)
-            throw new HttpRequestException("Версия API Castar Server не поддерживается.");
+        var status = await ReadResponseAsync<ServerStatus>(response);
+        if (status.ApiVersion != 1)
+            throw new HttpRequestException("Версия API Castar Server не поддерживается.", null, response.StatusCode);
     }
 
     public async Task<ObservableCollection<User>> GetUsersAsync()
@@ -99,6 +136,12 @@ public sealed class CastarServerClient(ClientSettings settings) : IDisposable
     public Task<PurchaseDto[]> GetPurchasesAsync(DateTime start, DateTime finish, CancellationToken cancellationToken = default) =>
         SendAsync<PurchaseDto[]>(HttpMethod.Get, $"api/purchases?{DateQuery(start, finish)}", cancellationToken: cancellationToken);
 
+    public Task<ServerSettingsDto> GetServerSettingsAsync(CancellationToken cancellationToken = default) =>
+        SendAsync<ServerSettingsDto>(HttpMethod.Get, "api/settings", cancellationToken: cancellationToken);
+
+    public Task<ServerSettingsDto> SaveServerSettingsAsync(ServerSettingsWriteDto settings, CancellationToken cancellationToken = default) =>
+        SendAsync<ServerSettingsDto>(HttpMethod.Put, "api/settings", settings, cancellationToken, readProblemDetails: true);
+
     private static string DateQuery(DateTime start, DateTime finish)
     {
         const string format = "yyyy-MM-ddTHH:mm:ss.fffffff";
@@ -116,15 +159,45 @@ public sealed class CastarServerClient(ClientSettings settings) : IDisposable
     public Task<bool> DeleteIncomeAsync(Guid id) => DeleteAsync($"api/incomes/{id:D}");
 
     private async Task<T> SendAsync<T>(HttpMethod method, string path, object? payload = null,
-        CancellationToken cancellationToken = default) where T : class
+        CancellationToken cancellationToken = default, bool readProblemDetails = false) where T : class
     {
         using var request = CreateRequest(method, ParseServerUrl(settings.ServerUrl), settings.ApiKey, path);
         if (payload is not null)
             request.Content = JsonContent.Create(payload);
         using var response = await TransportFor(request).SendAsync(request, cancellationToken);
+        if (readProblemDetails && (response.StatusCode is HttpStatusCode.BadRequest or HttpStatusCode.Conflict) &&
+            response.Content.Headers.ContentType?.MediaType == "application/problem+json")
+        {
+            ServerSettingsProblem? problem = null;
+            try
+            {
+                problem = await response.Content.ReadFromJsonAsync<ServerSettingsProblem>(cancellationToken);
+            }
+            catch (JsonException)
+            {
+                // Use the HTTP status if the server returned an unreadable problem.
+            }
+            if (!string.IsNullOrWhiteSpace(problem?.Detail))
+                throw new HttpRequestException(problem.Detail, null, response.StatusCode);
+        }
         EnsureSuccess(response);
-        return await response.Content.ReadFromJsonAsync<T>(cancellationToken)
-            ?? throw new HttpRequestException("Сервер вернул пустой ответ.");
+        return await ReadResponseAsync<T>(response, cancellationToken);
+    }
+
+    private sealed record ServerSettingsProblem(string? Detail);
+
+    private static async Task<T> ReadResponseAsync<T>(HttpResponseMessage response, CancellationToken cancellationToken = default)
+        where T : class
+    {
+        try
+        {
+            return await response.Content.ReadFromJsonAsync<T>(cancellationToken)
+                ?? throw new HttpRequestException("Сервер вернул пустой ответ.", null, response.StatusCode);
+        }
+        catch (JsonException error)
+        {
+            throw new HttpRequestException("Ответ сервера имеет неверный формат.", error, response.StatusCode);
+        }
     }
 
     private async Task<bool> DeleteAsync(string path)
@@ -157,10 +230,13 @@ public sealed class CastarServerClient(ClientSettings settings) : IDisposable
         var message = response.StatusCode switch
         {
             HttpStatusCode.Unauthorized => "Сервер отклонил ключ API.",
+            HttpStatusCode.Forbidden => "Сервер отказал в доступе.",
             HttpStatusCode.BadRequest => "Сервер отклонил данные. Проверьте заполненные поля.",
             HttpStatusCode.NotFound => "Запись или путь API не найдены.",
             HttpStatusCode.Conflict => "Изменение конфликтует с данными на сервере.",
-            _ => $"Сервер Castar вернул HTTP {(int)response.StatusCode}."
+            HttpStatusCode.ServiceUnavailable => "Сервер временно недоступен.",
+            _ when (int)response.StatusCode is >= 300 and < 400 => "Сервер перенаправил запрос. Укажите конечный адрес.",
+            _ => "Сервер вернул ошибку."
         };
         throw new HttpRequestException(message, null, response.StatusCode);
     }

@@ -55,7 +55,7 @@ namespace Castar.Compontents
             public SuccessConfirmButtonClass SuccessButton { get; set; }=new();
             public class SuccessConfirmButtonClass
             {
-                public string SuccessConfirmButtonText { get; set; } = "Хорошо";
+                public string SuccessConfirmButtonText { get; set; } = "ОК";
                 public Brush SuccessConfirmButtonForeground { get; set; } = (Brush)Application.Current.FindResource("Button.Foreground.Green");
             }
             public CancelConfirmButtonClass CancelButton { get; set; }=new();

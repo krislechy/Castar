@@ -117,7 +117,7 @@ public partial class IncomesContent : UserControl
                 options.Background = (SolidColorBrush)Application.Current.FindResource("Main.Background.lvl3");
                 options.SuccessButton.SuccessConfirmButtonText = isNew ? "Добавить" : "Сохранить";
                 options.AllowMissClick = false;
-                options.Title = isNew ? "Новый доход" : "Редактирование дохода";
+                options.Title = isNew ? "Новый доход" : "Изменить доход";
                 return options;
             }, () => ValidateIncome(income));
             if (accepted != true)
@@ -140,9 +140,11 @@ public partial class IncomesContent : UserControl
         if (income.User is null)
             return new ValidatePopupDialog(false, "Выберите пользователя.");
         if (string.IsNullOrWhiteSpace(income.Source))
-            return new ValidatePopupDialog(false, "Укажите источник дохода.");
-        if (income.Sum == 0 || income.AddedOn == default)
-            return new ValidatePopupDialog(false, "Укажите сумму и дату дохода.");
+            return new ValidatePopupDialog(false, "Укажите источник.");
+        if (income.Sum == 0)
+            return new ValidatePopupDialog(false, "Укажите ненулевую сумму.");
+        if (income.AddedOn == default)
+            return new ValidatePopupDialog(false, "Укажите дату.");
         return new ValidatePopupDialog(true, null);
     }
 
@@ -154,7 +156,8 @@ public partial class IncomesContent : UserControl
             return;
 
         var description = string.Join("\n", rows.Select(income => $"{income.Source} — {income.Sum.ToCurrency()}"));
-        var accepted = await PopupDialog.Show($"Удалить начисления?\n{description}", PopupDialog.TypeDialogEnum.Confirm,
+        var question = rows.Length == 1 ? "Удалить доход?" : "Удалить выбранные доходы?";
+        var accepted = await PopupDialog.Show($"{question}\n{description}", PopupDialog.TypeDialogEnum.Confirm,
             options =>
             {
                 options.SuccessButton.SuccessConfirmButtonText = "Удалить";

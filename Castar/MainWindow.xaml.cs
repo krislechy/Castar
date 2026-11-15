@@ -1,6 +1,5 @@
 using Castar.Settings;
 using Castar.Commands;
-using Castar.Compontents;
 using Castar.Contents;
 using Castar.Externs;
 using Castar.TrayNotify.Windows;
@@ -88,34 +87,14 @@ namespace Castar
                 SystemCommands.RestoreWindow(this);
         }
         private void SystemCommandBinding_CanExecute_Default(object sender, CanExecuteRoutedEventArgs e)=> e.CanExecute = true;
-        private void SystemButtonClose(object sender, RoutedEventArgs e) => TryClose();
+        private void SystemButtonClose(object sender, RoutedEventArgs e) => Close();
 
         private void thisClosing(object? sender, System.ComponentModel.CancelEventArgs e)
         {
-            e.Cancel = true;
-            TryClose();
-        }
-        private async void TryClose()
-        {
             if (settings.IsHideInTray)
             {
-                this.Hide();
-            }
-            else
-            {
-                var result = await PopupDialog.Show(
-                    "Закрыть приложение?", 
-                    PopupDialog.TypeDialogEnum.Confirm,
-                    (options) =>
-                    {
-                        options.SuccessButton.SuccessConfirmButtonText = "Закрыть Castar";
-                        options.SuccessButton.SuccessConfirmButtonForeground = System.Windows.Media.Brushes.OrangeRed;
-                        return options;
-                    }) == true ? true : false;
-                if (result)
-                {
-                    Exit();
-                }
+                e.Cancel = true;
+                Hide();
             }
         }
 

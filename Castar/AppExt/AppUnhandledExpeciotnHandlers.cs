@@ -1,15 +1,8 @@
 ﻿using Castar.Compontents;
 using Castar.Logger;
 using System;
-using System.Collections.Generic;
-using System.Drawing;
 using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 using System.Windows;
-using System.Windows.Controls;
-using System.Windows.Documents;
-using System.Windows.Media;
 
 namespace Castar
 {
@@ -24,16 +17,8 @@ namespace Castar
                 cLogger.Log<App>(exception.ToString(), TypeLog.Critical);
                 if (!isTerminating)
                 {
-                    var content = new TextBlock();
-                    var head = new Run()
-                    {
-                        Foreground = new SolidColorBrush(Colors.OrangeRed),
-                        Text = "Необработанное исключение:\n"
-                    };
-                    var bottom = new Run(exception.ToString());
-                    content.Inlines.Add(head);
-                    content.Inlines.Add(bottom);
-                    await PopupDialog.Show(content, PopupDialog.TypeDialogEnum.Default, (e) =>
+                    await PopupDialog.Show("Ошибка приложения. См. %LOCALAPPDATA%\\Castar\\Logs\\castar.log.",
+                        PopupDialog.TypeDialogEnum.Default, (e) =>
                     {
                         e.AllowMissClick = false;
                         return e;

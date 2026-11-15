@@ -18,10 +18,10 @@
         </Grid.ColumnDefinitions>
         <Button Content="{DynamicResource Svg.LeftDoubleArrow}" Grid.Column="0" Click="OffsetYearButton_Click" 
                             Width="{Binding ActualHeight,RelativeSource={RelativeSource Mode=Self}}" 
-                            CommandParameter="-1" ToolTip="Предыдущий год"/>
+                            CommandParameter="-1" ToolTip="Предыдущий год" AutomationProperties.Name="Предыдущий год"/>
         <Button Content="{DynamicResource Svg.LeftArrow}" Grid.Column="1" Click="OffsetMonthButton_Click"
                             Width="{Binding ActualHeight,RelativeSource={RelativeSource Mode=Self}}"
-                            CommandParameter="-1" ToolTip="Предыдущий месяц"/>
+                            CommandParameter="-1" ToolTip="Предыдущий месяц" AutomationProperties.Name="Предыдущий месяц"/>
         <DatePicker Grid.Column="2" SelectedDate="{Binding RangeDate.StartDate,RelativeSource={RelativeSource AncestorType=UserControl},Mode=OneWay}" 
                     SelectedDateChanged="DatePicker_SelectedStartDateChanged"/>
         <TextBlock Grid.Column="3" Text="—" Margin="10,-5,10,0" 
@@ -32,9 +32,9 @@
                     SelectedDateChanged="DatePicker_SelectedEndDateChanged"/>
         <Button Content="{DynamicResource Svg.RightArrow}" Grid.Column="5" Click="OffsetMonthButton_Click" 
                             Width="{Binding ActualHeight,RelativeSource={RelativeSource Mode=Self}}"
-                            CommandParameter="1" ToolTip="Следующий месяц"/>
+                            CommandParameter="1" ToolTip="Следующий месяц" AutomationProperties.Name="Следующий месяц"/>
         <Button Content="{DynamicResource Svg.RightDoubleArrow}" Grid.Column="6" Click="OffsetYearButton_Click" 
                             Width="{Binding ActualHeight,RelativeSource={RelativeSource Mode=Self}}"
-                            CommandParameter="1" ToolTip="Следующий год" Cursor="Hand"/>
+                            CommandParameter="1" ToolTip="Следующий год" AutomationProperties.Name="Следующий год" Cursor="Hand"/>
     </Grid>
 </UserControl>

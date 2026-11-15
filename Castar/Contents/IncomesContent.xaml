@@ -49,7 +49,7 @@
                     <ColumnDefinition Width="0.5*"/>
                 </Grid.ColumnDefinitions>
                 <Grid Grid.Column="0">
-                    <Button Content="Добавить начисление" Click="AddNewIncomeButton_Click"/>
+                    <Button Content="Добавить доход" Click="AddNewIncomeButton_Click"/>
                 </Grid>
                 <Grid Grid.Column="1">
                     <c:SelectorRangeDates x:Name="SelectorRangeDatesElement" DateRangeChanged="SelectorRangeDates_DateRangeChanged"/>

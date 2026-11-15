@@ -28,7 +28,7 @@ catch (Exception error) when (error is IOException or InvalidDataException or Un
     Console.Error.WriteLine(error);
     if (restart)
     {
-        var message = "Не удалось обновить Castar. Закройте все окна приложения и повторите попытку.";
+        var message = "Не удалось обновить Castar. Закройте приложение и повторите попытку.";
         try
         {
             var log = Path.Combine(Path.GetTempPath(), $"Castar.Update.{Environment.ProcessId}.log");

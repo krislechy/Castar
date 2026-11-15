@@ -6,7 +6,7 @@ Castar 0.4.0 сохраняет общие настройки клиента п�
 
 ## Первая установка Windows-клиента
 
-Установите [.NET Desktop Runtime 11 для Windows x64](https://dotnet.microsoft.com/download/dotnet/11.0#desktop-runtime-11.0.0), затем запустите `Castar-FirstInstall-win-x64.exe`. После установки укажите адрес сервера и API-ключ в настройках Castar.
+Установите [.NET Desktop Runtime 11 для Windows x64](https://dotnet.microsoft.com/download/dotnet/11.0#desktop-runtime-11.0.0), затем запустите `Castar-win-x64.exe`. После установки укажите адрес сервера и API-ключ в настройках Castar.
 
 ## Переход с v0.2.0
 

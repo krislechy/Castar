@@ -1,0 +1,13 @@
+set(CMAKE_SYSTEM_NAME Generic)
+set(CMAKE_SYSTEM_PROCESSOR aarch64)
+set(CMAKE_TRY_COMPILE_TARGET_TYPE STATIC_LIBRARY)
+set(CMAKE_C_COMPILER "CASTAR_ZIG" cc)
+set(CMAKE_CXX_COMPILER "CASTAR_ZIG" c++)
+set(CMAKE_C_FLAGS_INIT "-target aarch64-ios.15.0 -mcpu=apple_a9 -isysroot \"CASTAR_IOS_SDK\" -isystem \"CASTAR_IOS_SDK/usr/include\" -isystem \"CASTAR_IOS_SDK/usr/include/pthread\"")
+set(CMAKE_CXX_FLAGS_INIT "${CMAKE_C_FLAGS_INIT}")
+
+foreach(language C CXX)
+  set(CMAKE_${language}_ARCHIVE_CREATE "\"CASTAR_ZIG\" ar qc <TARGET> <LINK_FLAGS> <OBJECTS>")
+  set(CMAKE_${language}_ARCHIVE_APPEND "\"CASTAR_ZIG\" ar q <TARGET> <LINK_FLAGS> <OBJECTS>")
+  set(CMAKE_${language}_ARCHIVE_FINISH "\"CASTAR_ZIG\" ranlib <TARGET>")
+endforeach()

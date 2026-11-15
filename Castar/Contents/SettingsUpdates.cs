@@ -32,8 +32,8 @@ namespace Castar.Contents
 
                 context.UpdateStatus = $"Доступна версия {update.Version}.";
                 var result = MessageBox.Show(Window.GetWindow(this),
-                    $"Скачать обновление Castar {update.Version}? Приложение перезапустится после обновления.",
-                    "Обновление Castar", MessageBoxButton.YesNo, MessageBoxImage.Question);
+                    $"Установить версию {update.Version}? Castar перезапустится.",
+                    "Обновление", MessageBoxButton.YesNo, MessageBoxImage.Question);
                 if (result != MessageBoxResult.Yes)
                     return;
 
@@ -84,7 +84,7 @@ namespace Castar.Contents
             catch (Exception error) when (error is HttpRequestException or IOException or UnauthorizedAccessException
                 or OperationCanceledException or Win32Exception or InvalidOperationException)
             {
-                context.UpdateStatus = "Не удалось проверить или установить обновление. Повторите попытку.";
+                context.UpdateStatus = "Не удалось обновить Castar. Повторите попытку.";
             }
             finally
             {

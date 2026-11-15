@@ -1,6 +1,5 @@
 using System.Net;
-using System.Security.Cryptography;
-using System.Text;
+using System.Text.Json;
 using Castar.DAL;
 using Castar.Domain.Models.SettingsModel;
 using Castar.Server;
@@ -34,12 +33,6 @@ var settings = new SettingsModel
         Password = configuration["Castar:Receipts:Nalog:Password"]
     }
 };
-if (settings.Systems.IsEnableTelegramBot && string.IsNullOrWhiteSpace(settings.TelegramBot.TelegramBotApi_KEY))
-{
-    Console.Error.WriteLine("Set Castar__Telegram__Token when enabling the Telegram bot.");
-    return 2;
-}
-
 if (string.IsNullOrWhiteSpace(configuration["urls"]))
     builder.WebHost.UseUrls("http://127.0.0.1:5080");
 builder.WebHost.ConfigureKestrel(options => options.Limits.MaxRequestBodySize = 6 * 1024 * 1024);
@@ -49,12 +42,16 @@ builder.Services.AddSingleton(settings);
 builder.Services.AddSingleton<IReceiptProvider, SerbiaReceiptProvider>();
 builder.Services.AddSingleton<IReceiptProvider>(_ => new Nalog(
     new NetworkCredential(settings.NalogFNS.INN, settings.NalogFNS.Password)));
+builder.Services.AddSingleton<ServerSettings>();
+builder.Services.AddSingleton<ApiKeyStore>();
+if (!string.IsNullOrWhiteSpace(configuration["Castar:LocalAdminDirectory"]))
+    builder.Services.AddHostedService<LocalKeyAdmin>();
 builder.Services.AddScoped<CommandHandler>();
 builder.Services.AddSingleton<ICastarTelegramBotClient, CastarTelegramBotClient>();
 
 await using var app = builder.Build();
 app.UseExceptionHandler();
-var apiKeyHash = SHA256.HashData(Encoding.UTF8.GetBytes(apiKey));
+var keys = app.Services.GetRequiredService<ApiKeyStore>();
 app.Use(async (context, next) =>
 {
     if (context.Request.Path.StartsWithSegments("/api", StringComparison.OrdinalIgnoreCase))
@@ -63,8 +60,7 @@ app.Use(async (context, next) =>
         const string scheme = "Bearer ";
         var header = authorization.Count == 1 ? authorization[0] : null;
         if (header is null || !header.StartsWith(scheme, StringComparison.OrdinalIgnoreCase)
-            || !CryptographicOperations.FixedTimeEquals(apiKeyHash,
-                SHA256.HashData(Encoding.UTF8.GetBytes(header[scheme.Length..]))))
+            || !keys.IsAuthorized(header[scheme.Length..]))
         {
             context.Response.StatusCode = StatusCodes.Status401Unauthorized;
             context.Response.Headers.WWWAuthenticate = "Bearer";
@@ -82,15 +78,26 @@ app.MapGet("/api/status", async (CastarDbContext database, CancellationToken tok
         : Results.StatusCode(StatusCodes.Status503ServiceUnavailable);
 });
 app.MapCastarApi();
-if (settings.Receipts.IsEnabled && !app.Services.GetServices<IReceiptProvider>()
-    .Any(provider => string.Equals(provider.Id, settings.Receipts.Provider, StringComparison.OrdinalIgnoreCase)))
+try
 {
-    Console.Error.WriteLine("Castar__Receipts__Provider does not match any registered receipt provider.");
+    await app.Services.GetRequiredService<ServerSettings>().InitializeAsync();
+}
+catch (Exception error) when (error is IOException or InvalidDataException or JsonException or UnauthorizedAccessException)
+{
+    Console.Error.WriteLine($"Cannot load Castar Server settings. {error.Message}");
     return 2;
 }
 
 await app.InitializeCastarDataAsync();
-if (settings.Systems.IsEnableTelegramBot)
-    app.Lifetime.ApplicationStarted.Register(() => app.Services.GetRequiredService<ICastarTelegramBotClient>());
+try
+{
+    await keys.InitializeAsync();
+}
+catch (Exception error) when (error is IOException or InvalidDataException or JsonException or UnauthorizedAccessException)
+{
+    Console.Error.WriteLine($"Cannot load Castar API keys. {error.Message}");
+    return 2;
+}
+app.Lifetime.ApplicationStarted.Register(() => app.Services.GetRequiredService<ICastarTelegramBotClient>());
 await app.RunAsync();
 return 0;

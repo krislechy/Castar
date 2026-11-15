@@ -66,7 +66,7 @@ jobs:
           if ($setup.ExitCode -ne 0) { throw "Inno Setup installation failed." }
           & (Join-Path $compilerPath 'ISCC.exe') "/DCastarVersion=$env:CASTAR_VERSION" "/DPublishDir=$publishPath" "/O$env:RUNNER_TEMP" installer/Castar.iss
           if ($LASTEXITCODE -ne 0) { throw "Installer compilation failed." }
-          $installer = Join-Path $env:RUNNER_TEMP 'Castar-FirstInstall-win-x64.exe'
+          $installer = Join-Path $env:RUNNER_TEMP 'Castar-win-x64.exe'
           $setup = Start-Process -FilePath $installer -ArgumentList "/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /DIR=`"$installPath`"" -WindowStyle Hidden -Wait -PassThru
           if ($setup.ExitCode -ne 0 -or !(Test-Path (Join-Path $installPath 'Castar.exe'))) {
             throw "Castar installer smoke test failed."
@@ -118,7 +118,7 @@ jobs:
         with:
           name: castar-client-win-x64
           path: |
-            ${{ runner.temp }}/Castar-FirstInstall-win-x64.exe
+            ${{ runner.temp }}/Castar-win-x64.exe
             ${{ runner.temp }}/Castar-Update-win-x64.zip
           if-no-files-found: error
 
@@ -252,7 +252,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           gh release create "$GITHUB_REF_NAME" \
-            release-assets/Castar-FirstInstall-win-x64.exe \
+            release-assets/Castar-win-x64.exe \
             release-assets/Castar-Update-win-x64.zip \
             release-assets/Castar-Server-win-x64.zip \
             release-assets/Castar-Server-linux-x64.tar.gz \

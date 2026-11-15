@@ -22,7 +22,7 @@ Castar учитывает доходы и покупки. Windows-клиент �
 
 Нужен iPhone ARM64 с iOS 15 или новее, rootless-jailbreak, доступ по SSH и `sudo`. Установка проверена на iPhone SE первого поколения с iOS 15.7. На iPhone нужны `bash`, `ldid`, `uicache`, `launchctl` и `tar`.
 
-1. Скачайте [полный архив Castar для iPhone](https://github.com/krislechy/Castar/releases/download/v0.4.0/Castar-Server-ios-arm64.tar) и [контрольную сумму SHA-256](https://github.com/krislechy/Castar/releases/download/v0.4.0/Castar-Server-ios-arm64.tar.sha256). Архив содержит сервер, наблюдатель, приложение Castar и инструкцию `DEPLOYMENT.md`.
+1. Скачайте Castar Server для iPhone из [GitHub Releases](https://github.com/krislechy/Castar/releases). Архив содержит сервер, наблюдатель, приложение Castar и инструкцию `DEPLOYMENT.md`. Для прямого подключения используйте сборку с поддержкой HTTPS.
 2. На Windows подставьте Wi-Fi IP iPhone вместо `IPHONE_IP` и выполните команды в PowerShell. Если ваш SSH использует другой порт, укажите его вместо 22.
 
    ```powershell
@@ -40,19 +40,10 @@ Castar учитывает доходы и покупки. Windows-клиент �
 
    Если `ldid` находится вне PATH, передайте его путь установщику, например `sudo /var/jb/usr/bin/env LDID=/absolute/path/to/ldid /var/jb/usr/bin/bash "$work/install.sh"`.
 
-4. Откройте Castar на iPhone. В приложении доступны статус, журнал, остановка и перезапуск службы. Для подключения Windows-клиента получите ключ API в том же сеансе SSH.
+4. Настройте [сертификат на IP iPhone](Castar.Server.iOS/DEPLOYMENT.md#сертификат-https) и добавьте его в доверенные сертификаты Windows.
+5. Откройте **Ключи API** в Castar на iPhone. Скопируйте показанный HTTPS-адрес и действующий ключ или выпустите отдельный ключ. Введите их в настройках Windows-клиента.
 
-   ```sh
-   sudo sed -n 's/^Castar__ApiKey=//p' /var/jb/etc/castar/server.env
-   ```
-
-5. На Windows запустите SSH-туннель в отдельном окне PowerShell. В настройках Castar введите `http://127.0.0.1:15082` и ключ API.
-
-   ```powershell
-   ssh -p 22 -N -o ExitOnForwardFailure=yes -L 127.0.0.1:15082:127.0.0.1:5080 mobile@IPHONE_IP
-   ```
-
-Отдельный [ZIP приложения Castar для iPhone](https://github.com/krislechy/Castar/releases/download/v0.4.0/Castar-Control-ios-arm64.zip) содержит `CastarControl.app` и файл для подписи `ldid`. Для первой установки используйте полный архив, который регистрирует приложение и запускает службы.
+Отдельный ZIP приложения в [GitHub Releases](https://github.com/krislechy/Castar/releases) содержит `CastarControl.app` и файл для подписи `ldid`. Для первой установки используйте полный архив, который регистрирует приложение и запускает службы.
 
 ## Хранилище
 

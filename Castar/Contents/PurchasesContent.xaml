@@ -11,7 +11,7 @@
             <RowDefinition Height="Auto"/>
             <RowDefinition/>
         </Grid.RowDefinitions>
-        <c:IslandPanel IsMainTitle="True" Title="Покупки"/>
+        <c:IslandPanel IsMainTitle="True" Title="Расходы"/>
         <c:SelectorRangeDates x:Name="Dates" Grid.Row="1" Margin="12,8"
                               DateRangeChanged="Dates_DateRangeChanged"/>
         <TextBlock x:Name="StatusText" Grid.Row="2" Margin="12,0,12,8"
@@ -54,14 +54,14 @@
                     </DataTemplate>
                 </ListView.ItemTemplate>
             </ListView>
-            <TextBlock x:Name="EmptyPurchases" Text="За выбранный период покупок нет."
+            <TextBlock x:Name="EmptyPurchases" Text="Нет покупок"
                        Margin="20" TextWrapping="Wrap" TextAlignment="Center"
                        HorizontalAlignment="Center" VerticalAlignment="Center" IsHitTestVisible="False"
                        Foreground="{DynamicResource Foreground.Gray}" Visibility="Collapsed"/>
-            <c:IslandPanel x:Name="DetailsPanel" Grid.Column="2" Margin="0" Title="Позиции покупки"
+            <c:IslandPanel x:Name="DetailsPanel" Grid.Column="2" Margin="0" Title="Позиции"
                            IsEnabled="{Binding HasItems, ElementName=PurchasesList}">
                 <Grid>
-                    <TextBlock Text="Выберите покупку, чтобы увидеть её позиции."
+                    <TextBlock Text="Выберите покупку"
                                TextWrapping="Wrap" Margin="10" TextAlignment="Center"
                                HorizontalAlignment="Center" VerticalAlignment="Center">
                         <TextBlock.Style>
@@ -120,7 +120,7 @@
                                 <ColumnDefinition Width="Auto" SharedSizeGroup="ItemPrice"/>
                                 <ColumnDefinition Width="Auto" SharedSizeGroup="ItemTotal"/>
                             </Grid.ColumnDefinitions>
-                            <TextBlock Text="Наименование"/>
+                            <TextBlock Text="Название"/>
                             <TextBlock Grid.Column="1" Text="Кол-во" Margin="12,0,0,0" TextAlignment="Right"/>
                             <TextBlock Grid.Column="2" Text="Цена" Margin="12,0,0,0" TextAlignment="Right"/>
                             <TextBlock Grid.Column="3" Text="Сумма" Margin="12,0,0,0" TextAlignment="Right"/>

@@ -1,6 +1,6 @@
 # Развёртывание Castar Server
 
-Скачайте серверный архив для вашей платформы из [GitHub Releases](https://github.com/krislechy/Castar/releases). Для Windows x64 используйте `Castar-Server-win-x64.zip`, для Linux x64 с glibc — `Castar-Server-linux-x64.tar.gz`. Среда выполнения входит в оба архива. На Linux установите системные библиотеки для вашей версии дистрибутива. [Требования .NET для Linux](https://learn.microsoft.com/dotnet/core/install/linux)
+Скачайте серверный архив для вашей платформы из [GitHub Releases](https://github.com/krislechy/Castar/releases). Для Windows x64 используйте `Castar-Server-win-x64.zip`, для Linux с glibc — `Castar-Server-linux-x64.tar.gz` или `Castar-Server-linux-arm64.tar.gz`. Среда выполнения входит в архивы. На Linux установите системные библиотеки для вашей версии дистрибутива. [Требования .NET для Linux](https://learn.microsoft.com/dotnet/core/install/linux)
 
 ## Первый запуск
 
@@ -81,6 +81,22 @@ WantedBy=multi-user.target
 ```
 
 ## Перенос данных и обновление
+
+Для обновления кнопкой в Windows-клиенте распакуйте исходный архив в два соседних каталога `bootstrap` и `current` под одним корнем установки. Первый запускает и обновляет сервер, второй содержит активную версию. Путь `Database__SqlitePath` должен быть абсолютным и находиться вне этих каталогов. Передайте конфигурацию запуска серверу через окружение службы. Если проверка доступности работает на другом локальном порте, задайте `Castar__ServerUpdateHealthUrl`.
+
+На Windows запустите, подставив свой путь установки.
+
+```powershell
+& 'C:\CastarServer\bootstrap\Castar.Server.exe' --supervise-server 'C:\CastarServer'
+```
+
+На Linux запустите от пользователя службы Castar.
+
+```sh
+/opt/castar/bootstrap/Castar.Server --supervise-server /opt/castar
+```
+
+После подключения откройте **Настройки → Сервер → Обновить сервер**. Обновление сохраняет данные, проверяет архив и запуск новой версии и восстанавливает прежнюю версию при неудачной установке.
 
 - **SQLite из версии 0.1.0.** Остановите прежний Castar перед копированием. Перенесите базу SQLite в каталог данных сервера и задайте путь через `Database__SqlitePath`. Для установки по умолчанию старый файл находится в `%LOCALAPPDATA%\Castar\castar.sqlite`.
 - **База из прежней конфигурации SQL Server.** До обновления получите файл SQLite. Историческая команда переноса доступна в исходниках тега `v0.3.0`. Затем укажите путь к SQLite в `Database__SqlitePath` и удалите прежние `Database__Engine` и `ConnectionStrings__Castar`. Подробнее в [документации БД](../DataBase/README.md).

@@ -7,6 +7,7 @@
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="..\Castar.Api\Castar.Api.csproj" />
+    <ProjectReference Include="..\Castar.ReleaseUpdates\Castar.ReleaseUpdates.csproj" />
     <ProjectReference Include="..\Castar.BL\Castar.BL.csproj" />
     <ProjectReference Include="..\Castar.DAL\Castar.DAL.csproj" />
     <ProjectReference Include="..\Castar.Services.Receipts.Nalog\Castar.Services.Receipts.Nalog.csproj" />

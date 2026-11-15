@@ -8,7 +8,10 @@ if [ -f /var/jb/etc/castar/https.env ]; then
 fi
 set +a
 export ASPNETCORE_URLS=http://127.0.0.1:5080
-if [ -n "${Castar__ClientAddress:-}" ]; then
+export Castar__UpdateActivationGate=/var/jb/etc/castar/.activate-update
+if [ -f /var/jb/etc/castar/.verify-update ]; then
+    export Castar__UpdateVerification=true
+elif [ -n "${Castar__ClientAddress:-}" ]; then
     if [[ "$Castar__ClientAddress" != https://* || "$Castar__ClientAddress" == *';'* ]]; then
         printf '%s\n' 'Castar__ClientAddress must be a single HTTPS address.' >&2
         exit 2

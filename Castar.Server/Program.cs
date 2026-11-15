@@ -9,9 +9,20 @@ using Castar.Services.TelegramBot;
 using Castar.Services.TelegramBot.Commands;
 using Microsoft.EntityFrameworkCore;
 
+if (args is ["--stage-server-update", var updateWork, var updateStatus])
+    return await ServerUpdateStaging.RunAsync(updateWork, updateStatus);
+if (args is ["--supervise-server", var installationRoot])
+    return await DesktopServerSupervisor.RunAsync(installationRoot);
+
 var builder = WebApplication.CreateBuilder(args);
 
 var configuration = builder.Configuration;
+using var supervisedChild = DesktopServerChild.Open(configuration);
+var verifyingUpdate = configuration.GetValue<bool>("Castar:UpdateVerification");
+var activationGate = configuration["Castar:UpdateActivationGate"];
+if (activationGate is not null && !Path.IsPathFullyQualified(activationGate))
+    throw new InvalidOperationException("UpdateActivationGate must be absolute.");
+bool IsUpdating() => verifyingUpdate || (activationGate is not null && File.Exists(activationGate));
 var apiKey = configuration["Castar:ApiKey"]?.Trim();
 if (string.IsNullOrEmpty(apiKey) || apiKey.Length < 32 || apiKey.Any(char.IsWhiteSpace))
 {
@@ -48,18 +59,24 @@ builder.Services.AddSingleton<IReceiptProvider>(_ => new Nalog(
     new NetworkCredential(settings.NalogFNS.INN, settings.NalogFNS.Password)));
 builder.Services.AddSingleton<ServerSettings>();
 builder.Services.AddSingleton<ApiKeyStore>();
-if (!string.IsNullOrWhiteSpace(configuration["Castar:LocalAdminDirectory"]))
+if (!verifyingUpdate && !string.IsNullOrWhiteSpace(configuration["Castar:LocalAdminDirectory"]))
     builder.Services.AddHostedService<LocalKeyAdmin>();
 builder.Services.AddScoped<CommandHandler>();
 builder.Services.AddSingleton<ICastarTelegramBotClient, CastarTelegramBotClient>();
 
 await using var app = builder.Build();
+supervisedChild?.Watch(app.Lifetime);
 app.UseExceptionHandler();
 var keys = app.Services.GetRequiredService<ApiKeyStore>();
 app.Use(async (context, next) =>
 {
     if (context.Request.Path.StartsWithSegments("/api", StringComparison.OrdinalIgnoreCase))
     {
+        if (IsUpdating())
+        {
+            context.Response.StatusCode = StatusCodes.Status503ServiceUnavailable;
+            return;
+        }
         var authorization = context.Request.Headers.Authorization;
         const string scheme = "Bearer ";
         var header = authorization.Count == 1 ? authorization[0] : null;
@@ -75,7 +92,10 @@ app.Use(async (context, next) =>
     await next(context);
 });
 
-app.MapGet("/health", () => Results.Ok(new { status = "ready" }));
+app.MapGet("/health", () => Results.Ok(new
+{
+    status = "ready", version = ServerUpdateStaging.InstalledVersion.ToString(), processId = Environment.ProcessId
+}));
 app.MapGet("/api/status", async (CastarDbContext database, CancellationToken token) =>
 {
     return await database.Database.CanConnectAsync(token)
@@ -83,6 +103,7 @@ app.MapGet("/api/status", async (CastarDbContext database, CancellationToken tok
         : Results.StatusCode(StatusCodes.Status503ServiceUnavailable);
 });
 app.MapCastarApi();
+app.MapServerUpdate();
 app.MapHub<BudgetEventsHub>("/" + BudgetEvents.Path);
 try
 {
@@ -104,6 +125,22 @@ catch (Exception error) when (error is IOException or InvalidDataException or Js
     Console.Error.WriteLine($"Cannot load Castar API keys. {error.Message}");
     return 2;
 }
-app.Lifetime.ApplicationStarted.Register(() => app.Services.GetRequiredService<ICastarTelegramBotClient>());
+if (!verifyingUpdate)
+    app.Lifetime.ApplicationStarted.Register(() => _ = StartTelegramAsync());
 await app.RunAsync();
 return 0;
+
+async Task StartTelegramAsync()
+{
+    var stopping = app.Lifetime.ApplicationStopping;
+    try
+    {
+        while (IsUpdating())
+            await Task.Delay(TimeSpan.FromMilliseconds(250), stopping);
+        if (!stopping.IsCancellationRequested)
+            app.Services.GetRequiredService<ICastarTelegramBotClient>();
+    }
+    catch (OperationCanceledException) when (stopping.IsCancellationRequested)
+    {
+    }
+}

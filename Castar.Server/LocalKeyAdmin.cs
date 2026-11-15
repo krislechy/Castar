@@ -79,6 +79,9 @@ internal sealed class LocalKeyAdmin(
 
     private async Task<object> HandleCommandAsync(string command, CancellationToken token)
     {
+        if (configuration["Castar:UpdateActivationGate"] is { } gate && File.Exists(gate))
+            return new { error = "Сервер завершает обновление." };
+
         var separator = command.IndexOf(' ');
         var verb = separator < 0 ? command : command[..separator];
         var argument = separator < 0 ? "" : command[(separator + 1)..];
@@ -140,7 +143,7 @@ internal sealed class LocalKeyAdmin(
 
     // The iOS runtime's UnixDomainSocketEndPoint support probe returns false.
     // Darwin supports AF_UNIX and uses a length byte before the family and path.
-    private sealed class IosSocketEndPoint(string path) : EndPoint
+    internal sealed class IosSocketEndPoint(string path) : EndPoint
     {
         public override AddressFamily AddressFamily => AddressFamily.Unix;
 

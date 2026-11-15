@@ -134,6 +134,10 @@ jobs:
             rid: linux-x64
             archive: Castar-Server-linux-x64.tar.gz
             executable: Castar.Server
+          - os: ubuntu-24.04-arm
+            rid: linux-arm64
+            archive: Castar-Server-linux-arm64.tar.gz
+            executable: Castar.Server
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
@@ -171,12 +175,15 @@ jobs:
         run: |
           $archivePath = Join-Path $env:RUNNER_TEMP $env:CASTAR_ARCHIVE
           $smokePath = Join-Path $env:RUNNER_TEMP 'castar-server-smoke'
-          if ($IsWindows) {
-            [IO.Compression.ZipFile]::ExtractToDirectory($archivePath, $smokePath)
-          } else {
-            New-Item -ItemType Directory -Path $smokePath | Out-Null
-            tar -xzf $archivePath -C $smokePath
-            if ($LASTEXITCODE -ne 0) { throw "Castar Server archive extraction failed." }
+          foreach ($slot in 'bootstrap', 'current') {
+            $slotPath = Join-Path $smokePath $slot
+            New-Item -ItemType Directory -Path $slotPath -Force | Out-Null
+            if ($IsWindows) {
+              [IO.Compression.ZipFile]::ExtractToDirectory($archivePath, $slotPath)
+            } else {
+              tar -xzf $archivePath -C $slotPath
+              if ($LASTEXITCODE -ne 0) { throw "Castar Server archive extraction failed." }
+            }
           }
           $env:Castar__ApiKey = [Convert]::ToHexString([Security.Cryptography.RandomNumberGenerator]::GetBytes(32))
           $env:Castar__Telegram__Enabled = 'false'
@@ -185,7 +192,8 @@ jobs:
           $stdout = Join-Path $env:RUNNER_TEMP 'castar-server.stdout.log'
           $stderr = Join-Path $env:RUNNER_TEMP 'castar-server.stderr.log'
           $processArgs = @{
-            FilePath = Join-Path $smokePath $env:CASTAR_EXECUTABLE
+            FilePath = Join-Path $smokePath "bootstrap/$env:CASTAR_EXECUTABLE"
+            ArgumentList = '--supervise-server', ('"{0}"' -f $smokePath)
             WorkingDirectory = $smokePath
             RedirectStandardOutput = $stdout
             RedirectStandardError = $stderr
@@ -214,6 +222,10 @@ jobs:
               throw "The packaged Castar Server did not reject a request without a Bearer token."
             }
             $headers = @{ Authorization = "Bearer $env:Castar__ApiKey" }
+            $update = Invoke-RestMethod "$env:ASPNETCORE_URLS/api/server-update" -Headers $headers -TimeoutSec 5
+            if ($update.state -ne 'idle' -or $update.installedVersion -ne $env:GITHUB_REF_NAME.Substring(1)) {
+              throw "The packaged Castar Server did not report its initial managed update state."
+            }
             $users = Invoke-WebRequest "$env:ASPNETCORE_URLS/api/users" -Headers $headers -TimeoutSec 5
             $records = ConvertFrom-Json -InputObject $users.Content -NoEnumerate
             if ($records -isnot [array] -or $records.Count -ne 0) {
@@ -256,4 +268,5 @@ jobs:
             release-assets/Castar-Update-win-x64.zip \
             release-assets/Castar-Server-win-x64.zip \
             release-assets/Castar-Server-linux-x64.tar.gz \
+            release-assets/Castar-Server-linux-arm64.tar.gz \
             --verify-tag --latest --title "Castar ${GITHUB_REF_NAME#v}" --notes-file installer/ReleaseNotes.md

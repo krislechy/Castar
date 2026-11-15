@@ -99,6 +99,9 @@ public partial class SettingsContent : UserControl
     private async void ReloadServerSettings_Click(object sender, RoutedEventArgs e) =>
         await context.ServerConfiguration.ReloadAsync();
 
+    private async void UpdateServer_Click(object sender, RoutedEventArgs e) =>
+        await context.ServerConfiguration.Updates.StartAsync();
+
     private void ApiKey_PasswordChanged(object sender, RoutedEventArgs e)
     {
         keyInput = (PasswordBox)sender;

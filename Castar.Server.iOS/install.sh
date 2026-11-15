@@ -10,24 +10,60 @@ fi
 
 payload=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
 server=/var/jb/usr/libexec/castar
+supervisor=/var/jb/usr/libexec/castar-updater
 app=/var/jb/Applications/CastarControl.app
 watch=/var/jb/Library/LaunchDaemons/org.castar.watchdog.plist
+updater=/var/jb/Library/LaunchDaemons/org.castar.updater.plist
+recovery_job=/var/jb/Library/LaunchDaemons/org.castar.updater-recovery.plist
+control=/var/jb/var/lib/castar-control
+data=/var/jb/var/lib/castar
 config=/var/jb/etc/castar/server.env
-ldid=${LDID:-ldid}
+verify=/var/jb/etc/castar/.verify-update
+activation=/var/jb/etc/castar/.activate-update
+applying="$control/applying"
+version_pattern='^[0-9]{1,9}\.[0-9]{1,9}\.[0-9]{1,9}$'
+data_files=(castar.sqlite castar.sqlite-wal castar.sqlite-shm castar.sqlite-journal
+            castar.sqlite.settings.json castar.sqlite.keys.json)
+version=''
+recovering=0
+if [[ $# == 1 && $1 == --recover ]]; then
+    recovering=1
+elif [[ $# == 2 && $1 == --update && $2 =~ $version_pattern ]]; then
+    version=$2
+    ldid="$supervisor/ldid"
+    [[ -f "$payload/version" && $(<"$payload/version") == "$version" ]]
+elif [[ $# == 0 ]]; then
+    ldid=$(command -v "${LDID:-ldid}")
+else
+    printf '%s\n' 'Usage: install.sh [--update VERSION]' >&2
+    exit 1
+fi
+if [[ $recovering == 0 ]]; then
 for tool in "$ldid" uicache launchctl; do
     command -v "$tool" >/dev/null || { printf 'Missing tool: %s\n' "$tool" >&2; exit 1; }
 done
 for file in Castar.Server.dll castar-host castar-watchdog run-server.sh org.castar.server.plist \
-            org.castar.watchdog.plist CastarControl.entitlements.plist CastarControl.app/CastarControl \
-            CastarControl.app/Info.plist CastarControl.app/AppIcon60@2x.png CastarControl.app/AppIcon60@3x.png \
+            org.castar.watchdog.plist update-server.sh org.castar.updater.plist org.castar.updater-recovery.plist version \
+            CastarControl.entitlements.plist CastarControl.app/CastarControl CastarControl.app/Info.plist \
+            CastarControl.app/AppIcon60@2x.png CastarControl.app/AppIcon60@3x.png \
             lib/libcoreclr.dylib lib/libe_sqlite3.dylib lib/libSkiaSharp.dylib lib/libZXing.dylib; do
     [[ -f "$payload/$file" ]] || { printf 'Missing archive member: %s\n' "$file" >&2; exit 1; }
 done
+fi
+if [[ -n "$version" ]]; then
+    command -v sudo >/dev/null
+fi
 
+as_mobile() (
+    cd /
+    sudo -n -u mobile -- "$@"
+)
+
+if [[ $recovering == 0 ]]; then
 install -d -o root -g wheel -m 0755 /var/jb/usr/libexec /var/jb/Applications
 install -d -o root -g mobile -m 0750 /var/jb/etc/castar /var/jb/var/run/castar /var/jb/var/log/castar
-install -d -o root -g wheel -m 0700 /var/jb/var/lib/castar-control
-install -d -o mobile -g mobile -m 0700 /var/jb/var/lib/castar
+install -d -o root -g wheel -m 0700 "$control"
+install -d -o mobile -g mobile -m 0700 "$data"
 if [[ ! -e "$config" ]]; then
     key=$(od -An -v -N32 -tx1 /dev/urandom | tr -d '[:space:]')
     [[ ${#key} == 64 ]]
@@ -41,48 +77,184 @@ for log in server watchdog; do
         install -o mobile -g mobile -m 0600 /dev/null "$file"
     fi
 done
+fi
 
 unload() {
-    if launchctl print "system/$1" >/dev/null 2>&1; then
-        launchctl bootout "system/$1"
+    local description result=0 pid attempt
+    description=$(launchctl print "system/$1" 2>/dev/null) || result=$?
+    if [[ $result == 113 ]]; then return 0; fi
+    if [[ $result != 0 ]]; then return 1; fi
+    launchctl bootout "system/$1" || return 1
+    if [[ $description =~ $'\n'[[:blank:]]+pid[[:blank:]]+=[[:blank:]]+([0-9]+) ]]; then
+        pid=${BASH_REMATCH[1]}
+        for ((attempt=0; attempt<30; attempt++)); do
+            if ! kill -0 "$pid" 2>/dev/null; then return 0; fi
+            sleep 1
+        done
+        return 1
     fi
 }
 
-stage=$(mktemp -d /var/jb/usr/libexec/.castar-install.XXXXXXXX)
-activated=0
-unloaded=0
-restore() {
-    status=$?
-    trap - EXIT
-    if [[ $status != 0 && $unloaded == 1 ]]; then
-        printf '%s\n' 'Installation failed. Restoring the previous binaries.' >&2
-        set +e
-        unload org.castar.watchdog
-        unload org.castar.server
-        if [[ $activated == 1 ]]; then mv "$watch" "$stage/failed-watchdog.plist"; fi
-        if [[ -e "$stage/previous-watchdog.plist" ]]; then mv "$stage/previous-watchdog.plist" "$watch"; fi
-        if [[ -e "$stage/previous-server" || ! -e "$stage/server" ]]; then
-            if [[ -e "$server" ]]; then mv "$server" "$stage/failed-server"; fi
-            if [[ -e "$stage/previous-server" ]]; then mv "$stage/previous-server" "$server"; fi
+snapshot_data() {
+    local file result
+    mkdir "$stage/data"
+    for file in "${data_files[@]}"; do
+        result=0
+        # Open mobile-controlled data only with mobile privileges. Root owns the snapshot.
+        as_mobile /var/jb/usr/bin/bash -c '
+            [[ ! -L "$1" ]] || exit 1
+            [[ -e "$1" ]] || exit 3
+            [[ -f "$1" ]] && cat -- "$1"
+        ' bash "$data/$file" >"$stage/data/$file" || result=$?
+        case $result in
+            0) ;;
+            3) rm -f -- "$stage/data/$file" ;;
+            *) return 1 ;;
+        esac
+    done
+}
+
+restore_data() {
+    local file
+    for file in "${data_files[@]}"; do
+        if [[ -f "$stage/data/$file" ]]; then
+            as_mobile /var/jb/usr/bin/bash -c '
+                set -eu
+                umask 077
+                temporary=$(mktemp "$1.rollback.XXXXXXXX")
+                trap '\''rm -f -- "$temporary"'\'' EXIT
+                cat >"$temporary"
+                rm -f -- "$1"
+                mv -- "$temporary" "$1"
+            ' bash "$data/$file" <"$stage/data/$file" || return 1
+        else
+            as_mobile rm -f -- "$data/$file" || return 1
         fi
-        if [[ -e "$stage/previous-app" || ! -e "$stage/app" ]]; then
-            if [[ -e "$app" ]]; then
-                uicache -u "$app"
-                mv "$app" "$stage/failed-app"
-            fi
-            if [[ -e "$stage/previous-app" ]]; then
-                mv "$stage/previous-app" "$app"
-                uicache -p "$app"
-            fi
-        fi
-        if [[ -f "$watch" ]]; then launchctl bootstrap system "$watch"; fi
-        printf 'Installation files: %s\n' "$stage" >&2
+    done
+}
+
+wait_for_version() {
+    local attempt
+    for ((attempt=0; attempt<30; attempt++)); do
+        if "$server/castar-watchdog" --check-version "$version"; then return 0; fi
+        sleep 1
+    done
+    return 1
+}
+
+lock="$control/install.lock"
+stage=''
+boot_id() {
+    local boot
+    boot=$(sysctl -n kern.boottime 2>/dev/null) || boot=''
+    if [[ $boot =~ sec[[:space:]]*=[[:space:]]*([0-9]+) ]]; then
+        printf '%s\n' "${BASH_REMATCH[1]}"
     else
-        rm -rf -- "$stage"
+        printf '%s\n' unknown
     fi
+}
+
+unloaded=0
+snapshot=0
+swapped=0
+verify_created=0
+applying_created=0
+activation_created=0
+restart_watchdog=0
+restore() {
+    local status=$? restored=1
+    trap - EXIT HUP INT TERM
+    set +e
+    if [[ $status != 0 && -f "$stage/finished" ]]; then
+        # A committed update can be activated by the independent recovery job.
+        exit 70
+    fi
+    if [[ $status != 0 && $unloaded == 1 ]]; then
+        printf '%s\n' 'Installation failed. Restoring the previous installation.' >&2
+        if [[ $swapped == 1 && ! -f "$stage/rollback-restored" ]]; then
+            unload org.castar.watchdog || restored=0
+            unload org.castar.server || restored=0
+        fi
+        if [[ $verify_created == 1 ]]; then rm -f -- "$verify" || restored=0; fi
+        if [[ $swapped == 1 && $restored == 1 && ! -f "$stage/rollback-restored" ]]; then
+            if [[ ! -e "$stage/server" && ! -e "$stage/failed-server" && -e "$server" ]]; then
+                mv "$server" "$stage/failed-server" || restored=0
+            fi
+            if [[ -e "$stage/previous-server" ]]; then mv "$stage/previous-server" "$server" || restored=0; fi
+            if [[ ! -e "$stage/app" && ! -e "$stage/failed-app" && -e "$app" ]]; then
+                uicache -u "$app"
+                mv "$app" "$stage/failed-app" || restored=0
+            fi
+            if [[ -e "$stage/previous-app" ]]; then mv "$stage/previous-app" "$app" || restored=0; fi
+            if [[ -e "$app" ]]; then uicache -p "$app" || restored=0; fi
+            if [[ ! -e "$stage/watchdog.plist" && ! -e "$stage/failed-watchdog.plist" && -e "$watch" ]]; then
+                mv "$watch" "$stage/failed-watchdog.plist" || restored=0
+            fi
+            if [[ -e "$stage/previous-watchdog.plist" ]]; then mv "$stage/previous-watchdog.plist" "$watch" || restored=0; fi
+            if [[ $snapshot == 1 ]]; then restore_data || restored=0; fi
+        fi
+        if [[ $restored == 1 ]]; then
+            touch "$stage/rollback-restored" && sync || restored=0
+        fi
+        if [[ $restored == 1 && $activation_created == 1 ]]; then rm -f -- "$activation" || restored=0; fi
+        if [[ $restored == 1 && $applying_created == 1 ]]; then rm -f -- "$applying" || restored=0; fi
+        if [[ $restart_watchdog == 1 && $restored == 1 && -f "$watch" ]] &&
+            ! launchctl print system/org.castar.watchdog >/dev/null 2>&1; then
+            launchctl bootstrap system "$watch" || restored=0
+        fi
+        if [[ $restored == 0 ]]; then
+            printf 'Automatic rollback failed. Backup files: %s\n' "$stage" >&2
+        fi
+    fi
+    if [[ $restored == 0 ]]; then exit 70; fi
+    # Clean up the lock only after all displaced files have been restored or the new version committed.
+    rm -rf -- "$stage"
+    rm -f -- "$lock"
+    if [[ $recovering == 1 && $unloaded == 1 ]]; then exit 3; fi
     exit "$status"
 }
+
+if [[ $recovering == 1 ]]; then
+    [[ -f "$lock" ]] || exit 0
+    read -r name owner owner_boot <"$lock"
+    [[ $name =~ ^\.castar-install\.[[:alnum:]]{8}$ && $owner =~ ^[1-9][0-9]{0,8}$ ]]
+    current_boot=$(boot_id)
+    if [[ $current_boot == unknown || $owner_boot == unknown || $current_boot == "$owner_boot" ]] &&
+        kill -0 "$owner" 2>/dev/null; then
+        exit 0
+    fi
+    stage="/var/jb/usr/libexec/$name"
+    if [[ -f "$stage/finished" ]]; then
+        rm -f -- "$verify" "$activation" "$applying"
+        rm -rf -- "$stage"
+        rm -f -- "$lock"
+        exit 4
+    fi
+    if [[ ! -d "$stage" ]]; then
+        rm -f -- "$verify" "$activation" "$applying" "$lock"
+        exit 0
+    fi
+    if [[ -f "$stage/armed" ]]; then
+        unloaded=1 restart_watchdog=1 verify_created=1 applying_created=1 activation_created=1
+        if [[ -f "$stage/swapping" ]]; then swapped=1; fi
+        if [[ -f "$stage/data-ready" ]]; then snapshot=1; fi
+    fi
+    trap restore EXIT
+    exit 1
+fi
+
+stage=$(mktemp -d /var/jb/usr/libexec/.castar-install.XXXXXXXX)
+lock_record=$(mktemp "$control/.install-owner.XXXXXXXX")
+printf '%s %s %s\n' "${stage##*/}" "$$" "$(boot_id)" >"$lock_record"
+if ! ln "$lock_record" "$lock"; then
+    rm -f -- "$lock_record"
+    rm -rf -- "$stage"
+    printf '%s\n' 'Castar installation is already in progress.' >&2
+    exit 1
+fi
+rm -f -- "$lock_record"
 trap restore EXIT
+trap 'exit 1' HUP INT TERM
 
 install -d -m 0755 "$stage/server"
 cp -R "$payload/lib" "$stage/server/lib"
@@ -90,7 +262,7 @@ cp -R "$payload/CastarControl.app" "$stage/app"
 chown -R root:wheel "$stage/server" "$stage/app"
 find "$stage/server" "$stage/app" -type d -exec chmod 0755 {} +
 find "$stage/server" "$stage/app" -type f -exec chmod 0644 {} +
-for file in Castar.Server.dll run-server.sh org.castar.server.plist; do
+for file in Castar.Server.dll run-server.sh org.castar.server.plist version; do
     install -o root -g wheel -m 0644 "$payload/$file" "$stage/server/$file"
 done
 for file in castar-host castar-watchdog; do
@@ -101,17 +273,70 @@ for file in "$stage/server"/lib/*.dylib; do "$ldid" -S "$file"; done
 chmod 0755 "$stage/app/CastarControl"
 "$ldid" "-S$payload/CastarControl.entitlements.plist" "$stage/app/CastarControl"
 install -o root -g wheel -m 0644 "$payload/org.castar.watchdog.plist" "$stage/watchdog.plist"
+if [[ -z "$version" ]]; then
+    # Keep the manually selected, working signer and updater outside the replaceable server tree.
+    install -d -o root -g wheel -m 0700 "$supervisor"
+    install -o root -g wheel -m 0700 "$ldid" "$stage/ldid"
+    install -o root -g wheel -m 0600 "$payload/install.sh" "$stage/install.sh"
+    install -o root -g wheel -m 0600 "$payload/update-server.sh" "$stage/update-server.sh"
+    install -o root -g wheel -m 0644 "$payload/org.castar.updater.plist" "$stage/updater.plist"
+    install -o root -g wheel -m 0644 "$payload/org.castar.updater-recovery.plist" "$stage/recovery.plist"
+fi
 
+touch "$stage/armed"
+sync
 unloaded=1
 unload org.castar.watchdog
+restart_watchdog=1
 unload org.castar.server
+if [[ -n "$version" ]]; then
+    as_mobile true
+    snapshot_data
+    snapshot=1
+    touch "$stage/data-ready"
+    install -o root -g wheel -m 0600 /dev/null "$applying"
+    applying_created=1
+    install -o root -g wheel -m 0644 /dev/null "$activation"
+    activation_created=1
+    install -o root -g wheel -m 0644 /dev/null "$verify"
+    verify_created=1
+fi
+touch "$stage/swapping"
+sync
+swapped=1
 if [[ -e "$server" ]]; then mv "$server" "$stage/previous-server"; fi
 if [[ -e "$app" ]]; then mv "$app" "$stage/previous-app"; fi
 if [[ -e "$watch" ]]; then mv "$watch" "$stage/previous-watchdog.plist"; fi
 mv "$stage/server" "$server"
 mv "$stage/app" "$app"
 mv "$stage/watchdog.plist" "$watch"
-activated=1
 uicache -p "$app"
-launchctl bootstrap system "$watch"
+if [[ -n "$version" ]]; then
+    launchctl bootstrap system "$watch"
+    launchctl bootstrap system "$server/org.castar.server.plist"
+    wait_for_version
+    unload org.castar.server
+    rm -f -- "$verify"
+    verify_created=0
+    if [[ ! -e "$control/stopped" ]]; then
+        launchctl bootstrap system "$server/org.castar.server.plist"
+        wait_for_version
+    fi
+else
+    # No active update runs during the first installation. Subsequent in-app updates keep this job loaded.
+    unload org.castar.updater
+    unload org.castar.updater-recovery
+    mv -f "$stage/ldid" "$supervisor/ldid"
+    mv -f "$stage/install.sh" "$supervisor/install.sh"
+    mv -f "$stage/update-server.sh" "$supervisor/update-server.sh"
+    mv -f "$stage/updater.plist" "$updater"
+    mv -f "$stage/recovery.plist" "$recovery_job"
+    launchctl bootstrap system "$updater"
+    launchctl bootstrap system "$recovery_job"
+    launchctl bootstrap system "$watch"
+fi
+touch "$stage/finished"
+sync
+if [[ $activation_created == 1 ]]; then rm -f -- "$activation"; fi
+if [[ $applying_created == 1 ]]; then rm -f -- "$applying"; fi
 printf '%s\n' 'Castar installed. Open Castar for service status.'

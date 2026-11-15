@@ -24,6 +24,9 @@
 #define SERVER_LOG "/var/jb/var/log/castar/server.log"
 #define WATCHDOG_LOG "/var/jb/var/log/castar/watchdog.log"
 #define LAUNCHCTL "/var/jb/usr/bin/launchctl"
+#define UPDATE_JOB "system/org.castar.updater"
+#define UPDATE_STATUS "/var/jb/var/run/castar/update.json"
+#define APPLY_MARKER STATE_DIRECTORY "/applying"
 #define SERVER_JOB "system/org.castar.server"
 #define SERVER_PLIST "/var/jb/usr/libexec/castar/org.castar.server.plist"
 #define HEALTH_PORT 5080
@@ -155,7 +158,7 @@ static bool wait_socket(int descriptor, short events, int64_t deadline)
     }
 }
 
-static bool health_ok(void)
+static bool health_ok(const char *version)
 {
     const int connection = socket(AF_INET, SOCK_STREAM, 0);
     if (connection < 0)
@@ -185,12 +188,40 @@ static bool health_ok(void)
             received += (size_t)count;
         }
         const char *body = strstr(response, "\r\n\r\n");
-        healthy = body && strstr(body, "{\"status\":\"ready\"}") &&
+        healthy = body && strstr(body, "\"status\":\"ready\"") &&
             (strncmp(response, "HTTP/1.1 200 ", 13) == 0 ||
              strncmp(response, "HTTP/1.0 200 ", 13) == 0);
+        if (healthy && version) {
+            char field[100];
+            const int length = snprintf(field, sizeof(field), "\"version\":\"%s\"", version);
+            healthy = length > 0 && (size_t)length < sizeof(field) && strstr(body, field);
+        }
     }
     close(connection);
     return healthy;
+}
+
+static void send_update_status(int client)
+{
+    static const char idle[] = "{\"state\":\"idle\",\"installedVersion\":null,\"version\":null,"
+        "\"downloadedBytes\":0,\"totalBytes\":0,\"error\":null}\n";
+    const int file = open(UPDATE_STATUS, O_RDONLY | O_NOFOLLOW | O_NONBLOCK);
+    if (file < 0) {
+        send_text(client, idle);
+        return;
+    }
+    struct stat info;
+    char json[4096];
+    ssize_t count = -1;
+    if (fstat(file, &info) == 0 && S_ISREG(info.st_mode) && info.st_uid == 0 &&
+        (info.st_mode & 0022) == 0 && info.st_size > 0 && (size_t)info.st_size < sizeof(json)) {
+        count = pread(file, json, (size_t)info.st_size, 0);
+    }
+    if (count > 0 && count == info.st_size && json[0] == '{')
+        write_all(client, json, (size_t)count);
+    else
+        send_text(client, idle);
+    close(file);
 }
 
 static void send_log(int client)
@@ -244,7 +275,7 @@ static void handle_client(int client, uid_t allowed_user, const char **state, in
         return;
 
     set_socket_timeout(client);
-    char request[16];
+    char request[32];
     size_t length = 0;
     const int64_t deadline = monotonic_milliseconds() + 1000;
     while (length < sizeof(request) - 1 && wait_socket(client, POLLIN, deadline)) {
@@ -260,6 +291,13 @@ static void handle_client(int client, uid_t allowed_user, const char **state, in
         send_text(client, *state);
     } else if (strcmp(request, "logs\n") == 0) {
         send_log(client);
+    } else if (strcmp(request, "update-status\n") == 0) {
+        send_update_status(client);
+    } else if (strcmp(request, "update\n") == 0) {
+        const bool started = access(APPLY_MARKER, F_OK) != 0 && launchctl("kickstart", UPDATE_JOB, NULL) == 0;
+        send_text(client, started ? "ok\n" : "error\n");
+    } else if (access(APPLY_MARKER, F_OK) == 0) {
+        send_text(client, "error\n");
     } else if (strcmp(request, "stop\n") == 0) {
         const bool stopped = save_stopped(true) && stop_server();
         *state = stopped ? "stopped\n" : "unavailable\n";
@@ -275,8 +313,15 @@ static void handle_client(int client, uid_t allowed_user, const char **state, in
     }
 }
 
-int main(void)
+int main(int argc, char **argv)
 {
+    if (argc == 3 && strcmp(argv[1], "--check-version") == 0)
+        return health_ok(argv[2]) ? 0 : 1;
+    if (argc == 2 && strcmp(argv[1], "--check-health") == 0)
+        return health_ok(NULL) ? 0 : 1;
+    if (argc != 1)
+        return 1;
+
     const struct passwd *mobile = getpwnam("mobile");
     const struct group *mobile_group = getgrnam("mobile");
     if (geteuid() != 0 || !mobile || !mobile_group)
@@ -310,14 +355,17 @@ int main(void)
             limit_log(SERVER_LOG);
             limit_log(WATCHDOG_LOG);
             struct stat marker;
-            if (lstat(DISABLED_FILE, &marker) == 0) {
+            if (access(APPLY_MARKER, F_OK) == 0) {
+                state = "starting\n";
+                failures = 0;
+            } else if (lstat(DISABLED_FILE, &marker) == 0) {
                 state = stop_server() ? "stopped\n" : "unavailable\n";
                 failures = 0;
             } else if (errno != ENOENT) {
                 state = "unavailable\n";
             } else {
                 const enum job_state job = service_job();
-                if (job == job_loaded && health_ok()) {
+                if (job == job_loaded && health_ok(NULL)) {
                     state = "running\n";
                     failures = 0;
                 } else if ((job == job_absent || ++failures >= failed_probes_before_recovery) &&

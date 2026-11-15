@@ -25,6 +25,7 @@ internal sealed class ServerSettingsViewModel(CastarServerClient server) : BaseS
     private string status = "";
 
     public bool HasConnection => connection is not null;
+    public ServerUpdateViewModel Updates { get; } = new(server);
     public bool CanReload => active && HasConnection && request is null;
     public bool CanEdit => CanReload && saved is not null;
     public bool CanEditTelegram => CanEdit && (saved?.TelegramConfigured == true || TelegramEnabled);
@@ -85,12 +86,14 @@ internal sealed class ServerSettingsViewModel(CastarServerClient server) : BaseS
         }
 
         NotifyActions();
-        return saved is null || recheckAfterSave ? ReloadAsync() : Task.CompletedTask;
+        var settings = saved is null || recheckAfterSave ? ReloadAsync() : Task.CompletedTask;
+        return Task.WhenAll(settings, Updates.OpenAsync(address, protectedKey));
     }
 
     public void Close()
     {
         active = false;
+        Updates.Close();
         // The server may have committed before the client stopped waiting for its response.
         if (saving)
             recheckAfterSave = true;

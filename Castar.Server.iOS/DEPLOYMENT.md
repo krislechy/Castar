@@ -69,13 +69,17 @@ sudo /var/jb/usr/bin/launchctl kickstart -k system/org.castar.server
 
 ## Обновление
 
-Перед обновлением остановите сервер в приложении и сделайте резервную копию каталога данных и `server.env`. Повторите распаковку и установку с новым архивом. Установщик заменяет программу и приложение, сохраняет конфигурацию, базу и состояние ручной остановки. Затем запустите Castar и проверьте подключение. После запуска сервер применяет миграции EF Core.
+Нажмите **Обновить сервер** на экране состояния Castar на iPhone или в разделе **Настройки → Сервер** в Windows-клиенте. Служба обновления загружает iPhone TAR из GitHub Releases, проверяет SHA-256 и версию и показывает ход скачивания. Во время установки сервер перезапускается. После успешной проверки приложение показывает установленную версию.
 
-Журналы сервера и наблюдателя находятся в `/var/jb/var/log/castar`. Состояние служб можно посмотреть через SSH.
+Конфигурация, HTTPS-сертификат, SQLite и ключи API сохраняются. При ошибке проверочного запуска установщик восстанавливает прежние файлы сервера и данные. Для первой установки службы обновления используйте полный TAR и шаги из раздела **Установка**. Полный архив также можно установить вручную.
+
+Журналы сервера и наблюдателя находятся в `/var/jb/var/log/castar`, журнал обновления — в `/var/jb/var/lib/castar-control/update.log`. Состояние служб можно посмотреть через SSH.
 
 ```sh
 sudo launchctl print system/org.castar.watchdog
 sudo launchctl print system/org.castar.server
+sudo launchctl print system/org.castar.updater
+sudo launchctl print system/org.castar.updater-recovery
 ```
 
 ## Сборка архива
@@ -86,7 +90,10 @@ sudo launchctl print system/org.castar.server
 $bundle = Join-Path $PWD 'out/castar-ios-arm64'
 ./Castar.Server.iOS/Build.ps1 -OutputPath $bundle -IosSdk $iosSdk -Zig $zig -Ld64 $ld64
 tar -cf ./out/Castar-Server-ios-arm64.tar -C $bundle .
-Get-FileHash ./out/Castar-Server-ios-arm64.tar -Algorithm SHA256
+$appFiles = 'CastarControl.app', 'CastarControl.entitlements.plist', 'DEPLOYMENT.md' |
+    ForEach-Object { Join-Path $bundle $_ }
+Compress-Archive -LiteralPath $appFiles -DestinationPath ./out/Castar-Control-ios-arm64.zip
+Get-FileHash ./out/Castar-Server-ios-arm64.tar, ./out/Castar-Control-ios-arm64.zip -Algorithm SHA256
 ```
 
 `$iosSdk`, `$zig` и `$ld64` указывают на каталог SDK и исполняемые файлы Zig и LLD. Если CMake, Ninja или .NET отсутствуют в PATH, передайте `-CMake`, `-Ninja` или `-DotNet`. Сборка загружает и проверяет пакеты NuGet и исходники ZXing-C++. Атрибуции входят в каталог `notices`.

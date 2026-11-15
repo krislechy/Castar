@@ -26,6 +26,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\Castar.Api\Castar.Api.csproj" />
+    <ProjectReference Include="..\Castar.ReleaseUpdates\Castar.ReleaseUpdates.csproj" />
     <ProjectReference Include="..\Castar.Domain\Castar.Domain.csproj" />
     <ProjectReference Include="..\Castar.Logger\Castar.Logger.csproj" />
     <ProjectReference Include="..\Castar.TrayNotify.Windows\Castar.TrayNotify.Windows.csproj" />

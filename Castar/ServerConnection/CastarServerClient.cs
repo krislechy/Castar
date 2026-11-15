@@ -144,6 +144,13 @@ public sealed class CastarServerClient(ClientSettings settings) : IDisposable
     public Task<ServerSettingsDto> SaveServerSettingsAsync(ServerSettingsWriteDto settings, CancellationToken cancellationToken = default) =>
         SendAsync<ServerSettingsDto>(HttpMethod.Put, "api/settings", settings, cancellationToken, readProblemDetails: true);
 
+    public Task<ServerUpdateStatusDto> GetServerUpdateAsync(CancellationToken cancellationToken = default) =>
+        SendAsync<ServerUpdateStatusDto>(HttpMethod.Get, "api/server-update", cancellationToken: cancellationToken);
+
+    public Task<ServerUpdateStatusDto> StartServerUpdateAsync(CancellationToken cancellationToken = default) =>
+        SendAsync<ServerUpdateStatusDto>(HttpMethod.Post, "api/server-update",
+            cancellationToken: cancellationToken, readProblemDetails: true);
+
     private static string DateQuery(DateTime start, DateTime finish)
     {
         const string format = "yyyy-MM-ddTHH:mm:ss.fffffff";

@@ -50,6 +50,16 @@
                                     AutomationProperties.Name="Обновить настройки сервера"/>
                         </StackPanel>
                         <TextBlock Text="{Binding Status}" Style="{StaticResource ViewStatus}"/>
+                        <StackPanel DataContext="{Binding Updates}">
+                            <Button Content="Обновить сервер" Style="{StaticResource FormAction}"
+                                    IsEnabled="{Binding CanStart}" Click="UpdateServer_Click"/>
+                            <TextBlock Text="{Binding Status}" Style="{StaticResource ViewStatus}"
+                                       AutomationProperties.LiveSetting="Polite"/>
+                            <ProgressBar Minimum="0" Maximum="100" Value="{Binding Percent, Mode=OneWay}"
+                                         IsIndeterminate="{Binding IsIndeterminate, Mode=OneWay}"
+                                         Visibility="{Binding IsWorking, Converter={StaticResource ServerConnectionVisibility}}"
+                                         AutomationProperties.Name="Ход обновления сервера"/>
+                        </StackPanel>
                     </StackPanel>
                 </c:IslandPanel>
                 <c:IslandPanel Title="Приложение" ImageSvg="{DynamicResource Svg.Tools}">

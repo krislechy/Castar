@@ -215,13 +215,20 @@ try {
     finally {
         Pop-Location
     }
-    foreach ($file in @('run-server.sh', 'install.sh')) {
+    foreach ($file in @('run-server.sh', 'install.sh', 'update-server.sh')) {
         $script = Get-Content -LiteralPath (Join-Path $PSScriptRoot $file) -Raw
         [IO.File]::WriteAllText((Join-Path $bundle $file), $script.Replace("`r`n", "`n"))
     }
-    foreach ($file in @('org.castar.server.plist', 'org.castar.watchdog.plist', 'DEPLOYMENT.md', 'New-HttpsCertificate.ps1')) {
+    foreach ($file in @('org.castar.server.plist', 'org.castar.watchdog.plist', 'org.castar.updater.plist',
+            'org.castar.updater-recovery.plist', 'DEPLOYMENT.md', 'New-HttpsCertificate.ps1')) {
         Copy-Item -LiteralPath (Join-Path $PSScriptRoot $file) -Destination $bundle
     }
+    $serverProject = Join-Path $repo 'Castar.Server/Castar.Server.csproj'
+    $serverVersion = (& $DotNet msbuild $serverProject -nologo '-getProperty:Version').Trim()
+    if ($serverVersion -notmatch '^\d{1,9}\.\d{1,9}\.\d{1,9}$') {
+        throw 'Castar Server version must contain three numeric components.'
+    }
+    [IO.File]::WriteAllText((Join-Path $bundle 'version'), "$serverVersion`n")
     & $Ld64 @linkFlags -dylib -install_name '@rpath/libe_sqlite3.dylib' `
         -force_load (Join-Path $sqlite 'runtimes/ios-arm64/native/e_sqlite3.a') -lSystem `
         -o (Join-Path $lib 'libe_sqlite3.dylib')

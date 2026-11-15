@@ -8,7 +8,7 @@ namespace Castar.Services.Receipts.Models
 {
     public sealed class RefreshToken
     {
-        public string sessionId { get; set; }
-        public string refresh_token { get; set; }
+        public string? sessionId { get; set; }
+        public string? refresh_token { get; set; }
     }
 }

@@ -1,16 +1,12 @@
-﻿using Castar.Domain.Models.DataBase;
-using Microsoft.EntityFrameworkCore;
-using System;
-using System.Collections.Generic;
-using System.Collections.ObjectModel;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
+using Castar.Domain.Models.DataBase;
 
 namespace Castar.DAL.Repositories.DataBase
 {
-    public interface IPurchasesRepository:IBaseRepository<Purchase>
+    public interface IPurchasesRepository : IBaseRepository<Purchase>
     {
-        Task<bool> SearchByRawData(byte[] query);
+        Task<IReadOnlyList<Purchase>> List(DateTime start, DateTime finish, bool includeDetails);
+        Task<Purchase?> FindManualByMessage(Guid userId, long messageId, CancellationToken cancellationToken);
+        Task<Purchase?> AddReceipt(Purchase purchase, string provider, string receiptId, CancellationToken cancellationToken);
+        Task<bool> SearchByRawData(byte[]? query);
     }
 }

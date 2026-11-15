@@ -1,15 +1,10 @@
-﻿using Castar.Domain.Models.DataBase;
-using Microsoft.EntityFrameworkCore;
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
+using Castar.Domain.Models.DataBase;
 
 namespace Castar.DAL.Repositories.DataBase
 {
     public interface IUsersRepository : IBaseRepository<User>
     {
-        Task<User?> FindByTelegramId(long telegramId);
+        Task<IReadOnlyList<User>> List(bool hasTelegramId = false, CancellationToken cancellationToken = default);
+        Task<User?> FindByTelegramId(long telegramId, CancellationToken cancellationToken = default);
     }
 }

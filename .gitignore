@@ -259,6 +259,9 @@ paket-files/
 .fake/
 
 # JetBrains Rider
+
+# Local Serena metadata
+.serena/
 .idea/
 *.sln.iml
 

@@ -3,11 +3,14 @@ using Castar.BL.Settings;
 using Castar.Compontents;
 using Castar.Domain.Models.DataBase;
 using Castar.Domain.Models.SettingsModel;
+using Castar.Services.Receipts;
+using Castar.Updates;
 using Microsoft.Win32;
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
+using System.Data.Common;
 using System.Linq;
 using System.Security;
 using System.Text;
@@ -30,8 +33,23 @@ namespace Castar.Contents
     /// </summary>
     public partial class SettingsContent : UserControl
     {
+        private sealed record ReceiptProviderOption(string Id, string Name);
+
         private class SettingsModelContext: INotifyPropertyChanged
         {
+            public required IReadOnlyList<ReceiptProviderOption> ReceiptProviders { get; init; }
+
+            private string updateStatus = "";
+            public string UpdateStatus
+            {
+                get => updateStatus;
+                set
+                {
+                    updateStatus = value;
+                    OnPropertyChanged(nameof(UpdateStatus));
+                }
+            }
+
             private SettingsModel settings;
             public SettingsModel Settings
             {
@@ -39,7 +57,7 @@ namespace Castar.Contents
                 set
                 {
                     settings = value;
-                    OnPropertyChanged(nameof(settings));
+                    OnPropertyChanged(nameof(Settings));
                 }
             }
             private ObservableCollection<User> users;
@@ -49,7 +67,7 @@ namespace Castar.Contents
                 set
                 {
                     users = value;
-                    OnPropertyChanged(nameof(users));
+                    OnPropertyChanged(nameof(Users));
                 }
             }
 
@@ -66,12 +84,26 @@ namespace Castar.Contents
         }
         private readonly ISettingsService settingsService;
         private readonly IUsersService usersService;
-        public SettingsContent(ISettingsService settingsService, IUsersService usersService)
+        public SettingsContent(
+            ISettingsService settingsService, IUsersService usersService, IEnumerable<IReceiptProvider> receiptProviders,
+            GitHubUpdateService updateService)
         {
             this.settingsService = settingsService;
             this.usersService = usersService;
-            this.DataContext = new SettingsModelContext();
+            this.updateService = updateService;
+            this.DataContext = new SettingsModelContext
+            {
+                ReceiptProviders = receiptProviders.Select(provider => new ReceiptProviderOption(provider.Id,
+                    provider.Id switch
+                    {
+                        "serbia" => "Сербия — налоговая служба",
+                        "nalog" => "Россия — ФНС",
+                        _ => provider.Id
+                    })).ToArray()
+            };
             InitializeComponent();
+            context.UpdateStatus = $"Установлена версия {updateService.InstalledVersion}";
+            InitializeSettings();
         }
         private void InitializeSettings()
         {
@@ -86,21 +118,38 @@ namespace Castar.Contents
             });
             context.Settings = obj;
         }
-        private void LoadUsers()
+        private async Task LoadUsers()
         {
-            Dispatcher.BeginInvoke(async () =>
+            try
             {
-                var users = await this.usersService.GetEntities();
-                context.Users = users;
-            });
+                context.Users = await usersService.GetEntities();
+            }
+            catch (Exception error) when (error is DbException or ArgumentException or NotSupportedException)
+            {
+                var message = context.Settings.DataBase.Engine == DatabaseEngine.Sqlite
+                    ? "Не удалось прочитать SQLite. Проверьте путь к базе данных и перезапустите Castar."
+                    : "Проверьте подключение к SQL Server и выполните DataBase/UpgradeCastar.sql для базы Castar.";
+                await PopupDialog.Show(message,
+                    PopupDialog.TypeDialogEnum.Default);
+            }
         }
 
         private void DataBasePasswordBox_PasswordChanged(object sender, RoutedEventArgs e)
         {
-            if (this.DataContext != null)
+            if (context.Settings != null)
             {
                 context.Settings.DataBase.Password = ((PasswordBox)sender).Password;
             }
+        }
+
+        private void TelegramToken_Loaded(object sender, RoutedEventArgs e)
+        {
+            ((PasswordBox)sender).Password = context.Settings.TelegramBot.TelegramBotApi_KEY ?? "";
+        }
+
+        private void TelegramToken_LostFocus(object sender, RoutedEventArgs e)
+        {
+            context.Settings.TelegramBot.TelegramBotApi_KEY = ((PasswordBox)sender).Password.Trim();
         }
         private void OpenSelectionFolderButton_Click(object sender, RoutedEventArgs e)
         {
@@ -112,7 +161,7 @@ namespace Castar.Contents
         }
         private void DataBasePasswordBox_Loaded(object sender, RoutedEventArgs e)
         {
-            if (this.DataContext != null && context.Settings.DataBase != null)
+            if (context.Settings?.DataBase != null)
             {
                 ((PasswordBox)sender).Password = context.Settings.DataBase.Password;
             }
@@ -120,7 +169,7 @@ namespace Castar.Contents
 
         private void NalogFNSPasswordBox_PasswordChanged(object sender, RoutedEventArgs e)
         {
-            if (this.DataContext != null)
+            if (context.Settings != null)
             {
                 context.Settings.NalogFNS.Password = ((PasswordBox)sender).Password;
             }
@@ -128,7 +177,7 @@ namespace Castar.Contents
 
         private void NalogFNSPasswordBox_Loaded(object sender, RoutedEventArgs e)
         {
-            if (this.DataContext != null && context.Settings.NalogFNS != null)
+            if (context.Settings?.NalogFNS != null)
             {
                 ((PasswordBox)sender).Password = context.Settings.NalogFNS.Password;
             }
@@ -156,7 +205,7 @@ namespace Castar.Contents
                 {
                     var updatedUser = (User)userInfo.DataContext;
                     if (updatedUser.Name == null) updatedUser.Name = "NONAME";
-                    usersService.Update(updatedUser);
+                    await usersService.Update(updatedUser);
                     var source = (ObservableCollection<User>)obj.ItemsSource;
                     for (int i = 0; i < source.Count(); i++)
                     {
@@ -188,7 +237,7 @@ namespace Castar.Contents
             {
                 var createdUser = (User)userInfo.DataContext;
                 if (createdUser.Name == null) createdUser.Name = "NONAME";
-                usersService.Add(createdUser);
+                await usersService.Add(createdUser);
                 context.Users?.Add(createdUser);
             }
         }
@@ -224,12 +273,10 @@ namespace Castar.Contents
             }
         }
 
-        private void Settings_Loaded(object sender, RoutedEventArgs e)
+        private async void Settings_Loaded(object sender, RoutedEventArgs e)
         {
-            if (context.Settings == null)
-                InitializeSettings();
             if (context.Users == null)
-                LoadUsers();
+                await LoadUsers();
         }
     }
 }

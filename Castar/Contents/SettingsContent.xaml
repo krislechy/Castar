@@ -5,6 +5,7 @@
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008" 
              xmlns:local="clr-namespace:Castar.Contents"
              xmlns:converters="clr-namespace:Castar.Converters"
+             xmlns:settings="clr-namespace:Castar.Domain.Models.SettingsModel;assembly=Castar.Domain"
              xmlns:c="clr-namespace:Castar.Compontents"
              mc:Ignorable="d" 
              Name="Настройки" Loaded="Settings_Loaded"
@@ -33,8 +34,6 @@
                             <Separator/>
                             <ToggleButton Style="{StaticResource ToggleButtonIOS}" Tag="{Binding Settings.TelegramBot.Status,Mode=OneWay}"
                                           Content="Состояние Telegram Бот" IsChecked="{Binding Settings.Systems.IsEnableTelegramBot}" Cursor="Hand"/>
-                            <ToggleButton Style="{StaticResource ToggleButtonIOS}" Tag="{x:Null}"
-                                          Content="Состояние сервиса ФНС" IsChecked="{Binding Settings.Systems.IsEnableNalogFNS}" Cursor="Hand"/>
                         </StackPanel>
                     </c:IslandPanel>
                     <c:IslandPanel Title="База данных" ImageSvg="{DynamicResource Svg.DataBase}" MaxWidth="350">
@@ -42,6 +41,20 @@
                             <c:WarningPanel TextColor="{DynamicResource Foreground.Gray}" SvgColor="{DynamicResource Warning.Svg.Brush}">
                                 Для применения изменений перезапустите приложение
                             </c:WarningPanel>
+                            <TextBlock Text="Хранилище"/>
+                            <ComboBox SelectedValuePath="Tag" SelectedValue="{Binding Settings.DataBase.Engine}">
+                                <ComboBoxItem Content="SQLite" Tag="{x:Static settings:DatabaseEngine.Sqlite}"/>
+                                <ComboBoxItem Content="SQL Server" Tag="{x:Static settings:DatabaseEngine.SqlServer}"/>
+                            </ComboBox>
+                            <TextBlock Text="Файл SQLite" Margin="0,5,0,0"/>
+                            <DockPanel>
+                                <Button DockPanel.Dock="Right" Content="{DynamicResource Svg.Folder}"
+                                        ToolTip="Выбрать файл SQLite" Click="ChooseSqliteFile_Click"/>
+                                <TextBox Text="{Binding Settings.DataBase.SqlitePath}"/>
+                            </DockPanel>
+                            <TextBlock Text="По умолчанию %LOCALAPPDATA%\Castar\castar.sqlite" FontSize="10"/>
+                            <Separator/>
+                            <TextBlock Text="SQL Server — подключение или источник переноса"/>
                             <Grid>
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="*"/>
@@ -96,6 +109,12 @@
                                                HorizontalAlignment="Left" Grid.ColumnSpan="4" FontSize="10"/>
                                     <TextBox Text="{Binding Settings.DataBase.DataSource}" Grid.Row="2" HorizontalContentAlignment="Center"/>
                                 </Grid>
+                                <StackPanel Grid.Row="2" Grid.ColumnSpan="3" Margin="0,5,0,0">
+                                    <TextBlock Text="Имя базы данных на сервере"/>
+                                    <TextBox Text="{Binding Settings.DataBase.DatabaseName}"/>
+                                    <CheckBox Content="Доверять сертификату SQL Server"
+                                              IsChecked="{Binding Settings.DataBase.TrustServerCertificate}"/>
+                                </StackPanel>
                                 <Grid Grid.Row="4" Grid.ColumnSpan="3" Margin="0,5,0,0">
                                     <Grid.RowDefinitions>
                                         <RowDefinition/>
@@ -129,6 +148,8 @@
                                     </Grid>
                                 </Grid>
                             </Grid>
+                            <Button Margin="0,8,0,0" Padding="10,5" Content="Перенести данные из SQL Server в SQLite"
+                                    Click="ImportDatabase_Click"/>
                         </StackPanel>
                     </c:IslandPanel>
                     <c:IslandPanel Title="Пользователи" ImageSvg="{DynamicResource Svg.Users}">
@@ -191,7 +212,7 @@
                                             <ColumnDefinition/>
                                         </Grid.ColumnDefinitions>
                                         <TextBlock Grid.Column="0" Text="Token" Margin="0,0,5,0" VerticalAlignment="Center"/>
-                                        <TextBox Grid.Column="1" Text="{Binding Settings.TelegramBot.TelegramBotApi_KEY}"/>
+                                        <PasswordBox Grid.Column="1" Loaded="TelegramToken_Loaded" LostFocus="TelegramToken_LostFocus"/>
                                     </Grid>
                                 </Grid>
                                 <Grid Grid.Row="1" Margin="0,5,0,0">
@@ -249,23 +270,25 @@
                             </Grid>
                         </StackPanel>
                     </c:IslandPanel>
-                    <c:IslandPanel Title="ФНС Проверка чека" ImageSvg="{DynamicResource Svg.NalogFNS}">
+                    <c:IslandPanel Title="Получение чеков" ImageSvg="{DynamicResource Svg.NalogFNS}">
                         <StackPanel>
-                            <c:WarningPanel TextColor="{DynamicResource Foreground.Gray}">
-                                <c:WarningPanel.Style>
-                                    <Style TargetType="c:WarningPanel">
-                                        <Setter Property="ObjectContent" Value="Подключено"/>
-                                        <Setter Property="SvgColor" Value="MediumSpringGreen"/>
+                            <CheckBox Content="Принимать QR-коды чеков в Telegram"
+                                      IsChecked="{Binding Settings.Receipts.IsEnabled}"/>
+                            <TextBlock Text="Провайдер чеков" Margin="0,5,0,0"/>
+                            <ComboBox SelectedValuePath="Id" DisplayMemberPath="Name"
+                                      ItemsSource="{Binding ReceiptProviders}"
+                                      SelectedValue="{Binding Settings.Receipts.Provider}"/>
+                            <Grid Grid.IsSharedSizeScope="True" Margin="0,5,0,0">
+                                <Grid.Style>
+                                    <Style TargetType="Grid">
+                                        <Setter Property="Visibility" Value="Collapsed"/>
                                         <Style.Triggers>
-                                            <DataTrigger Binding="{Binding Settings.Systems.IsEnableNalogFNS}" Value="False">
-                                                <Setter Property="ObjectContent" Value="Отключено"/>
-                                                <Setter Property="SvgColor" Value="OrangeRed"/>
+                                            <DataTrigger Binding="{Binding Settings.Receipts.Provider}" Value="nalog">
+                                                <Setter Property="Visibility" Value="Visible"/>
                                             </DataTrigger>
                                         </Style.Triggers>
                                     </Style>
-                                </c:WarningPanel.Style>
-                            </c:WarningPanel>
-                            <Grid Grid.IsSharedSizeScope="True" Margin="0,5,0,0">
+                                </Grid.Style>
                                 <Grid.RowDefinitions>
                                     <RowDefinition/>
                                     <RowDefinition/>
@@ -287,6 +310,12 @@
                                     <PasswordBox Grid.Column="1" Margin="10,0,0,0" PasswordChanged="NalogFNSPasswordBox_PasswordChanged" Loaded="NalogFNSPasswordBox_Loaded"/>
                                 </Grid>
                             </Grid>
+                        </StackPanel>
+                    </c:IslandPanel>
+                    <c:IslandPanel Title="Обновления Castar" ImageSvg="{DynamicResource Svg.Tools}">
+                        <StackPanel>
+                            <TextBlock Text="{Binding UpdateStatus}" Margin="0,0,0,8" TextWrapping="Wrap"/>
+                            <Button Padding="10,5" Content="Проверить обновления" Click="CheckForUpdates_Click"/>
                         </StackPanel>
                     </c:IslandPanel>
                 </WrapPanel>

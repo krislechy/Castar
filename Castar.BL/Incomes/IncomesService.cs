@@ -1,56 +1,70 @@
-﻿using Castar.DAL.Repositories.DataBase;
-using Castar.Domain.Models.DataBase;
-using System;
-using System.Collections.Generic;
 using System.Collections.ObjectModel;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
-using Microsoft.EntityFrameworkCore;
-using System.Runtime.InteropServices;
+using Castar.DAL.Repositories.DataBase;
+using Castar.Domain.Models.DataBase;
 
 namespace Castar.BL
 {
-    public class IncomesService : IIncomesService
+    public sealed class IncomesService(IIncomesRepository incomesRepository, IUsersRepository usersRepository)
+        : IIncomesService
     {
-        private readonly IIncomesRepository incomesRepository;
-        private readonly IUsersRepository usersRepository;
-        public IncomesService(IIncomesRepository incomesRepository, IUsersRepository usersRepository)
-        {
-            this.incomesRepository = incomesRepository;
-            this.usersRepository = usersRepository;
-        }
-
         public async Task<ObservableCollection<Income>> GetEntities(DateTime start, DateTime finish) =>
-             new ObservableCollection<Income>(await incomesRepository.GetEntity()
-                .Where(x => x.AddedOn >= start && x.AddedOn <= finish)
-                .ToListAsync());
+            new(await incomesRepository.List(start, finish, includeUser: false));
 
         public async Task<ObservableCollection<Income>> GetEntitiesWithAllIncludes(DateTime start, DateTime finish) =>
-            new ObservableCollection<Income>(await incomesRepository.GetEntity()
-                 .Where(x => x.AddedOn >= start && x.AddedOn <= finish)
-                .Include(u => u.User).ToListAsync());
+            new(await incomesRepository.List(start, finish, includeUser: true));
 
-        public async Task<Income> Add(Income income, long telegramUserId, [Optional] User user)
+        public async Task<Income> Add(Income income, long telegramUserId, User? user = null)
         {
-            var _user = await usersRepository.FindByTelegramId(telegramUserId);
-            if (_user == null) throw new Exception($"Пользователя с идентификатором {telegramUserId} не существует в базе");
-            income.UserId = _user!.Id;
+            var owner = user is { Id: var id } && id != Guid.Empty
+                ? user
+                : await GetUser(telegramUserId, CancellationToken.None);
+            income.UserId = owner.Id;
+            income.User = owner;
             income.AddedOn = income.AddedOn == default ? DateTime.Now : income.AddedOn;
-            income.User = null;
-            var result = await incomesRepository.Add(income);
-            result.User = user == null ? _user : user;
-            return result;
+            income.Sum = RoundAmount(income.Sum);
+            return await incomesRepository.Add(income);
         }
 
-        public async Task<IEnumerable<Income>> GetEntityByMessageId(long messageId)
+        public async Task<IReadOnlyList<Income>> GetEntityByMessageId(
+            long telegramUserId, long messageId, CancellationToken cancellationToken = default)
         {
-            return await incomesRepository.GetEntity().Where(x => x.MessageId == messageId).ToListAsync();
+            var user = await GetUser(telegramUserId, cancellationToken);
+            return await incomesRepository.ListByMessage(user.Id, messageId, cancellationToken);
         }
-        public async Task Update(Income income)
+
+        public async Task SaveMessageIncomes(long telegramUserId, long messageId, IReadOnlyList<Income> incomes,
+            CancellationToken cancellationToken = default)
         {
-            await incomesRepository.Update(income);
+            var user = await GetUser(telegramUserId, cancellationToken);
+            var now = DateTime.Now;
+            foreach (var income in incomes)
+            {
+                if (income.AddedOn == default)
+                    income.AddedOn = now;
+                income.Sum = RoundAmount(income.Sum);
+            }
+
+            await incomesRepository.SaveMessageIncomes(user.Id, messageId, incomes, cancellationToken);
         }
-        public async Task<bool> Delete(Guid id) => await incomesRepository.Delete(id);
+
+        public Task Update(Income income)
+        {
+            if (income.User is { } owner && owner.Id != income.UserId)
+            {
+                income.UserId = owner.Id;
+                income.MessageId = 0;
+            }
+
+            income.Sum = RoundAmount(income.Sum);
+            return incomesRepository.Update(income);
+        }
+
+        public Task<bool> Delete(Guid id) => incomesRepository.Delete(id);
+
+        private async Task<User> GetUser(long telegramUserId, CancellationToken cancellationToken) =>
+            await usersRepository.FindByTelegramId(telegramUserId, cancellationToken)
+            ?? throw new InvalidOperationException($"Пользователя с идентификатором {telegramUserId} нет в базе.");
+
+        private static decimal RoundAmount(decimal amount) => decimal.Round(amount, 2, MidpointRounding.AwayFromZero);
     }
 }

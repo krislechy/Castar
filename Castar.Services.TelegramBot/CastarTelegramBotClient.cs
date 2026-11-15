@@ -1,120 +1,225 @@
-﻿using Castar.BL;
+using System.ComponentModel;
+using System.Diagnostics;
+using System.Threading.Channels;
 using Castar.BL.Settings;
-using Castar.DAL.Repositories.DataBase;
 using Castar.Domain.Models.SettingsModel;
-using Castar.Services.Receipts;
-using Castar.Services.Receipts.Barcode;
-using Castar.Services.Receipts.Models;
+using Castar.Services.TelegramBot.Commands;
+using Microsoft.Extensions.DependencyInjection;
 using Telegram.Bot;
-using Telegram.Bot.Polling;
+using Telegram.Bot.Exceptions;
+using Telegram.Bot.Types;
 using Telegram.Bot.Types.Enums;
+using TelegramSettings = Castar.Domain.Models.SettingsModel.TelegramBot;
 
-namespace Castar.Services.TelegramBot
+namespace Castar.Services.TelegramBot;
+
+public sealed class CastarTelegramBotClient : ICastarTelegramBotClient
 {
-    public sealed class CastarTelegramBotClient : BaseCastarTelegramBotClient, ICastarTelegramBotClient
+    private static readonly UpdateType[] AllowedUpdates = [UpdateType.Message, UpdateType.EditedMessage];
+
+    private readonly SettingsModel settings;
+    private readonly IServiceScopeFactory scopeFactory;
+    private readonly SynchronizationContext? uiContext;
+    private readonly Channel<Configuration> changes = Channel.CreateBounded<Configuration>(
+        new BoundedChannelOptions(1) { SingleReader = true, FullMode = BoundedChannelFullMode.DropOldest });
+    private readonly Task worker;
+    private long configurationVersion;
+    private int disposed;
+
+    public CastarTelegramBotClient(ISettingsService settingsService, IServiceScopeFactory scopeFactory)
     {
-        private ITelegramBotClient telegramBotClient;
-        private CancellationTokenSource cts;
-        public CastarTelegramBotClient(
-            ISettingsService settingsService,
-            IPurchasesService purchasesService,
-            IItemsService itemsService,
-            IIncomesService incomesService,
-            IUsersService usersService)
-        {
-            base.settingsService = settingsService;
-            base.settings = settingsService.Get();
-            base.incomesService = incomesService;
-            base.usersService = usersService;
-            base.purchasesService = purchasesService;
-            base.itemsService = itemsService;
-            settings.Systems.PropertyChanged += Systems_PropertyChanged;
-            settings.TelegramBot.PropertyChanged += TelegramBot_PropertyChanged;
-            StartReceiving();
-        }
+        settings = settingsService.Get();
+        this.scopeFactory = scopeFactory;
+        uiContext = SynchronizationContext.Current;
+        settings.TelegramBot.PropertyChanged += OnSettingsChanged;
+        settings.Systems.PropertyChanged += OnSettingsChanged;
+        QueueConfiguration();
+        worker = Task.Run(RunAsync);
+    }
 
-        private async void TelegramBot_PropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
-        {
-            var telegramBotHanlder = (Castar.Domain.Models.SettingsModel.TelegramBot)sender!;
-            var action = e.PropertyName switch
-            {
-                "TelegramBotApi_KEY" => Task.Factory.StartNew(() =>
-                {
-                    CloseTbc();
-                    StartReceiving();
-                }),
-                _ => Task.CompletedTask,
-            };
-            await action;
-        }
+    private void OnSettingsChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName is nameof(Systems.IsEnableTelegramBot) or nameof(TelegramSettings.TelegramBotApi_KEY))
+            QueueConfiguration();
+    }
 
-        private async void Systems_PropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
+    private void QueueConfiguration() => changes.Writer.TryWrite(new(
+        Interlocked.Increment(ref configurationVersion),
+        settings.Systems.IsEnableTelegramBot,
+        settings.TelegramBot.TelegramBotApi_KEY?.Trim()));
+
+    private async Task RunAsync()
+    {
+        CancellationTokenSource? pollingCancellation = null;
+        Task polling = Task.CompletedTask;
+
+        try
         {
-            var systemSettings = (Systems)sender!;
-            var action = e.PropertyName switch
+            await foreach (var configuration in changes.Reader.ReadAllAsync())
             {
-                "IsEnableTelegramBot" => Task.Factory.StartNew(() =>
+                if (pollingCancellation is not null)
                 {
-                    if (systemSettings.IsEnableTelegramBot)
-                    {
-                        CloseTbc();
-                        StartReceiving();
-                    }
-                    else
-                        CloseTbc();
-                }),
-                _ => Task.CompletedTask,
-            };
-            await action;
-        }
-        private async void CloseTbc()
-        {
-            settings.TelegramBot.Status = "Отключение...";
-            cts?.Cancel();
-            cts?.Dispose();
-            cts = null;
-            if (telegramBotClient != null)
-            {
-                try
-                {
-                    await telegramBotClient.CloseAsync();
+                    pollingCancellation.Cancel();
+                    await polling;
+                    pollingCancellation.Dispose();
+                    pollingCancellation = null;
                 }
-                catch (Telegram.Bot.Exceptions.ApiRequestException ex)
-                {
 
+                if (Volatile.Read(ref disposed) != 0)
+                    return;
+
+                if (!configuration.Enabled)
+                {
+                    PublishStatus(configuration, "Отключено");
+                    continue;
                 }
-                telegramBotClient = null;
+
+                if (string.IsNullOrWhiteSpace(configuration.Token))
+                {
+                    PublishStatus(configuration, "Токен не заполнен");
+                    continue;
+                }
+
+                pollingCancellation = new CancellationTokenSource();
+                polling = PollAsync(configuration, pollingCancellation.Token);
             }
-            settings.TelegramBot.Status = "Отключено";
         }
-        private void StartReceiving()
+        finally
         {
-            if (!String.IsNullOrEmpty(settings.TelegramBot.TelegramBotApi_KEY))
+            if (pollingCancellation is not null)
             {
-                if (settings.Systems.IsEnableTelegramBot)
+                using (pollingCancellation)
                 {
-                    settings.TelegramBot.Status = "Подключение...";
-                    this.telegramBotClient = new TelegramBotClient(settings.TelegramBot.TelegramBotApi_KEY);
-                    cts = new CancellationTokenSource();
-                    var receiverOptions = new ReceiverOptions()
-                    {
-                        AllowedUpdates = Array.Empty<UpdateType>(),
-                        ThrowPendingUpdates = true,
-                    };
-                    telegramBotClient.StartReceiving(updateHandler: HandleUpdateAsync,
-                           pollingErrorHandler: PollingErrorHandler,
-                           receiverOptions: receiverOptions,
-                           cancellationToken: cts.Token);
-                    settings.TelegramBot.Status = "Подключено";
+                    pollingCancellation.Cancel();
+                    await polling;
                 }
-                else
-                    settings.TelegramBot.Status = "Отключено";
-            }
-            else
-            {
-                settings.Systems.IsEnableTelegramBot = false;
-                settings.TelegramBot.Status = "Токен не заполнен";
             }
         }
     }
+
+    private async Task PollAsync(Configuration configuration, CancellationToken cancellationToken)
+    {
+        try
+        {
+            using var httpClient = new HttpClient { Timeout = TimeSpan.FromSeconds(45) };
+            var bot = new TelegramBotClient(configuration.Token!, httpClient, cancellationToken);
+            int? offset = null;
+            PublishStatus(configuration, "Подключение...");
+            while (!cancellationToken.IsCancellationRequested)
+            {
+                Update[] updates;
+                try
+                {
+                    updates = await bot.GetUpdates(offset, timeout: 30, allowedUpdates: AllowedUpdates,
+                        cancellationToken: cancellationToken);
+                }
+                catch (ApiRequestException ex) when (ex.ErrorCode is 401 or 404)
+                {
+                    PublishStatus(configuration, "Проверьте токен Telegram");
+                    return;
+                }
+                catch (Exception ex) when (!cancellationToken.IsCancellationRequested)
+                {
+                    LogError(ex);
+                    PublishStatus(configuration, "Ошибка подключения к Telegram");
+                    var retryAfter = (ex as ApiRequestException)?.Parameters?.RetryAfter ?? 0;
+                    await Task.Delay(TimeSpan.FromSeconds(Math.Max(5, retryAfter)), cancellationToken);
+                    continue;
+                }
+
+                PublishStatus(configuration, "Подключено");
+                foreach (var update in updates)
+                {
+                    cancellationToken.ThrowIfCancellationRequested();
+                    await HandleUpdateAsync(bot, update, cancellationToken);
+                    offset = update.Id + 1;
+                }
+            }
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+        }
+        catch (ArgumentException)
+        {
+            PublishStatus(configuration, "Проверьте токен Telegram");
+        }
+        catch (Exception ex)
+        {
+            LogError(ex);
+            PublishStatus(configuration, "Ошибка подключения к Telegram");
+        }
+    }
+
+    private async Task HandleUpdateAsync(ITelegramBotClient client, Update update, CancellationToken cancellationToken)
+    {
+        var message = update.Message ?? update.EditedMessage;
+        if (message is null)
+            return;
+
+        try
+        {
+            await using var scope = scopeFactory.CreateAsyncScope();
+            var handler = scope.ServiceProvider.GetRequiredService<CommandHandler>();
+            await handler.HandleAsync(client, message, update.EditedMessage is not null, cancellationToken);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            LogError(ex);
+            if (message.Chat.Type == ChatType.Private)
+            {
+                try
+                {
+                    await client.SendMessage(message.Chat.Id,
+                        "Не удалось обработать сообщение. Проверьте подключение и настройки приложения.",
+                        cancellationToken: cancellationToken);
+                }
+                catch (Exception sendError) when (!cancellationToken.IsCancellationRequested)
+                {
+                    LogError(sendError);
+                }
+            }
+        }
+    }
+
+    private void PublishStatus(Configuration configuration, string status)
+    {
+        void SetStatus()
+        {
+            if (Volatile.Read(ref disposed) == 0 && Volatile.Read(ref configurationVersion) == configuration.Version)
+                settings.TelegramBot.Status = status;
+        }
+
+        if (uiContext is null)
+            SetStatus();
+        else
+            uiContext.Post(_ => SetStatus(), null);
+    }
+
+    internal static void LogError(Exception exception)
+    {
+        var description = exception is ApiRequestException apiError
+            ? $"Telegram API error {apiError.ErrorCode}"
+            : exception.GetType().Name;
+        Trace.TraceWarning("Castar Telegram: {0}", description);
+    }
+
+    public void Dispose() => DisposeAsync().AsTask().GetAwaiter().GetResult();
+
+    public async ValueTask DisposeAsync()
+    {
+        if (Interlocked.Exchange(ref disposed, 1) == 0)
+        {
+            settings.TelegramBot.PropertyChanged -= OnSettingsChanged;
+            settings.Systems.PropertyChanged -= OnSettingsChanged;
+            changes.Writer.TryComplete();
+        }
+
+        await worker.ConfigureAwait(false);
+    }
+
+    private sealed record Configuration(long Version, bool Enabled, string? Token);
 }

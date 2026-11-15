@@ -1,21 +1,22 @@
 ﻿using Castar.BL;
 using Castar.BL.Settings;
 using Castar.BL.Settings.Autorun;
-using Castar.Compontents;
 using Castar.Contents;
+using Castar.DAL;
 using Castar.DAL.Repositories.DataBase;
 using Castar.DAL.Repositories.Settings;
 using Castar.Logger;
 using Castar.Security.Cryptography;
 using Castar.Services.Receipts;
-using Castar.Services.Receipts.Barcode;
-using Castar.Services.Receipts.Models;
 using Castar.Services.TelegramBot;
+using Castar.Services.TelegramBot.Commands;
 using Castar.TrayNotify.Windows;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using System;
+using System.IO;
+using System.Net;
 using System.Windows;
-using static System.Windows.Forms.VisualStyles.VisualStyleElement.Window;
 
 namespace Castar
 {
@@ -24,69 +25,96 @@ namespace Castar
     /// </summary>
     public partial class App : Application
     {
-        private ICLogger cLogger;
-        //@"Data Source=(LocalDB)\MSSQLLocalDB;AttachDbFilename=C:\DbCastar\castardb.mdf;Integrated Security=True;Connect Timeout=30"
-        public App()
+        private readonly ICLogger cLogger = new CLogger(Path.Combine(DatabaseConnections.DataDirectory, "Logs", "castar.log"));
+        private ServiceProvider? serviceProvider;
+
+        protected override async void OnStartup(StartupEventArgs e)
         {
+            base.OnStartup(e);
+            InitializeCultures();
             var services = new ServiceCollection();
 
-            //Logging
-            cLogger = new CLogger("Logs/logs.log");
-            services.AddSingleton<ICLogger>((e) => cLogger);
+            services.AddSingleton(cLogger);
             AppDomain.CurrentDomain.UnhandledException += CurrentDomain_UnhandledException;
-            AppDomain.CurrentDomain.FirstChanceException += CurrentDomain_FirstChanceException;
 
-            //Cryptography
             var cryptography = new Cryptography(GetUniqueMachineId(), GetExecutionPathToBinaryExe());
-            services.AddScoped<ICryptography>((e) => cryptography);
+            var legacySettingsPath = Path.Combine(AppContext.BaseDirectory, "Castar.Settings.xml");
+            var settingsPath = File.Exists(legacySettingsPath)
+                ? legacySettingsPath
+                : Path.Combine(DatabaseConnections.DataDirectory, "Castar.Settings.xml");
+            var settingsRepository = new SettingsRepository(settingsPath, cryptography);
+            var settingsService = new SettingsService(settingsRepository);
+            var database = settingsService.Get().Copy().DataBase;
+            var useSqlite = database.Engine == Domain.Models.SettingsModel.DatabaseEngine.Sqlite;
 
-            //DataBase Connection String & Settings repository
-            var settingsRepository = new SettingsRepository(AppDomain.CurrentDomain.BaseDirectory + "Castar.Settings.xml", cryptography);
-            var settings = settingsRepository.Load();
-            string connectionString = @$"Data Source={settings.DataBase.DataSource};
-                                        AttachDbFilename={settings.DataBase.AttachDBFileName};";
-            if (!String.IsNullOrEmpty(settings.DataBase.Password) && !String.IsNullOrEmpty(settings.DataBase.Login))
-                connectionString += $"User ID={settings.DataBase.Login};Password={settings.DataBase.Password};";
-            else connectionString += "Integrated Security=True;";
+            services.AddDbContextFactory<CastarDbContext>(options =>
+            {
+                if (useSqlite)
+                    options.UseSqlite(DatabaseConnections.GetSqliteConnectionString(database));
+                else
+                    options.UseSqlServer(DatabaseConnections.GetSqlServerConnectionString(database),
+                        sql => sql.UseCompatibilityLevel(130).EnableRetryOnFailure());
+            });
+            services.AddSingleton<IPurchasesRepository, PurchasesRepository>();
+            services.AddSingleton<IItemsRepository, ItemsRepository>();
+            services.AddSingleton<IIncomesRepository, IncomesRepository>();
+            services.AddSingleton<IUsersRepository, UsersRepository>();
+            services.AddSingleton<IPurchasesService, PurchasesService>();
+            services.AddSingleton<IItemsService, ItemsService>();
+            services.AddSingleton<IIncomesService, IncomesService>();
+            services.AddSingleton<IUsersService, UsersService>();
 
-            //Services DataBase
-            services.AddScoped<IPurchasesService, PurchasesService>();
-            services.AddScoped<IItemsService, ItemsService>();
-            services.AddScoped<IIncomesService, IncomesService>();
-            services.AddScoped<IUsersService, UsersService>();
-
-            //Service Settings
-            services.AddSingleton<ISettingsService, SettingsService>();
-
-            //Settings helper
-            services.AddScoped<ITrayIcon>((e) => GetTrayIconInstance());
-            services.AddScoped<IAutorun>((e) => GetAutorunInstance());
-
-            //Repositories DataBase
-            services.AddScoped<IPurchasesRepository>((e) => new PurchasesRepository(connectionString));
-            services.AddScoped<IItemsRepository>((e) => new ItemsRepository(connectionString));
-            services.AddScoped<IIncomesRepository>((e) => new IncomesRepository(connectionString));
-            services.AddScoped<IUsersRepository>((e) => new UsersRepository(connectionString));
-
-            //Repository Settings
-            services.AddSingleton<ISettingsRepository>((e) => settingsRepository);
-
-            //TelegramBot
+            services.AddSingleton<ISettingsService>(settingsService);
+            services.AddSingleton<ITrayIcon>(_ => GetTrayIconInstance());
+            services.AddSingleton<IAutorun>(_ => GetAutorunInstance());
+            services.AddSingleton<IReceiptProvider, SerbiaReceiptProvider>();
+            services.AddSingleton<IReceiptProvider>(_ => new Nalog(() =>
+            {
+                var nalog = settingsService.Get().NalogFNS;
+                return new NetworkCredential(nalog.INN, nalog.Password);
+            }));
+            services.AddScoped<CommandHandler>();
             services.AddSingleton<ICastarTelegramBotClient, CastarTelegramBotClient>();
+            services.AddSingleton<Updates.GitHubUpdateService>();
 
             services.AddSingleton<MainWindow>();
             services.AddSingleton<SettingsContent>();
             services.AddSingleton<IncomesContent>();
 
-            var serviceProvider = services.BuildServiceProvider();
-            
-            ResolveResourceDictionary();
+            serviceProvider = services.BuildServiceProvider(validateScopes: true);
+            if (useSqlite)
+            {
+                try
+                {
+                    Directory.CreateDirectory(Path.GetDirectoryName(DatabaseConnections.GetSqlitePath(database))!);
+                    var factory = serviceProvider.GetRequiredService<IDbContextFactory<CastarDbContext>>();
+                    await using var context = await factory.CreateDbContextAsync();
+                    await context.Database.EnsureCreatedAsync();
+                }
+                catch (Exception error) when (error is System.Data.Common.DbException or IOException
+                    or UnauthorizedAccessException or ArgumentException or NotSupportedException)
+                {
+                    MessageBox.Show("Не удалось открыть SQLite. Проверьте путь к базе данных в настройках.",
+                        "Castar", MessageBoxButton.OK, MessageBoxImage.Warning);
+                }
+            }
             ResolveSettings(serviceProvider);
-            ResolveTelegramBot(serviceProvider);
-            InitializeCultures();
+            serviceProvider.GetRequiredService<ICastarTelegramBotClient>();
+            MainWindow = serviceProvider.GetRequiredService<MainWindow>();
+            MainWindow.Show();
+        }
 
-            var window = serviceProvider.GetService<MainWindow>();
-            window!.Show();
+        protected override void OnExit(ExitEventArgs e)
+        {
+            AppDomain.CurrentDomain.UnhandledException -= CurrentDomain_UnhandledException;
+            try
+            {
+                serviceProvider?.Dispose();
+            }
+            finally
+            {
+                base.OnExit(e);
+            }
         }
     }
 }

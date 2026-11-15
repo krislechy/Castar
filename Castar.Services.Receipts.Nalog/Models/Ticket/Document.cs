@@ -8,6 +8,6 @@ namespace Castar.Services.Receipts.Models
 {
     public sealed class Document
     {
-        public Receipt receipt { get; set; }
+        public Receipt? receipt { get; set; }
     }
 }

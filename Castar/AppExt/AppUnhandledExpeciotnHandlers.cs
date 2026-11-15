@@ -53,9 +53,5 @@ namespace Castar
             e.Handled = true;
         }
 
-        private void CurrentDomain_FirstChanceException(object? sender, System.Runtime.ExceptionServices.FirstChanceExceptionEventArgs e)
-        {
-            ExceptionsHandler(e.Exception);
-        }
     }
 }

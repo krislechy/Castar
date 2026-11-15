@@ -86,7 +86,7 @@ namespace Castar
         private void SystemCommandBinding_CanExecute_Default(object sender, CanExecuteRoutedEventArgs e)=> e.CanExecute = true;
         private void SystemButtonClose(object sender, RoutedEventArgs e) => TryClose();
 
-        private void thisClosing(object sender, System.ComponentModel.CancelEventArgs e)
+        private void thisClosing(object? sender, System.ComponentModel.CancelEventArgs e)
         {
             e.Cancel = true;
             TryClose();
@@ -110,10 +110,15 @@ namespace Castar
                     }) == true ? true : false;
                 if (result)
                 {
-                    settingsService.Dispose();
-                    Environment.Exit(0);
+                    Exit();
                 }
             }
+        }
+
+        internal void Exit()
+        {
+            Closing -= thisClosing;
+            Application.Current.Shutdown();
         }
         private bool IsBusyRestateWindow = false;
         private async void Grid_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)

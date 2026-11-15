@@ -1,155 +1,135 @@
-﻿using Castar.BL;
-using Castar.DAL.Repositories.DataBase;
-using Castar.Domain.Models.DataBase;
-using Castar.Extensions;
-using Castar.Services.Receipts.Models;
-using Castar.Services.Receipts;
-using Castar.Services.TelegramBot.Attributes;
-using System;
-using System.Collections.Generic;
-using System.Collections.ObjectModel;
 using System.Drawing;
-using System.Globalization;
-using System.IO;
-using System.Linq;
 using System.Text;
-using System.Threading.Tasks;
+using Castar.Domain.Models.DataBase;
+using Castar.Services.Receipts;
+using Castar.Services.Receipts.Barcode;
+using Castar.Services.Receipts.Exceptions;
 using Telegram.Bot;
 using Telegram.Bot.Types;
-using Telegram.Bot.Types.Enums;
-using Telegram.Bot.Types.ReplyMarkups;
-using Castar.Services.Receipts.Barcode;
-using ZXing;
-using static Microsoft.EntityFrameworkCore.DbLoggerCategory;
-using System.Net.Sockets;
+using BudgetUser = Castar.Domain.Models.DataBase.User;
 
-namespace Castar.Services.TelegramBot.Commands
+namespace Castar.Services.TelegramBot.Commands;
+
+public sealed partial class CommandHandler
 {
-    public partial class CommandHandler
+    private async Task ImportReceiptsAsync(
+        ITelegramBotClient bot, Message message, BudgetUser user, string[] codes, CancellationToken cancellationToken)
     {
-        [BotCommandAttribute("Автоматическое добавление покупки", "t= || photo")]
-        protected async Task<Message> AutoPurchase(ITelegramBotClient botClient, Message message)
+        if (!settings.Receipts.IsEnabled)
         {
-            return await SendMessageAsync(botClient, message, async () =>
-            {
-                if (!settings.Systems.IsEnableNalogFNS) return "❗️Сервис ФНС Проверка чека - отключен";
-                try
-                {
-                    IReceipt<Ticket> nalog = new Nalog(new System.Net.NetworkCredential(settings.NalogFNS.INN,settings.NalogFNS.Password));
-                    Task<string> action = message.Type switch
-                    {
-                        MessageType.Text => await Task.Factory.StartNew(async () =>
-                        {
-                            var purchase = new Purchase();
-                            var queries = message!.Text!.Split("\n");
-                            StringBuilder sb = new StringBuilder();
-                            foreach (var query in queries)
-                            {
-                                try
-                                {
-                                    var text = await AddAutoPurchaseHandler(query, message, nalog);
-                                    sb.AppendLine(text);
-                                }
-                                catch (Exception ex)
-                                {
-                                    return $"{ex.Message}\n{ex.InnerException?.Message}";
-                                }
-                            }
-                            return sb.ToString();
-                        })
-                        ,
-                        MessageType.Photo => await Task.Factory.StartNew(async () =>
-                        {
-                            StringBuilder sb = new StringBuilder();
-                            await foreach (var query in getQueriesFromPhotos(botClient, message.Photo))
-                            {
-                                try
-                                {
-                                    var text=await AddAutoPurchaseHandler(query,message,nalog);
-                                    sb.AppendLine(text);
-                                }
-                                catch (Exception ex)
-                                {
-                                    return $"{ex.Message}\n{ex.InnerException?.Message}";
-                                }
-                            }
-                            return sb.ToString();
-                        })
-                        ,
-                        _ => Task.FromResult("❗️Не поддерживаемое действие.")
-                    };
-                    return await action;
-                }
-                catch (Exception ex)
-                {
-                    throw;
-                }
-            });
+            await ReplyAsync(bot, message, "Импорт чеков отключён в настройках.", cancellationToken);
+            return;
         }
-        private async Task<string> AddAutoPurchaseHandler(string query, Message message, IReceipt<Ticket> nalog)
-        {
-            query = query.Trim();
-            if (await CheckExistPurchase(query.Trim()))
-                throw new Exception($"❗️Такая покупка уже была добавлена ранее.\n`{query}`");
-            var result = await nalog.GetReceipt(query);
-            var text = await AddAutoPurchase(result, message!);
-            return text;
-        }
-        private async Task<bool> CheckExistPurchase(string query)
-        {
-            return await purchasesService.IsExistTheSame(Encoding.UTF8.GetBytes(query));
-        }
-        private async Task<string> AddAutoPurchase(Ticket? ticket, Message message)
-        {
-            StringBuilder result = new StringBuilder();
-            if (ticket != null)
-            {
-                IPurchase purchase = new Purchase();
-                purchase.Name = ticket.ticket.document.receipt.user;
-                purchase.RetailPlace = ticket.ticket.document.receipt.retailPlace;
-                purchase.RetailPlaceAddress = ticket.ticket.document.receipt.retailPlaceAddress;
-                purchase.RawData = Encoding.UTF8.GetBytes(ticket.qr);
-                purchase.MessageId = message.MessageId;
-                purchase.AddedOn = ticket.ticket.document.receipt.dateTime.UnixTimeStampToDateTime();
-                result.AppendLine($"{settings.TelegramBot.PurchaseCreateEmoji} %user% добавил(а) покупку {purchase.Name}");
-                result.AppendLine($"{purchase.RetailPlace} / {purchase.RetailPlaceAddress}");
-                result.AppendLine($"Список товаров (`{ticket.ticket.document.receipt.items.Sum(x => x.sumDecimal).ToCurrency()}`):");
-                foreach (var item in ticket.ticket.document.receipt.items)
-                {
-                    IItem ditem = new Domain.Models.DataBase.Item();
-                    ditem.Price = item.priceDecimal;
-                    ditem.Quantity = item.quantity;
-                    ditem.Name = item.name;
-                    ditem.PurchaseId = new Guid();
-                    purchase.Items.Add((Domain.Models.DataBase.Item)ditem);
 
-                    result.AppendLine($"{settings.TelegramBot.ItemEmoji} {item.name} (Кол-во: {item.quantity}) - `{item.sumDecimal.ToCurrency()}`");
-                }
+        var provider = providers.SingleOrDefault(candidate =>
+            string.Equals(candidate.Id, settings.Receipts.Provider, StringComparison.OrdinalIgnoreCase));
+        if (provider is null)
+        {
+            await ReplyAsync(bot, message, "В настройках выбран недоступный поставщик чеков.", cancellationToken);
+            return;
+        }
 
-                await purchasesService.Add((Purchase)purchase, message.From.Id);
+        if (message.Photo is { Length: > 0 } photos)
+        {
+            var code = await DecodePhotoAsync(bot, photos, cancellationToken);
+            if (code is null)
+            {
+                await ReplyAsync(bot, message, "QR-код чека не удалось прочитать. Отправьте чёткое фото или ссылку.", cancellationToken);
+                return;
             }
-            return result.ToString();
+
+            codes = [code];
         }
-        private async IAsyncEnumerable<string> getQueriesFromPhotos(ITelegramBotClient botClient,IEnumerable<PhotoSize> photosSize)
+
+        foreach (var code in codes.Distinct(StringComparer.Ordinal))
         {
-            List<string> alreadyReturned = new List<string>();
-            foreach(var photoSize in photosSize)
+            if (!provider.CanHandle(code))
             {
-                using (var ms = new MemoryStream())
+                await ReplyAsync(bot, message, "Код чека не поддерживается выбранным поставщиком.", cancellationToken);
+                continue;
+            }
+
+            Receipt receipt;
+            try
+            {
+                receipt = await provider.GetReceiptAsync(code, cancellationToken);
+            }
+            catch (TicketNotReadyException)
+            {
+                await ReplyAsync(bot, message, "Поставщик ещё обрабатывает чек. Попробуйте позже.", cancellationToken);
+                continue;
+            }
+            catch (Exception ex) when (ex is ArgumentException or InvalidDataException)
+            {
+                await ReplyAsync(bot, message, ex.Message, cancellationToken);
+                continue;
+            }
+            catch (Exception ex) when (
+                ex is HttpRequestException or TimeoutException
+                || (ex is OperationCanceledException && !cancellationToken.IsCancellationRequested))
+            {
+                CastarTelegramBotClient.LogError(ex);
+                await ReplyAsync(bot, message, "Поставщик чеков временно недоступен. Попробуйте позже.", cancellationToken);
+                continue;
+            }
+
+            var purchase = new Purchase
+            {
+                MessageId = message.MessageId,
+                Name = receipt.Name,
+                RetailPlace = receipt.RetailPlace,
+                RetailPlaceAddress = receipt.RetailPlaceAddress,
+                AddedOn = receipt.IssuedAt.LocalDateTime,
+                Currency = receipt.Currency,
+                TotalSum = receipt.Total,
+                RawData = receipt.LegacyVerificationCode is { } legacyCode ? Encoding.UTF8.GetBytes(legacyCode) : null,
+                Items = new(receipt.Items.Select(item => new Item
                 {
-                    var photoObject = await botClient.GetInfoAndDownloadFileAsync(photoSize.FileId, ms);
-#pragma warning disable CA1416 // Проверка совместимости платформы
-                    var photo = Image.FromStream(ms);
-                    var bitmap = new Bitmap(photo);
-#pragma warning restore CA1416 // Проверка совместимости платформы
-                    var decode = new QrCode().Decode(bitmap);
-                    if (!alreadyReturned.Any(x => x == decode))
-                    {
-                        alreadyReturned.Add(decode);
-                        yield return decode;
-                    }
-                }
+                    Name = item.Name,
+                    Price = item.UnitPrice,
+                    Quantity = (double)item.Quantity,
+                    Sum = item.Total
+                }))
+            };
+
+            if (await purchasesService.AddReceipt(purchase, user.TelegramId, provider.Id, receipt.Id, cancellationToken) is null)
+            {
+                await ReplyAsync(bot, message, "Этот чек уже добавлен.", cancellationToken);
+                continue;
+            }
+
+            var result = new StringBuilder()
+                .AppendLine($"{settings.TelegramBot.PurchaseCreateEmoji} {user.Name} добавил(а) покупку [{receipt.Name}]")
+                .AppendLine($"{receipt.RetailPlace} / {receipt.RetailPlaceAddress}")
+                .AppendLine($"Итого: {receipt.Total:F2} {receipt.Currency}");
+            foreach (var item in receipt.Items)
+                result.AppendLine($"{settings.TelegramBot.ItemEmoji} {item.Name} × {item.Quantity} — {item.Total:F2} {receipt.Currency}");
+
+            await NotifyUsersAsync(bot, user, result.ToString(), cancellationToken);
+        }
+    }
+
+    private static async Task<string?> DecodePhotoAsync(
+        ITelegramBotClient bot, PhotoSize[] photos, CancellationToken cancellationToken)
+    {
+        var decoder = new QrCode();
+        foreach (var photo in photos.OrderByDescending(photo => (long)photo.Width * photo.Height))
+        {
+            using var stream = new MemoryStream();
+            await bot.GetInfoAndDownloadFile(photo.FileId, stream, cancellationToken);
+            stream.Position = 0;
+            try
+            {
+                using var bitmap = new Bitmap(stream);
+                if (decoder.Decode(bitmap)?.Trim() is { Length: > 0 } code)
+                    return code;
+            }
+            catch (ArgumentException ex)
+            {
+                CastarTelegramBotClient.LogError(ex);
             }
         }
+
+        return null;
     }
 }

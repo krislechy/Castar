@@ -11,8 +11,8 @@ namespace Castar.Services.Receipts.Models
         public int operationType { get; set; }
         public int sum { get; set; }
         public int documentId { get; set; }
-        public string fsId { get; set; }
-        public string fiscalSign { get; set; }
-        public string date { get; set; }
+        public string? fsId { get; set; }
+        public string? fiscalSign { get; set; }
+        public string? date { get; set; }
     }
 }

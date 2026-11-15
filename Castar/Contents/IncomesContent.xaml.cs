@@ -22,7 +22,6 @@ using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using System.Windows.Navigation;
 using System.Windows.Shapes;
-using Newtonsoft.Json.Linq;
 using SkiaSharp;
 using LiveChartsCore.SkiaSharpView.Painting;
 using Castar.Helpers;
@@ -101,7 +100,6 @@ namespace Castar.Contents
 
             InitializeComponent();
             InitializeContext();
-            UpdateIncomes(startDate, endDate);
             //InitializeChart();
         }
         private void InitializeContext()
@@ -182,22 +180,35 @@ namespace Castar.Contents
         //    context.XAxis = new() { new() { Labels = labels, } };
         //    context.SeriesIncomes = lineSeries.ToArray();
         //}
-        private void Incomes_Loaded(object sender, RoutedEventArgs e)
+        private async void Incomes_Loaded(object sender, RoutedEventArgs e)
         {
             if (context.Incomes == null)
-                UpdateIncomes(startDate, endDate);
+                await UpdateIncomes(startDate, endDate);
         }
-        private async void UpdateIncomes(DateTime startDate, DateTime endDate)
+
+        private int incomeRequest;
+
+        private async Task UpdateIncomes(DateTime startDate, DateTime endDate)
         {
-            await Dispatcher.InvokeAsync(async () =>
+            var request = ++incomeRequest;
+            context.IsLoading = true;
+            try
             {
-                context.IsLoading = true;
                 var incomes = await incomesService.GetEntitiesWithAllIncludes(startDate, endDate);
-                await Task.Delay(100);
-                context.Incomes = incomes;
-                //SetSeries();
-                context.IsLoading = false;
-            });
+                if (request == incomeRequest)
+                    context.Incomes = incomes;
+            }
+            catch (Exception error) when (error is System.Data.Common.DbException or ArgumentException or NotSupportedException)
+            {
+                if (request == incomeRequest)
+                    await PopupDialog.Show("Не удалось загрузить доходы. Проверьте подключение в настройках базы данных.",
+                        PopupDialog.TypeDialogEnum.Default);
+            }
+            finally
+            {
+                if (request == incomeRequest)
+                    context.IsLoading = false;
+            }
         }
         private async void IncomesListView_MouseDoubleClick(object sender, MouseButtonEventArgs e)
         {
@@ -284,11 +295,13 @@ namespace Castar.Contents
                 return new ValidatePopupDialog(false, sb.ToString().Trim());
             return new ValidatePopupDialog(true, null);
         }
-        private void SelectorRangeDates_DateRangeChanged(object sender, EventArgs e)
+        private async void SelectorRangeDates_DateRangeChanged(object sender, EventArgs e)
         {
+            if (!IsLoaded)
+                return;
             var args = (RangeDate)e;
             Trace.WriteLine($"Income: {args.StartDate} -  {args.EndDate}");
-            UpdateIncomes(args.StartDate, args.EndDate);
+            await UpdateIncomes(args.StartDate, args.EndDate);
         }
 
         private async void DeleteIncomeButton_Click(object sender, RoutedEventArgs e)

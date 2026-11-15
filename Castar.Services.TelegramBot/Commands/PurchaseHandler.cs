@@ -1,175 +1,92 @@
-﻿using Castar.BL;
-using Castar.DAL.Repositories.DataBase;
+using System.Text;
 using Castar.Domain.Models.DataBase;
 using Castar.Extensions;
-using Castar.Services.TelegramBot.Attributes;
-using System;
-using System.Collections.Generic;
-using System.Collections.ObjectModel;
-using System.Globalization;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
-using Telegram.Bot;
 using Telegram.Bot.Types;
-using Telegram.Bot.Types.ReplyMarkups;
+using BudgetUser = Castar.Domain.Models.DataBase.User;
 
-namespace Castar.Services.TelegramBot.Commands
+namespace Castar.Services.TelegramBot.Commands;
+
+public sealed partial class CommandHandler
 {
-    public partial class CommandHandler
+    private async Task<string?> SaveManualPurchaseAsync(
+        Message message, BudgetUser user, string[] lines, bool edited, CancellationToken cancellationToken)
     {
-        [BotCommandAttribute("Ручное добавление покупки", "[наименование товра] [сумма]")]
-        protected async Task<Message> Purchase(ITelegramBotClient botClient, Message message)
+        if (lines.Length == 0)
+            throw new FormatException("Формат покупки: [наименование товара] [сумма].");
+
+        var inputs = lines.Select(ParseItem).ToArray();
+        var existing = await purchasesService.GetManualPurchaseByMessageId(user.TelegramId, message.MessageId, cancellationToken);
+        if (existing is null)
         {
-            return await SendMessageAsync(botClient, message, async () =>
+            if (edited && inputs.Any(item => item.Sum < 0))
+                return null;
+
+            var purchase = new Purchase
             {
-                try
-                {
-                    var pur_messages = GetItemObjectsFromText(message);
-                    var messagesCount = pur_messages.Count();
-                    string result = default!;
-                    var needUpdates = (await purchasesService.GetEntityByMessageId(message.MessageId)).FirstOrDefault();
-                    if (needUpdates != default)
-                    {
-                        var probablyUpdateCount = needUpdates.Items.Count();
-                        var purchaseId = needUpdates.Id;
-                        if (messagesCount > probablyUpdateCount)
-                        {
-                            int count = 0;
-                            foreach (var s in pur_messages)
-                            {
-                                if (count < probablyUpdateCount)
-                                {
-                                    var el = needUpdates.Items.ElementAt(count);
-                                    var updatedItem = await UpdateItemLocal(el, s.name, s.sum);
-                                    el = updatedItem.item;
-                                    result += updatedItem.message;
-                                    count++;
-                                }
-                                else
-                                {
-                                    var createdItem = await CreateItemLocal(message, purchaseId, s.name, s.sum);
-                                    needUpdates.Items.Add(createdItem.item);
-                                    result += createdItem.message;
-                                }
-                            }
-                        }
-                        else if (messagesCount < probablyUpdateCount)
-                        {
-                            int count = 0;
-                            foreach (var s in pur_messages)
-                            {
-                                if (count < probablyUpdateCount)
-                                {
-                                    var el = needUpdates.Items.ElementAt(count);
-                                    var updatedItem = await UpdateItemLocal(el, s.name, s.sum);
-                                    el = updatedItem.item;
-                                    result += updatedItem.message;
-                                    count++;
-                                }
-                            }
-                            foreach (var s in needUpdates.Items.Skip(count))
-                            {
-                                result += await DeleteItem(needUpdates.Items, s, s.Sum, s.Name);
-                            }
-                        }
-                        else
-                        {
-                            int count = 0;
-                            if (pur_messages.Any(x => x.sum < 0))
-                            {
-                                await purchasesService.Delete(needUpdates.Id);
-                                return $"{settings.TelegramBot.PurchaseDeleteEmoji} %user% удалил(а) покупку [{needUpdates.Name}] - `{needUpdates.Items.Sum(c => c.Sum).ToCurrency()}`";
-                            }
-                            else
-                            {
-                                foreach (var s in pur_messages)
-                                {
-                                    var el = needUpdates.Items.ElementAt(count);
-                                    var updatedItem = await UpdateItemLocal(el, s.name, s.sum);
-                                    el = updatedItem.item;
-                                    result += updatedItem.message;
-                                    count++;
-                                }
-                            }
-                        }
-                        await purchasesService.Update(needUpdates);
-                        return result;
-                    }
-                    else
-                    {
-                        int count = 0;
-                        var purchase = await CreatePurchaseLocal(message, messagesCount, pur_messages.First().name);
-                        foreach (var s in pur_messages)
-                        {
-                            var createdItem = await CreateItemLocal(message, new Guid(), s.name, s.sum);
-                            purchase.Items.Add(createdItem.item);
-                            result += createdItem.message;
-                            count++;
-                        }
-                        await purchasesService.Add(purchase, message!.From!.Id);
-                        return result;
-                    }
-                }
-                catch (Exception ex)
-                {
-                    throw;
-                }
-            });
-        }
-        private IEnumerable<(string name, decimal sum)> GetItemObjectsFromText(Message message)
-        {
-            List<(string, decimal)> list = new List<(string, decimal)>();
-            var messages = message!.Text!.Split("\n");
-            foreach (var mes in messages)
+                MessageId = message.MessageId,
+                Name = inputs.Length == 1 ? inputs[0].Name : $"№{message.MessageId}"
+            };
+            var created = new StringBuilder();
+            foreach (var (name, sum) in inputs)
             {
-                bool isValid = false;
-                var _message = mes.RemoveMultipleSpaces();
-                var splitted = _message.Split(' ');
-                if (splitted.Length > 1)
-                {
-                    var sum = splitted.Last().Trim().ToDecimal();
-                    if (sum != null)
-                    {
-                        var name = String.Join(" ", splitted.SkipLast(1)).Trim();
-                        isValid = true;
-                        list.Add((name, sum.Value));
-                    }
-                }
-                if (!isValid)
-                    throw new Exception($"❗️Требуемый формат для покупок: [наименование товара] [сумма]");
+                purchase.Items.Add(NewManualItem(name, sum));
+                created.AppendLine($"{settings.TelegramBot.PurchaseCreateEmoji} {user.Name} добавил(а) товар [{name}] — {sum.ToCurrency()}");
             }
-            return list;
+
+            await purchasesService.Add(purchase, user.TelegramId, cancellationToken);
+            return created.ToString();
         }
-        private Task<(Item item, string message)> UpdateItemLocal(Item item, string name, decimal sum)
+
+        if (!edited)
+            return null;
+
+        if (inputs.SequenceEqual(existing.Items.Select(item => (item.Name, item.Price))))
+            return null;
+
+        if (existing.Items.Count == inputs.Length && inputs.Any(item => item.Sum < 0))
         {
-            item.Price = sum;
-            item.Sum = sum;
-            item.Name = name;
-            return Task.FromResult((item, $"{settings.TelegramBot.PurchaseUpdateEmoji} %user% обновил(а) товар [{name}] - `{sum.ToCurrency()}`\n"));
+            await purchasesService.Delete(existing.Id, cancellationToken);
+            return $"{settings.TelegramBot.PurchaseDeleteEmoji} {user.Name} удалил(а) покупку [{existing.Name}] — {existing.TotalSum.ToCurrency()}";
         }
-        private async Task<string> DeleteItem(ObservableCollection<Item> items,Item item, decimal sum, string name)
+
+        var originalItems = existing.Items.ToArray();
+        var result = new StringBuilder();
+        for (var index = 0; index < inputs.Length; index++)
         {
-            items.Remove(item);
-            await itemsService.Delete(item.Id);
-            return $"{settings.TelegramBot.PurchaseDeleteEmoji} %user% удалил(а) товар [{name}] - `{sum.ToCurrency()}`\n";
+            var (name, sum) = inputs[index];
+            if (index < originalItems.Length)
+            {
+                var item = originalItems[index];
+                item.Name = name;
+                item.Price = sum;
+                item.Sum = sum * (decimal)item.Quantity;
+                result.AppendLine($"{settings.TelegramBot.PurchaseUpdateEmoji} {user.Name} обновил(а) товар [{name}] — {item.Sum.ToCurrency()}");
+                continue;
+            }
+
+            existing.Items.Add(NewManualItem(name, sum));
+            result.AppendLine($"{settings.TelegramBot.PurchaseCreateEmoji} {user.Name} добавил(а) товар [{name}] — {sum.ToCurrency()}");
         }
-        private Task<(Item item, string message)> CreateItemLocal(Message message, Guid purchaseId, string name, decimal sum)
+
+        foreach (var item in originalItems.Skip(inputs.Length))
         {
-            var item = new Item();
-            item.Name = name;
-            item.Price = sum;
-            item.Quantity = 1;
-            item.Sum = sum;
-            item.PurchaseId = purchaseId;
-            return Task.FromResult((item, $"{settings.TelegramBot.PurchaseCreateEmoji} %user% добавил(а) товар [{item.Name}] - `{item.Sum.ToCurrency()}`\n"));
+            existing.Items.Remove(item);
+            result.AppendLine($"{settings.TelegramBot.PurchaseDeleteEmoji} {user.Name} удалил(а) товар [{item.Name}] — {item.Sum.ToCurrency()}");
         }
-        private Task<Purchase> CreatePurchaseLocal(Message message, int messagesCount, string name)
-        {
-            var purchase = new Purchase();
-            purchase.MessageId = message.MessageId;
-            purchase.Name = messagesCount == 1 ? name : "№" + message.MessageId.ToString();
-            return Task.FromResult(purchase);
-        }
+
+        await purchasesService.Update(existing, cancellationToken);
+        return result.ToString();
+    }
+
+    private static Item NewManualItem(string name, decimal sum) =>
+        new() { Name = name, Price = sum, Sum = sum, Quantity = 1 };
+
+    private static (string Name, decimal Sum) ParseItem(string line)
+    {
+        var splitAt = line.LastIndexOfAny([' ', '\t']);
+        if (splitAt > 0 && line[(splitAt + 1)..].ToDecimal() is { } sum)
+            return (line[..splitAt].TrimEnd(), sum);
+
+        throw new FormatException("Формат покупки: [наименование товара] [сумма].");
     }
 }

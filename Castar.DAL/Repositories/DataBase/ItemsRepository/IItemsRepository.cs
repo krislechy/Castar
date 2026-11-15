@@ -1,14 +1,9 @@
-﻿using Castar.Domain.Models.DataBase;
-using Microsoft.EntityFrameworkCore;
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
+using Castar.Domain.Models.DataBase;
 
 namespace Castar.DAL.Repositories.DataBase
 {
     public interface IItemsRepository : IBaseRepository<Item>
     {
+        Task<IReadOnlyList<Item>> List(DateTime start, DateTime finish, bool includeUser);
     }
 }

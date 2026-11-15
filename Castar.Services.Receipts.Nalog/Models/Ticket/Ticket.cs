@@ -8,6 +8,6 @@ namespace Castar.Services.Receipts.Models
 {
     public class _Ticket
     {
-        public Document document { get; set; }
+        public Document? document { get; set; }
     }
 }

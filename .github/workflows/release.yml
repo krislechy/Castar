@@ -1,0 +1,61 @@
+name: Castar Windows release
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: read
+
+jobs:
+  release:
+    runs-on: windows-2025
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+      - uses: actions/setup-dotnet@baa11fbfe1d6520db94683bd5c7a3818018e4309 # v5.1.0
+        with:
+          global-json-file: global.json
+      - name: Publish Castar
+        shell: pwsh
+        run: |
+          $version = dotnet msbuild Castar/Castar.csproj -getProperty:Version
+          if ($LASTEXITCODE -ne 0 -or $version -notmatch '^\d+\.\d+\.\d+$' -or $env:GITHUB_REF_NAME -ne "v$version") {
+            throw "The tag must match Castar.csproj Version."
+          }
+          "CASTAR_VERSION=$version" >> $env:GITHUB_ENV
+          dotnet publish Castar/Castar.csproj -c Release -r win-x64 --self-contained -o "${{ runner.temp }}/castar-publish"
+      - name: Build and verify the installer
+        shell: pwsh
+        run: |
+          $compilerSetup = Join-Path $env:RUNNER_TEMP 'innosetup-6.7.3.exe'
+          $compilerPath = Join-Path $env:RUNNER_TEMP 'inno'
+          $publishPath = Join-Path $env:RUNNER_TEMP 'castar-publish'
+          $installPath = Join-Path $env:RUNNER_TEMP 'castar-smoke'
+          Invoke-WebRequest 'https://github.com/jrsoftware/issrc/releases/download/is-6_7_3/innosetup-6.7.3.exe' -OutFile $compilerSetup
+          if ((Get-FileHash $compilerSetup).Hash -ne '9c73c3bae7ed48d44112a0f48e66742c00090bdb5bef71d9d3c056c66e97b732') {
+            throw "Unexpected Inno Setup checksum."
+          }
+          $setup = Start-Process -FilePath $compilerSetup -ArgumentList "/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /DIR=`"$compilerPath`"" -WindowStyle Hidden -Wait -PassThru
+          if ($setup.ExitCode -ne 0) { throw "Inno Setup installation failed." }
+          & (Join-Path $compilerPath 'ISCC.exe') "/DCastarVersion=$env:CASTAR_VERSION" "/DPublishDir=$publishPath" "/O$env:RUNNER_TEMP" installer/Castar.iss
+          if ($LASTEXITCODE -ne 0) { throw "Installer compilation failed." }
+          $installer = Join-Path $env:RUNNER_TEMP 'Castar-Setup-win-x64.exe'
+          $setup = Start-Process -FilePath $installer -ArgumentList "/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /DIR=`"$installPath`"" -WindowStyle Hidden -Wait -PassThru
+          if ($setup.ExitCode -ne 0 -or !(Test-Path (Join-Path $installPath 'Castar.exe'))) {
+            throw "Castar installer smoke test failed."
+          }
+          $fileVersion = (Get-Item (Join-Path $installPath 'Castar.exe')).VersionInfo.ProductVersion
+          if ($fileVersion.Split('+')[0] -ne $env:CASTAR_VERSION) {
+            throw "Installed executable version does not match the release."
+          }
+      - name: Publish the GitHub release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $installer = Join-Path $env:RUNNER_TEMP 'Castar-Setup-win-x64.exe'
+          gh release create $env:GITHUB_REF_NAME $installer --verify-tag --latest --title "Castar $env:CASTAR_VERSION" --notes-file installer/ReleaseNotes.md

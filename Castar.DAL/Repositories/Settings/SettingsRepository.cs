@@ -27,23 +27,29 @@ namespace Castar.DAL.Repositories.Settings
 
         public void Save(SettingsModel settings)
         {
-            using (var stream = new FileStream(pathToSettings, FileMode.Create))
+            var temporaryPath = pathToSettings + "." + Guid.NewGuid().ToString("N") + ".tmp";
+            try
             {
-                xmlSerializer.Serialize(stream, EncryptValues(settings,true));
+                Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(pathToSettings))!);
+                using (var stream = new FileStream(temporaryPath, FileMode.CreateNew))
+                    xmlSerializer.Serialize(stream, EncryptValues(settings, true));
+                File.Move(temporaryPath, pathToSettings, overwrite: true);
+            }
+            finally
+            {
+                File.Delete(temporaryPath);
             }
         }
 
         public SettingsModel Load()
         {
-            SettingsModel? settings = null;
-            using (var stream = new FileStream(pathToSettings, FileMode.OpenOrCreate))
-            {
-                if (stream.Length != 0)
-                    settings = xmlSerializer.Deserialize(stream) as SettingsModel;
-            }
-            if (settings == null)
-                return new();
-            else return EncryptValues(settings, false);
+            if (!File.Exists(pathToSettings))
+                return new SettingsModel();
+
+            using var stream = File.OpenRead(pathToSettings);
+            return stream.Length == 0
+                ? new SettingsModel()
+                : EncryptValues((SettingsModel)xmlSerializer.Deserialize(stream)!, false);
         }
 
         public IEnumerable<PropertyInfo> FindEncryptionProperties()

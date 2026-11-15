@@ -1,65 +1,38 @@
-﻿using Castar.Domain.Models.DataBase;
+using Castar.Domain.Models.DataBase;
 using Microsoft.EntityFrameworkCore;
-using System;
-using System.Collections.Generic;
-using System.Collections.ObjectModel;
-using System.ComponentModel.DataAnnotations.Schema;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
-using System.Windows;
 
 namespace Castar.DAL.Repositories.DataBase
 {
-    public abstract class BaseRepository<T> : DbContext where T : class
+    public abstract class BaseRepository<T>(IDbContextFactory<CastarDbContext> contextFactory) : IBaseRepository<T>
+        where T : BaseDbModel
     {
-        private string connectionString;
-        public BaseRepository(string connectionString)
-        {
-            this.connectionString = connectionString;
-        }
+        protected IDbContextFactory<CastarDbContext> ContextFactory { get; } = contextFactory;
 
-        protected DbSet<T> table { get; set; }
-        protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
+        public virtual async Task<T> Add(T entity, CancellationToken cancellationToken = default)
         {
-            optionsBuilder.UseSqlServer(connectionString, (e) =>
-            {
-                e.EnableRetryOnFailure();
-            });
-        }
-        public virtual async Task<int> Save() => await base.SaveChangesAsync();
-        public virtual async Task<T> Add(T entity)
-        {
-            base.ChangeTracker.Clear();
-            await base.AddAsync(entity);
-            await base.SaveChangesAsync();
+            await using var db = await ContextFactory.CreateDbContextAsync(cancellationToken);
+            db.Entry(entity).State = EntityState.Added;
+            await db.SaveChangesAsync(cancellationToken);
             return entity;
         }
-        public virtual async void Reload(T entity)
-        {
-            await base.Entry(entity).ReloadAsync();
-        }
-        public virtual async Task<bool> Delete(Guid Id)
-        {
-            base.ChangeTracker.Clear();
-            var found=await FindAsync(typeof(T), Id);
-            if (found != null)
-            {
-                base.Remove(found);
-                await base.SaveChangesAsync();
-                return true;
-            }
-            return false;
-        }
-        public virtual async Task Update(T entity)
-        {
-            base.ChangeTracker.Clear();
-            //base.Entry<T>(entity).State = EntityState.Modified;
-            base.Update(entity);
-            await base.SaveChangesAsync();
-        }
-        public virtual async Task<T?> Find(Guid Id)=> await FindAsync<T>(Id);
 
-        public abstract DbSet<T> GetEntity();
+        public virtual async Task<bool> Delete(Guid id, CancellationToken cancellationToken = default)
+        {
+            await using var db = await ContextFactory.CreateDbContextAsync(cancellationToken);
+            return await db.Set<T>().Where(x => x.Id == id).ExecuteDeleteAsync(cancellationToken) > 0;
+        }
+
+        public async Task<T?> Find(Guid id, CancellationToken cancellationToken = default)
+        {
+            await using var db = await ContextFactory.CreateDbContextAsync(cancellationToken);
+            return await db.Set<T>().AsNoTracking().SingleOrDefaultAsync(x => x.Id == id, cancellationToken);
+        }
+
+        public virtual async Task Update(T entity, CancellationToken cancellationToken = default)
+        {
+            await using var db = await ContextFactory.CreateDbContextAsync(cancellationToken);
+            db.Entry(entity).State = EntityState.Modified;
+            await db.SaveChangesAsync(cancellationToken);
+        }
     }
 }

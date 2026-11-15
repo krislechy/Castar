@@ -15,9 +15,10 @@ namespace Castar.Domain.Models.SettingsModel
     public class SettingsModel
     {
         public Systems Systems { get; set; } = new();
-        public DataBase DataBase { get; set; } = new();
+        public DataBase DataBase { get; set; } = new() { Engine = DatabaseEngine.Sqlite };
         public TelegramBot TelegramBot { get; set; } = new();
         public NalogFNS NalogFNS { get; set; } = new();
+        public ReceiptSettings Receipts { get; set; } = new();
         public void SetHandlersEvents(Action handler)
         {
             //var properties = typeof(SettingsModel).GetProperties(System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance);
@@ -35,23 +36,39 @@ namespace Castar.Domain.Models.SettingsModel
             //}
             this.Systems.PropertyChanged += (q, e) => handler();
             this.DataBase.PropertyChanged += (q, e) => handler();
-            this.TelegramBot.PropertyChanged += (q, e) => handler();
+            this.TelegramBot.PropertyChanged += (_, e) =>
+            {
+                if (e.PropertyName != nameof(TelegramBot.Status))
+                    handler();
+            };
             this.NalogFNS.PropertyChanged += (q, e) => handler();
+            Receipts.PropertyChanged += (_, _) => handler();
         }
         public SettingsModel Copy()
         {
-            var xmlSerializer = new XmlSerializer(typeof(SettingsModel));
-            using (var streamWrite = new MemoryStream())
-            {
-                xmlSerializer.Serialize(streamWrite, this);
+            var serializer = new XmlSerializer(typeof(SettingsModel));
+            using var stream = new MemoryStream();
+            serializer.Serialize(stream, this);
+            stream.Position = 0;
+            return (SettingsModel)serializer.Deserialize(stream)!;
+        }
+    }
 
-                using (var streamRead = new MemoryStream(streamWrite.GetBuffer()))
-                {
-                    if (streamRead.Length != 0)
-                        return xmlSerializer.Deserialize(streamRead) as SettingsModel;
-                }
-            }
-            return null;
+    public sealed class ReceiptSettings : BaseSettingsModel
+    {
+        private bool isEnabled = true;
+        private string provider = "serbia";
+
+        public bool IsEnabled
+        {
+            get => isEnabled;
+            set => SetField(ref isEnabled, value);
+        }
+
+        public string Provider
+        {
+            get => provider;
+            set => SetField(ref provider, value);
         }
     }
     [Serializable]
@@ -87,10 +104,28 @@ namespace Castar.Domain.Models.SettingsModel
             set => SetField(ref isEnableNalogFNS, value);
         }
     }
+    public enum DatabaseEngine
+    {
+        SqlServer,
+        Sqlite
+    }
+
     [Serializable]
     [XmlSerializerAssembly("Castar.Domain.XmlSerializers")]
     public sealed class DataBase : BaseSettingsModel
     {
+        private DatabaseEngine engine;
+        public DatabaseEngine Engine
+        {
+            get => engine;
+            set => SetField(ref engine, value);
+        }
+        private string sqlitePath = "";
+        public string SqlitePath
+        {
+            get => sqlitePath;
+            set => SetField(ref sqlitePath, value);
+        }
         [XmlIgnore]
         private string dataSource = @".\SQLEXPRESS";
         public string DataSource
@@ -104,6 +139,18 @@ namespace Castar.Domain.Models.SettingsModel
         {
             get => this.pathToDataBase;
             set => SetField(ref pathToDataBase, value);
+        }
+        private string databaseName = "";
+        public string DatabaseName
+        {
+            get => databaseName;
+            set => SetField(ref databaseName, value);
+        }
+        private bool trustServerCertificate;
+        public bool TrustServerCertificate
+        {
+            get => trustServerCertificate;
+            set => SetField(ref trustServerCertificate, value);
         }
         [XmlIgnore]
         private string login = "";

@@ -1,37 +1,19 @@
-﻿using System;
-using System.Collections.Generic;
-using System.ComponentModel.DataAnnotations;
-using System.ComponentModel.DataAnnotations.Schema;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
-
 namespace Castar.Domain.Models.DataBase
 {
-
-    [Table("Incomes")]
     public class Income : BaseDbModel, IIncome
     {
-        [DatabaseGenerated(DatabaseGeneratedOption.None)]
-        public User User { get; set; }
+        private long? _messageId;
 
-
-        [DatabaseGenerated(DatabaseGeneratedOption.None), Required]
+        public User User { get; set; } = null!;
         public Guid UserId { get; set; }
+        public long MessageId
+        {
+            get => _messageId.GetValueOrDefault();
+            set => _messageId = value == 0 ? null : value;
+        }
 
-        [DatabaseGenerated(DatabaseGeneratedOption.None)]
-        public long MessageId { get; set; }
-
-
-        [DatabaseGenerated(DatabaseGeneratedOption.None), Required]
         public decimal Sum { get; set; }
-
-
-        [DatabaseGenerated(DatabaseGeneratedOption.None), Required]
-        public string Source { get; set; }
-
-
-        [DatabaseGenerated(DatabaseGeneratedOption.None), Required]
+        public string Source { get; set; } = string.Empty;
         public DateTime AddedOn { get; set; }
     }
 }

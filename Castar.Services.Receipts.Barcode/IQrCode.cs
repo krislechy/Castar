@@ -1,11 +1,8 @@
-﻿using System.Drawing;
-using ZXing;
-using ZXing.Common;
+using System.Drawing;
 
-namespace Castar.Services.Receipts.Barcode
+namespace Castar.Services.Receipts.Barcode;
+
+public interface IQrCode
 {
-    public interface IQrCode
-    {
-        string Decode(System.Drawing.Bitmap bitmap);
-    }
+    string? Decode(Bitmap bitmap);
 }

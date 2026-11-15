@@ -8,7 +8,7 @@ namespace Castar.Services.Receipts.Models
 {
     public sealed class Item
     {
-        public string name { get; set; }
+        public string? name { get; set; }
         public int nds { get; set; }
         public int ndsSum { get; set; }
         public int paymentType { get; set; }

@@ -8,11 +8,11 @@ namespace Castar.Services.Receipts.Models
 {
     public sealed class Authenticate
     {
-        public string sessionId { get; set; }
-        public string refresh_token { get; set; }
-        public string phone { get; set; }
-        public string name { get; set; }
-        public string email { get; set; }
-        public string surname { get; set; }
+        public string? sessionId { get; set; }
+        public string? refresh_token { get; set; }
+        public string? phone { get; set; }
+        public string? name { get; set; }
+        public string? email { get; set; }
+        public string? surname { get; set; }
     }
 }

@@ -1,35 +1,24 @@
-﻿using Castar.Domain.Models.DataBase;
+using Castar.Domain.Models.DataBase;
 using Microsoft.EntityFrameworkCore;
-using System;
-using System.Collections.Generic;
-using System.Collections.ObjectModel;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 
 namespace Castar.DAL.Repositories.DataBase
 {
-    public class UsersRepository : BaseRepository<User>, IUsersRepository
+    public sealed class UsersRepository(IDbContextFactory<CastarDbContext> contextFactory)
+        : BaseRepository<User>(contextFactory), IUsersRepository
     {
-        public UsersRepository(string connectionString):base(connectionString)
+        public async Task<IReadOnlyList<User>> List(bool hasTelegramId = false, CancellationToken cancellationToken = default)
         {
-
+            await using var db = await ContextFactory.CreateDbContextAsync(cancellationToken);
+            var users = db.Users.AsNoTracking();
+            if (hasTelegramId)
+                users = users.Where(x => x.TelegramId != 0);
+            return await users.ToListAsync(cancellationToken);
         }
 
-        public override DbSet<User> GetEntity()
+        public async Task<User?> FindByTelegramId(long telegramId, CancellationToken cancellationToken = default)
         {
-            //if(!base.table.Any())
-            //{
-            //    return default!;
-            //}
-            return base.table;
-        }
-        public async Task<User?> FindByTelegramId(long telegramId)
-        {
-            var entities = table.Where(x => x.TelegramId == telegramId);
-            if ((await entities.CountAsync()) > 0)
-                return await entities.FirstAsync();
-            return null;
+            await using var db = await ContextFactory.CreateDbContextAsync(cancellationToken);
+            return await db.Users.AsNoTracking().FirstOrDefaultAsync(x => x.TelegramId == telegramId, cancellationToken);
         }
     }
 }

@@ -1,10 +1,5 @@
-﻿using Castar.Domain.Models.DataBase;
-using System;
-using System.Collections.Generic;
 using System.Collections.ObjectModel;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
+using Castar.Domain.Models.DataBase;
 
 namespace Castar.BL
 {
@@ -13,10 +8,13 @@ namespace Castar.BL
         Task<ObservableCollection<Purchase>> GetEntities(DateTime start, DateTime finish);
         Task<ObservableCollection<Purchase>> GetEntitiesWithAllIncludes(DateTime start, DateTime finish);
         Task<Purchase?> GetPurchaseById(Guid id);
-        Task<bool> IsExistTheSame(byte[] query);
-        Task<Purchase> Add(Purchase purchase, long telegramUserId);
-        Task<IEnumerable<Purchase>> GetEntityByMessageId(long messageId);
-        Task Update(Purchase income);
-        Task Delete(Guid id);
+        Task<bool> IsExistTheSame(byte[]? query);
+        Task<Purchase> Add(Purchase purchase, long telegramUserId, CancellationToken cancellationToken = default);
+        Task<Purchase?> AddReceipt(Purchase purchase, long telegramUserId, string provider, string receiptId,
+            CancellationToken cancellationToken = default);
+        Task<Purchase?> GetManualPurchaseByMessageId(
+            long telegramUserId, long messageId, CancellationToken cancellationToken = default);
+        Task Update(Purchase purchase, CancellationToken cancellationToken = default);
+        Task Delete(Guid id, CancellationToken cancellationToken = default);
     }
 }

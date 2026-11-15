@@ -8,7 +8,7 @@
         xmlns:sys="clr-namespace:System;assembly=mscorlib"
         xmlns:menuCommands="clr-namespace:Castar.Commands"
         mc:Ignorable="d"
-        Icon="pack://application:,,,/logo.ico"
+        Icon="pack://application:,,,/Castar;component/logo.ico"
         Padding="0"
         Margin="0"
         WindowStyle="SingleBorderWindow"

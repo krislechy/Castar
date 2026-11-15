@@ -1,11 +1,5 @@
-﻿using Castar.Domain.Models.DataBase;
-using System;
-using System.Collections.Generic;
 using System.Collections.ObjectModel;
-using System.Linq;
-using System.Runtime.InteropServices;
-using System.Text;
-using System.Threading.Tasks;
+using Castar.Domain.Models.DataBase;
 
 namespace Castar.BL
 {
@@ -13,9 +7,12 @@ namespace Castar.BL
     {
         Task<ObservableCollection<Income>> GetEntities(DateTime start, DateTime finish);
         Task<ObservableCollection<Income>> GetEntitiesWithAllIncludes(DateTime start, DateTime finish);
-        Task<Income> Add(Income income, long telegramUserId, [Optional] User user);
+        Task<Income> Add(Income income, long telegramUserId, User? user = null);
         Task<bool> Delete(Guid id);
         Task Update(Income income);
-        Task<IEnumerable<Income>> GetEntityByMessageId(long messageId);
+        Task<IReadOnlyList<Income>> GetEntityByMessageId(
+            long telegramUserId, long messageId, CancellationToken cancellationToken = default);
+        Task SaveMessageIncomes(long telegramUserId, long messageId, IReadOnlyList<Income> incomes,
+            CancellationToken cancellationToken = default);
     }
 }

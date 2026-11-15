@@ -21,14 +21,13 @@ namespace Castar.TrayNotify.Windows
         }
         public void Show()
         {
-            notifyIcon ??= new NotifyIcon()
+            if (notifyIcon is null)
             {
-                Icon = icon,
-                Text = name,
-            };
+                notifyIcon = new NotifyIcon { Icon = icon, Text = name };
+                notifyIcon.Click += onClick;
+            }
 
             notifyIcon.Visible = true;
-            notifyIcon.Click += onClick;
         }
         public void Dispose()
         {

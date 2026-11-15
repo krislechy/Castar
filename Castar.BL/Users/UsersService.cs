@@ -1,51 +1,23 @@
-﻿using Castar.DAL.Repositories.DataBase;
-using Castar.Domain.Models.DataBase;
-using System;
-using System.Collections.Generic;
 using System.Collections.ObjectModel;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
-using Microsoft.EntityFrameworkCore;
+using Castar.DAL.Repositories.DataBase;
+using Castar.Domain.Models.DataBase;
 
 namespace Castar.BL
 {
-    public class UsersService : IUsersService
+    public sealed class UsersService(IUsersRepository usersRepository) : IUsersService
     {
-        private readonly IUsersRepository usersRepository;
-        public UsersService(IUsersRepository usersRepository)
-        {
-            this.usersRepository = usersRepository;
-        }
+        public async Task<ObservableCollection<User>> GetEntities() => new(await usersRepository.List());
 
-        public async Task<ObservableCollection<User>> GetEntities() =>
-             new ObservableCollection<User>(await usersRepository.GetEntity()
-                .ToListAsync());
+        public Task Add(User user) => usersRepository.Add(user);
 
-        public async void Add(User user)=>
-            await usersRepository.Add(user);
+        public async Task<IEnumerable<User>> GetAllUsersWithTelegramId(CancellationToken cancellationToken = default) =>
+            await usersRepository.List(hasTelegramId: true, cancellationToken);
 
-        public async Task<IEnumerable<User>> GetAllUsersWithTelegramId()
-        {
-            return await usersRepository
-                .GetEntity()
-                .Where(x => x.TelegramId != default)
-                .ToListAsync();
-        }
-        public async Task<User?> GetUserByTelegramId(long id)
-        {
-            return await usersRepository
-                .GetEntity()
-                .Where(x => x.TelegramId == id)
-                .FirstOrDefaultAsync();
-        }
-        public async void Update(User user)
-        {
-            await usersRepository.Update(user);
-        }
-        public async Task<bool> Delete(Guid id)
-        {
-            return await usersRepository.Delete(id);
-        }
+        public Task<User?> GetUserByTelegramId(long id, CancellationToken cancellationToken = default) =>
+            usersRepository.FindByTelegramId(id, cancellationToken);
+
+        public Task Update(User user) => usersRepository.Update(user);
+
+        public Task<bool> Delete(Guid id) => usersRepository.Delete(id);
     }
 }

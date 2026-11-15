@@ -1,146 +1,71 @@
-﻿using Castar.BL;
-using Castar.DAL.Repositories.DataBase;
+using System.Text;
 using Castar.Domain.Models.DataBase;
 using Castar.Extensions;
-using Castar.Services.TelegramBot.Attributes;
-using System;
-using System.Collections.Generic;
-using System.Globalization;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
-using Telegram.Bot;
 using Telegram.Bot.Types;
-using Telegram.Bot.Types.ReplyMarkups;
+using BudgetUser = Castar.Domain.Models.DataBase.User;
 
-namespace Castar.Services.TelegramBot.Commands
+namespace Castar.Services.TelegramBot.Commands;
+
+public sealed partial class CommandHandler
 {
-    public partial class CommandHandler
+    private async Task<string?> SaveIncomesAsync(
+        Message message, BudgetUser user, string[] lines, bool edited, CancellationToken cancellationToken)
     {
-        [BotCommandAttribute("/income", "добавить начисление")]
-        protected async Task<Message> Income(ITelegramBotClient botClient, Message message)
+        var inputs = lines.Select(ParseIncome).ToArray();
+        var existing = await incomesService.GetEntityByMessageId(user.TelegramId, message.MessageId, cancellationToken);
+        if (!edited && existing.Count > 0)
+            return null;
+
+        if (edited && inputs.Where(input => input.Sum >= 0).SequenceEqual(
+                existing.Select(income => (income.Source, income.Sum))))
+            return null;
+
+        var incomes = new List<Income>(inputs.Length);
+        var result = new StringBuilder();
+        for (var index = 0; index < inputs.Length; index++)
         {
-            return await SendMessageAsync(botClient, message, async () =>
+            var (source, sum) = inputs[index];
+            if (index >= existing.Count)
             {
-                try
-                {
-                    var needUpdates = await incomesService.GetEntityByMessageId(message.MessageId);
-                    if (needUpdates.Any())
-                    {
-                        string result = default!;
-                        var messagesCount = GetIncomeObjectsFromText(message).Count();
-                        var probablyUpdateCount = needUpdates.Count();
-                        if (messagesCount > probablyUpdateCount)
-                        {
-                            int count = 0;
-                            foreach (var s in GetIncomeObjectsFromText(message))
-                            {
-                                if (count < probablyUpdateCount)
-                                {
-                                    var el = needUpdates.ElementAt(count);
-                                    result += await UpdateIncome(el, s.sum, s.source);
-                                    count++;
-                                }
-                                else
-                                {
-                                    result += await CreateIncome(message, s.sum, s.source);
-                                }
-                            }
-                        }
-                        else if (messagesCount < probablyUpdateCount)
-                        {
-                            int count = 0;
-                            foreach (var s in GetIncomeObjectsFromText(message))
-                            {
-                                if (count < probablyUpdateCount)
-                                {
-                                    var el = needUpdates.ElementAt(count);
-                                    result += await UpdateIncome(el,s.sum,s.source);
-                                    count++;
-                                }
-                            }
-                            foreach (var s in needUpdates.Skip(count))
-                            {
-                                result += await DeleteIncome(s.Id,s.Sum,s.Source);
-                            }
-                        }
-                        else
-                        {
-                            int count = 0;
-                            foreach (var s in GetIncomeObjectsFromText(message))
-                            {
-                                var el = needUpdates.ElementAt(count);
-                                result += await UpdateIncome(el, s.sum, s.source);
-                                count++;
-                            }
-                        }
-                        return result;
-                    }
-                    else
-                    {
-                        string result = default!;
-                        foreach (var s in GetIncomeObjectsFromText(message))
-                        {
-                            result += await CreateIncome(message, s.sum, s.source);
-                        }
-                        return result;
-                    }
-                }
-                catch (Exception ex)
-                {
-                    throw;
-                }
-            });
-        }
-        private IEnumerable<(string source, decimal sum)> GetIncomeObjectsFromText(Message message)
-        {
-            var messages = message.Text.Split("\n");
-            foreach (var mes in messages)
-            {
-                bool isValid = false;
-                var _message = mes.RemoveMultipleSpaces();
-                var splitted = _message.Split(' ');
-                if (splitted.Length == 3)
-                {
-                    var sum = splitted[2].Trim().ToDecimal();
-                    if (sum != null)
-                    {
-                        var comment = splitted[1].Trim();
-                        isValid = true;
-                        yield return (comment, sum.Value);
-                    }
-                }
-                if (!isValid)
-                    throw new Exception($"❗️Требуемый формат: /income [источник] [сумма]");
+                if (edited && sum < 0)
+                    continue;
+
+                incomes.Add(new Income { Source = source, Sum = sum });
+                result.AppendLine($"{settings.TelegramBot.IncomeCreateEmoji} {user.Name} добавил(а) начисление: {sum.ToCurrency()}, {source}");
+                continue;
             }
-        }
-        private async Task<string> UpdateIncome(Income income, decimal sum, string source)
-        {
+
+            var income = existing[index];
             if (sum < 0)
             {
-                return await DeleteIncome(income.Id, income.Sum, income.Source);
+                result.AppendLine(IncomeDeleted(user, income));
+                continue;
             }
-            else
-            {
-                income.Sum = sum;
-                income.Source = source;
-                await incomesService!.Update(income);
-                return $"{settings.TelegramBot.IncomeUpdateEmoji} %user% обновил(-а) начисление:\n`{sum.ToCurrency()}, {source}`\n";
-            }
-        }
-        private async Task<string> DeleteIncome(Guid id, decimal sum, string source)
-        {
-            await incomesService!.Delete(id);
-            return $"{settings.TelegramBot.IncomeDeleteEmoji} %user% удалил(-а) начисление:\n`{sum.ToCurrency()}, {source}`\n";
-        }
-        private async Task<string> CreateIncome(Message message, decimal sum, string source)
-        {
-            IIncome income = new Income();
-            income.Sum = sum;
+
             income.Source = source;
-            income.MessageId = message.MessageId;
-            await incomesService!.Add((Income)income, message!.From!.Id);
-            return $"{settings.TelegramBot.IncomeCreateEmoji} %user% добавил(-а) начисление:\n`{sum.ToCurrency()}, {source}`\n";
+            income.Sum = sum;
+            incomes.Add(income);
+            result.AppendLine($"{settings.TelegramBot.IncomeUpdateEmoji} {user.Name} обновил(а) начисление: {sum.ToCurrency()}, {source}");
         }
+
+        foreach (var income in existing.Skip(inputs.Length))
+            result.AppendLine(IncomeDeleted(user, income));
+
+        await incomesService.SaveMessageIncomes(user.TelegramId, message.MessageId, incomes, cancellationToken);
+        return result.ToString();
+    }
+
+    private string IncomeDeleted(BudgetUser user, Income income) =>
+        $"{settings.TelegramBot.IncomeDeleteEmoji} {user.Name} удалил(а) начисление: {income.Sum.ToCurrency()}, {income.Source}";
+
+    private static (string Source, decimal Sum) ParseIncome(string line)
+    {
+        var parts = line.Split([' ', '\t'], StringSplitOptions.RemoveEmptyEntries);
+        if (parts.Length == 3
+            && parts[0].Equals("/income", StringComparison.OrdinalIgnoreCase)
+            && parts[2].ToDecimal() is { } sum)
+            return (parts[1], sum);
+
+        throw new FormatException("Формат начисления: /income [источник] [сумма].");
     }
 }

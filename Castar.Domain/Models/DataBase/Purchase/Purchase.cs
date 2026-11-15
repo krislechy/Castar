@@ -1,51 +1,37 @@
-﻿using System;
-using System.Collections.Generic;
 using System.Collections.ObjectModel;
-using System.ComponentModel.DataAnnotations;
-using System.ComponentModel.DataAnnotations.Schema;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 
 namespace Castar.Domain.Models.DataBase
 {
-    [Table("Purchases")]
     public class Purchase : BaseDbModel, IPurchase
     {
-        [DatabaseGenerated(DatabaseGeneratedOption.Computed)]
-        public User User { get; private set; }
+        private long? _messageId;
 
-
-        [DatabaseGenerated(DatabaseGeneratedOption.None), Required]
+        public User User { get; private set; } = null!;
         public Guid UserId { get; set; }
-
-
-        [DatabaseGenerated(DatabaseGeneratedOption.None), Required]
-        public string Name { get; set; }
-
-
-        [DatabaseGenerated(DatabaseGeneratedOption.Computed)]
+        public string Name { get; set; } = string.Empty;
         public decimal TotalSum { get; set; }
+        public long MessageId
+        {
+            get => _messageId.GetValueOrDefault();
+            set => _messageId = value == 0 ? null : value;
+        }
 
-        [DatabaseGenerated(DatabaseGeneratedOption.None)]
-        public long MessageId { get; set; }
-
-
-        [DatabaseGenerated(DatabaseGeneratedOption.None)]
         public string? RetailPlace { get; set; }
-
-        [DatabaseGenerated(DatabaseGeneratedOption.None)]
         public string? RetailPlaceAddress { get; set; }
-
-        [DatabaseGenerated(DatabaseGeneratedOption.None)]
         public byte[]? RawData { get; set; }
-
-
-        [DatabaseGenerated(DatabaseGeneratedOption.None)]
-        public ObservableCollection<Item> Items { get; set; } = new ObservableCollection<Item>();
-
-
-        [DatabaseGenerated(DatabaseGeneratedOption.None), Required]
+        public string? Currency { get; set; }
+        public ObservableCollection<Item> Items { get; set; } = new();
         public DateTime? AddedOn { get; set; }
+
+        public void RecalculateManualTotals()
+        {
+            foreach (var item in Items)
+            {
+                item.Price = decimal.Round(item.Price, 2, MidpointRounding.AwayFromZero);
+                item.Sum = decimal.Round(item.Price * (decimal)item.Quantity, 2, MidpointRounding.AwayFromZero);
+            }
+
+            TotalSum = Items.Sum(x => x.Sum);
+        }
     }
 }

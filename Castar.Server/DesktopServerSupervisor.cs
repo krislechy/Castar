@@ -56,7 +56,7 @@ internal sealed class DesktopServerSupervisor
         RejectLink(control);
         health = ReadHealthUri();
         using var self = Process.GetCurrentProcess();
-        owner = FormattableString.Invariant($"{self.Id}:{self.StartTime.ToUniversalTime().Ticks}");
+        owner = FormattableString.Invariant($"{self.Id}:{DesktopServerChild.StartMarker(self)}");
     }
 
     internal static async Task<int> RunAsync(string root, CancellationToken cancellationToken = default)

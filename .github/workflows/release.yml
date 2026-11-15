@@ -124,6 +124,7 @@ jobs:
 
   server:
     strategy:
+      fail-fast: false
       matrix:
         include:
           - os: windows-2025

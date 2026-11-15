@@ -44,6 +44,24 @@ internal sealed class DesktopServerChild : IDisposable
 
     internal static string StopMarker(string directory, Guid instance) => Path.Combine(directory, $"stop-{instance:N}");
 
+    internal static long StartMarker(Process process)
+    {
+        if (!OperatingSystem.IsLinux())
+            return process.StartTime.ToUniversalTime().Ticks;
+
+        var stat = File.ReadAllText(FormattableString.Invariant($"/proc/{process.Id}/stat"));
+        var closingParenthesis = stat.LastIndexOf(')');
+        if (closingParenthesis >= 0)
+        {
+            // Linux reports starttime as field 22. The first field after comm is field 3.
+            var fields = stat[(closingParenthesis + 1)..].Split(' ', StringSplitOptions.RemoveEmptyEntries);
+            if (fields.Length > 19 && long.TryParse(fields[19], out var ticks))
+                return ticks;
+        }
+
+        throw new InvalidDataException("Cannot read the supervisor start time from procfs.");
+    }
+
     internal void Watch(IHostApplicationLifetime application) => watch = WatchAsync(application);
 
     private async Task WatchAsync(IHostApplicationLifetime application)
@@ -72,9 +90,10 @@ internal sealed class DesktopServerChild : IDisposable
         try
         {
             using var supervisor = Process.GetProcessById(id);
-            return !supervisor.HasExited && supervisor.StartTime.ToUniversalTime().Ticks == ticks;
+            return !supervisor.HasExited && StartMarker(supervisor) == ticks;
         }
-        catch (Exception failure) when (failure is ArgumentException or InvalidOperationException or System.ComponentModel.Win32Exception)
+        catch (Exception failure) when (failure is ArgumentException or InvalidOperationException or IOException
+            or UnauthorizedAccessException or System.ComponentModel.Win32Exception)
         {
             return false;
         }

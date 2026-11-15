@@ -9,7 +9,7 @@
              xmlns:lvc="clr-namespace:LiveChartsCore.SkiaSharpView.WPF;assembly=LiveChartsCore.SkiaSharpView.WPF"
                 xmlns:ctx="clr-namespace:LiveChartsCore.Kernel;assembly=LiveChartsCore"
              mc:Ignorable="d" 
-             Name="Доходы" Loaded="Incomes_Loaded"
+             Name="Доходы" Loaded="Incomes_Loaded" Unloaded="Incomes_Unloaded"
              d:DesignHeight="450" d:DesignWidth="800">
     <UserControl.Resources>
         <converters:TotalSumGroupConverter x:Key="TotalSumGroupConverter"/>
@@ -38,6 +38,7 @@
                        Title="{Binding Name,RelativeSource={RelativeSource Mode=FindAncestor,AncestorType=UserControl,AncestorLevel=1}}"/>
         <Grid Grid.Row="1">
             <Grid.RowDefinitions>
+                <RowDefinition Height="auto"/>
                 <RowDefinition Height="auto"/>
                 <RowDefinition/>
             </Grid.RowDefinitions>
@@ -120,10 +121,8 @@
                     </DataTemplate>
                 </lvc:CartesianChart.TooltipTemplate>
             </lvc:CartesianChart>-->
-            <ListView x:Name="IncomesListView" Grid.Row="1"
-                      VirtualizingPanel.IsVirtualizingWhenGrouping="True"
-                      VirtualizingPanel.VirtualizationMode="Recycling"
-                      VirtualizingPanel.IsVirtualizing="True"
+            <TextBlock Grid.Row="1" Text="{Binding Status}" Style="{StaticResource ViewStatus}"/>
+            <ListView x:Name="IncomesListView" Grid.Row="2" Style="{StaticResource BudgetList}"
                       ItemsSource="{Binding Source={StaticResource IncomesSRC},UpdateSourceTrigger=PropertyChanged,Mode=OneWay}">
                 <ListView.ContextMenu>
                     <ContextMenu>
@@ -162,9 +161,7 @@
                     </GroupStyle>
                 </ListView.GroupStyle>
                 <ListView.ItemContainerStyle>
-                    <Style TargetType="{x:Type ListViewItem}" BasedOn="{StaticResource {x:Type ListViewItem}}">
-                        <Setter Property="Margin" Value="-5,0.5,0,0.5"/>
-                        <Setter Property="Border.CornerRadius" Value="5"/>
+                    <Style TargetType="{x:Type ListViewItem}" BasedOn="{StaticResource BudgetListItem}">
                         <EventSetter Event="MouseDoubleClick" Handler="IncomesListView_MouseDoubleClick"/>
                     </Style>
                 </ListView.ItemContainerStyle>

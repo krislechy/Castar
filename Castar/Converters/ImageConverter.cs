@@ -1,33 +1,37 @@
-﻿using Castar.Extensions;
 using System;
-using System.Collections.Generic;
-using System.Drawing;
-using System.Drawing.Imaging;
 using System.Globalization;
 using System.IO;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
+using System.Windows;
 using System.Windows.Data;
 using System.Windows.Media.Imaging;
 
-namespace Castar.Converters
+namespace Castar.Converters;
+
+public sealed class ImageBytesToBitmapConverter : IValueConverter
 {
-    public class DrawingImageToBitmapConverter : IValueConverter
+    public object? Convert(object value, Type targetType, object parameter, CultureInfo culture)
     {
-        public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
+        if (value is not byte[] { Length: > 0 } bytes)
+            return null;
+
+        try
         {
-            if (value is not null && value is System.Drawing.Image)
-            {
-                return ((System.Drawing.Image)value).ToBitmapImage();
-            }
+            using var stream = new MemoryStream(bytes, writable: false);
+            var image = new BitmapImage();
+            image.BeginInit();
+            image.CacheOption = BitmapCacheOption.OnLoad;
+            image.DecodePixelWidth = 160;
+            image.StreamSource = stream;
+            image.EndInit();
+            image.Freeze();
+            return image;
+        }
+        catch (Exception error) when (error is IOException or NotSupportedException or FileFormatException)
+        {
             return null;
         }
-
-
-        public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)
-        {
-            throw new NotImplementedException();
-        }
     }
+
+    public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture) =>
+        Binding.DoNothing;
 }

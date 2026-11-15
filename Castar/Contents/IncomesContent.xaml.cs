@@ -1,342 +1,197 @@
-﻿using Castar.BL;
 using Castar.Compontents;
 using Castar.Domain.Models.DataBase;
+using Castar.Domain.Models.SettingsModel;
 using Castar.Extensions;
-using LiveChartsCore.SkiaSharpView;
-using LiveChartsCore;
+using Castar.ServerConnection;
 using System;
-using System.Collections.Generic;
 using System.Collections.ObjectModel;
-using System.ComponentModel;
-using System.Diagnostics;
-using System.Globalization;
 using System.Linq;
-using System.Text;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
-using System.Windows.Data;
-using System.Windows.Documents;
 using System.Windows.Input;
 using System.Windows.Media;
-using System.Windows.Media.Imaging;
-using System.Windows.Navigation;
-using System.Windows.Shapes;
-using SkiaSharp;
-using LiveChartsCore.SkiaSharpView.Painting;
-using Castar.Helpers;
+using System.Windows.Threading;
 
-namespace Castar.Contents
+namespace Castar.Contents;
+
+public partial class IncomesContent : UserControl
 {
-    /// <summary>
-    /// Логика взаимодействия для IncomesContent.xaml
-    /// </summary>
-    public partial class IncomesContent : UserControl
+    private readonly CastarServerClient server;
+    private readonly IncomesContext context = new();
+    private readonly DispatcherTimer polling;
+    private int incomeRequest;
+    private RangeDate Range => SelectorRangeDatesElement.RangeDate;
+
+    public IncomesContent(CastarServerClient server)
     {
-        private sealed class IncomesContext : INotifyPropertyChanged
+        this.server = server;
+        server.ConnectionChanged += (_, _) =>
         {
-            private bool isLoading = false;
-            public bool IsLoading
-            {
-                get => this.isLoading;
-                set
-                {
-                    this.isLoading = value;
-                    OnPropertyChanged(nameof(IsLoading));
-                }
-            }
-            public decimal TotalSum { get => Incomes == null ? 0 : Incomes.Sum(x => x.Sum); }
+            incomeRequest++;
+            context.IsLoading = false;
+            context.Incomes = [];
+            context.Status = "";
+        };
+        polling = new DispatcherTimer { Interval = TimeSpan.FromSeconds(15) };
+        polling.Tick += async (_, _) =>
+        {
+            if (IsVisible && !context.IsLoading)
+                await RefreshAsync();
+        };
+        DataContext = context;
+        InitializeComponent();
+    }
 
-            private ObservableCollection<Income> incomes;
-            public ObservableCollection<Income> Incomes
-            {
-                get => incomes;
-                set
-                {
-                    incomes = value;
-                    OnPropertyChanged(nameof(Incomes));
-                    OnPropertyChanged(nameof(TotalSum));
-                }
-            }
-            //private ISeries[]? seriesIncomes;
-            //public ISeries[]? SeriesIncomes
-            //{
-            //    get => seriesIncomes;
-            //    set
-            //    {
-            //        seriesIncomes = value;
-            //        OnPropertyChanged(nameof(SeriesIncomes));
-            //    }
-            //}
-            //private ObservableCollection<Axis>? xAxis;
-            //public ObservableCollection<Axis>? XAxis
-            //{
-            //    get => xAxis;
-            //    set
-            //    {
-            //        xAxis = value;
-            //        OnPropertyChanged(nameof(xAxis));
-            //    }
-            //}
-            public event PropertyChangedEventHandler? PropertyChanged;
-            public void OnPropertyChanged(string propertyName) =>
-            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
-        }
-        private IncomesContext context
-        {
-            get
-            {
-                return ((IncomesContext)this.DataContext);
-            }
-        }
-        private DateTime startDate { get => SelectorRangeDatesElement.RangeDate.StartDate; }
-        private DateTime endDate { get => SelectorRangeDatesElement.RangeDate.EndDate; }
-        private readonly IIncomesService incomesService;
-        private readonly IUsersService usersService;
-        public IncomesContent(IIncomesService incomesService, IUsersService usersService)
-        {
-            this.incomesService = incomesService;
-            this.usersService = usersService;
+    private async void Incomes_Loaded(object sender, RoutedEventArgs e)
+    {
+        polling.Start();
+        await RefreshAsync();
+    }
 
-            InitializeComponent();
-            InitializeContext();
-            //InitializeChart();
-        }
-        private void InitializeContext()
-        {
-            var dc = new IncomesContext();
-            this.DataContext = dc;
-        }
-        //private void InitializeChart()
-        //{
-        //    LiveCharts.Configure(config =>
-        //    {
-        //        config.HasMap<Income>((income, point) =>
-        //        {
-        //            point.PrimaryValue = (float)income.Sum;
-        //            point.SecondaryValue = point.Context.Index;
-        //        });
-        //    });
-        //}
+    private void Incomes_Unloaded(object sender, RoutedEventArgs e)
+    {
+        polling.Stop();
+        incomeRequest++;
+    }
 
-        //private void SetSeries()
-        //{
-        //    List<LineSeries<Income>> lineSeries = new List<LineSeries<Income>>();
-        //    var lineUsers = context
-        //        .Incomes
-        //        .GroupBy(x => x.User);
-        //    var labels = new List<string>();
-        //    foreach (var user in lineUsers)
-        //    {
-        //        var data = user
-        //            .GroupBy(x => new DateTime(x.AddedOn.Year, x.AddedOn.Month, 1))
-        //            .Select(x => new Income()
-        //            {
-        //                Sum = x.Sum(y => y.Sum),
-        //                User = user.Key,
-        //                AddedOn = x.Key,
-        //            })
-        //            .ToList();
+    private Task RefreshAsync() => RefreshAsync(Range.StartDate, Range.EndDate);
 
-        //        //add missed months
-        //        foreach (var date in DateTimeHelper.EachMonth(SelectorRangeDatesElement.RangeDate.StartDate, SelectorRangeDatesElement.RangeDate.EndDate))
-        //        {
-        //            if (!data.Any(x => x.AddedOn == date))
-        //                data.Add(new Income()
-        //                {
-        //                    Sum=0,
-        //                    User=user.Key,
-        //                    AddedOn=date,
-        //                });
-        //        }
-        //        var orderedData = data.OrderBy(x => x.AddedOn);
-
-        //        if (!labels.Any())
-        //            foreach (var date in orderedData)
-        //                labels.Add(date.AddedOn.ToString("MMMM yyyy"));
-
-        //        lineSeries.Add(new LineSeries<Income>()
-        //        {
-        //            Values = orderedData,
-        //            Name = user.Key.Name,
-        //            DataLabelsPaint = new SolidColorPaint(SKColors.LightGreen),
-        //            DataLabelsFormatter = (point) => $"{point.Model.Sum.ToCurrency()}",
-        //            Stroke = new SolidColorPaint(new SKColor(user.Key.Color.R, user.Key.Color.G, user.Key.Color.B, user.Key.Color.A))
-        //            {
-        //                StrokeThickness = 3
-        //            },
-        //            Fill = new SolidColorPaint(new SKColor(user.Key.Color.R, user.Key.Color.G, user.Key.Color.B, 0x10)),
-        //            GeometryFill = new SolidColorPaint(new SKColor(user.Key.Color.R, user.Key.Color.G, user.Key.Color.B, 0x90))
-        //            {
-        //                StrokeThickness = 5
-        //            },
-        //            GeometryStroke = new SolidColorPaint(new SKColor(user.Key.Color.R, user.Key.Color.G, user.Key.Color.B, 0x70))
-        //            {
-        //                StrokeThickness = 10
-        //            },
-        //            GeometrySize = 10,
-        //        });
-        //    }
-        //    context.XAxis = new() { new() { Labels = labels, } };
-        //    context.SeriesIncomes = lineSeries.ToArray();
-        //}
-        private async void Incomes_Loaded(object sender, RoutedEventArgs e)
+    private async Task RefreshAsync(DateTime start, DateTime finish)
+    {
+        var request = ++incomeRequest;
+        context.IsLoading = true;
+        try
         {
-            if (context.Incomes == null)
-                await UpdateIncomes(startDate, endDate);
-        }
-
-        private int incomeRequest;
-
-        private async Task UpdateIncomes(DateTime startDate, DateTime endDate)
-        {
-            var request = ++incomeRequest;
-            context.IsLoading = true;
-            try
-            {
-                var incomes = await incomesService.GetEntitiesWithAllIncludes(startDate, endDate);
-                if (request == incomeRequest)
-                    context.Incomes = incomes;
-            }
-            catch (Exception error) when (error is System.Data.Common.DbException or ArgumentException or NotSupportedException)
-            {
-                if (request == incomeRequest)
-                    await PopupDialog.Show("Не удалось загрузить доходы. Проверьте подключение в настройках базы данных.",
-                        PopupDialog.TypeDialogEnum.Default);
-            }
-            finally
-            {
-                if (request == incomeRequest)
-                    context.IsLoading = false;
-            }
-        }
-        private async void IncomesListView_MouseDoubleClick(object sender, MouseButtonEventArgs e)
-        {
-            var obj = (ListViewItem)sender;
-            if (obj.IsSelected)
-            {
-                var selected = (Income)obj.DataContext;
-                var incomeInfo = new IncomePanel();
-                incomeInfo.Users = await usersService.GetEntities();
-                var updatedIncome = selected.Clone<Income>();
-                incomeInfo.DataContext = updatedIncome;
-                var result = await PopupDialog.Show(incomeInfo, PopupDialog.TypeDialogEnum.Confirm, (o) =>
-                {
-                    o.Background = (SolidColorBrush)Application.Current.FindResource("Main.Background.lvl3");
-                    o.SuccessButton.SuccessConfirmButtonText = "Сохранить";
-                    o.AllowMissClick = false;
-                    o.Title = "Редактирование";
-                    return o;
-                }, () => Validation(updatedIncome));
-                if (result != null && result.Value)
-                {
-                    if (updatedIncome.Source == null) updatedIncome.Source = "NONAME";
-                    await incomesService.Update(updatedIncome);
-                    var source = context.Incomes;
-                    for (int i = 0; i < source.Count(); i++)
-                    {
-                        if (source[i].Id == updatedIncome.Id)
-                        {
-                            source[i] = updatedIncome;
-                            break;
-                        }
-                    }
-
-                    UpdateListViewContext(IncomesListView);
-                }
-            }
-        }
-        private void UpdateListViewContext(ListView obj)
-        {
-            var lcv = (ListCollectionView)obj.ItemsSource;
-            lcv.Refresh();
-            context.OnPropertyChanged(nameof(context.TotalSum));
-        }
-        private async void AddNewIncomeButton_Click(object sender, RoutedEventArgs e)
-        {
-            var newIncomePanel = new IncomePanel();
-            var newIncome = new Income()
-            {
-                AddedOn = DateTime.Now
-            };
-            newIncomePanel.DataContext = newIncome;
-            newIncomePanel.Users = await usersService.GetEntities();
-            var result = await PopupDialog.Show(newIncomePanel, PopupDialog.TypeDialogEnum.Confirm, (o) =>
-            {
-                o.Background = (SolidColorBrush)Application.Current.FindResource("Main.Background.lvl3");
-                o.SuccessButton.SuccessConfirmButtonText = "Добавить";
-                o.AllowMissClick = false;
-                o.Title = "Новый";
-                return o;
-            }, () => Validation(newIncome));
-            if (result != null && result.Value)
-            {
-                if (newIncome.Source == null) newIncome.Source = "NONAME";
-                var selectedUser = newIncome.User;
-                var addedIncome = await incomesService.Add(newIncome, newIncome.User.TelegramId, newIncome.User);
-                var source = context.Incomes;
-                source.Add(addedIncome);
-
-                UpdateListViewContext(IncomesListView);
-            }
-        }
-        private ValidatePopupDialog Validation(Income newIncome)
-        {
-            StringBuilder sb = new StringBuilder();
-            if (newIncome.User == null)
-                sb.AppendLine("- Выберите пользователя");
-            if (String.IsNullOrEmpty(newIncome.Source?.Trim()))
-                sb.AppendLine("- Укажите источник дохода");
-            if (newIncome.Sum == 0)
-                sb.AppendLine("- Укажите сумму дохода");
-            if (newIncome.AddedOn == default)
-                sb.AppendLine("- Укажите дату дохода");
-            if (sb.Length > 0)
-                return new ValidatePopupDialog(false, sb.ToString().Trim());
-            return new ValidatePopupDialog(true, null);
-        }
-        private async void SelectorRangeDates_DateRangeChanged(object sender, EventArgs e)
-        {
-            if (!IsLoaded)
+            var rows = await server.GetIncomesAsync(start, finish);
+            if (request != incomeRequest)
                 return;
-            var args = (RangeDate)e;
-            Trace.WriteLine($"Income: {args.StartDate} -  {args.EndDate}");
-            await UpdateIncomes(args.StartDate, args.EndDate);
-        }
 
-        private async void DeleteIncomeButton_Click(object sender, RoutedEventArgs e)
-        {
-            var menuItem = (MenuItem)sender;
-            var contextMenu = (ContextMenu)menuItem.Parent;
-            var listView = (ListView)contextMenu.PlacementTarget;
-            var selectedItems = listView.SelectedItems.Cast<Income>();
-            if (selectedItems != null && selectedItems.Count()>0)
+            if (context.Incomes.Count != rows.Count || !context.Incomes.Zip(rows).All(pair =>
+                pair.First.Id == pair.Second.Id && pair.First.Sum == pair.Second.Sum
+                && pair.First.AddedOn == pair.Second.AddedOn && pair.First.Source == pair.Second.Source
+                && pair.First.UserId == pair.Second.UserId && pair.First.User.Name == pair.Second.User.Name
+                && pair.First.User.Sex == pair.Second.User.Sex
+                && pair.First.User.ColorRaw.AsSpan().SequenceEqual(pair.Second.User.ColorRaw)
+                && pair.First.User.ImageRaw.AsSpan().SequenceEqual(pair.Second.User.ImageRaw)))
             {
-                var str = String.Join(";\n", selectedItems.Select(x=>$"{x.Source} - {x.Sum.ToCurrency()}"));
-                var result = await PopupDialog.Show($"Вы уверены, что хотите удалить начисление:\n{str} ?",
-                    PopupDialog.TypeDialogEnum.Confirm, (o) =>
-                    {
-                        o.SuccessButton.SuccessConfirmButtonText = "Удалить";
-                        o.SuccessButton.SuccessConfirmButtonForeground = Brushes.OrangeRed;
-                        o.AllowMissClick = true;
-                        return o;
-                    });
-                if (result != null && result.Value)
-                {
-                    foreach (var item in selectedItems.ToList())
-                    {
-                        var resultDeleted = await incomesService.Delete(item.Id);
-                        if (resultDeleted)
-                        {
-                            context.Incomes.Remove(item);
-                        }
-                        else
-                        {
-                            await PopupDialog.Show($"Не удалось удалить начисление: {item.Source} - {item.Sum.ToCurrency()}", PopupDialog.TypeDialogEnum.Default);
-                        }
-                    }
-                    UpdateListViewContext(listView);
-                }
+                context.Incomes = rows;
+            }
+            context.Status = "";
+        }
+        catch (Exception error) when (CastarServerClient.IsConnectionError(error))
+        {
+            if (request == incomeRequest)
+                context.Status = CastarServerClient.DescribeError(error);
+        }
+        finally
+        {
+            if (request == incomeRequest)
+                context.IsLoading = false;
+        }
+    }
+
+    private async void SelectorRangeDates_DateRangeChanged(object sender, EventArgs e)
+    {
+        if (IsLoaded && e is RangeDate range)
+            await RefreshAsync(range.StartDate, range.EndDate);
+    }
+
+    private async void IncomesListView_MouseDoubleClick(object sender, MouseButtonEventArgs e)
+    {
+        if (sender is ListViewItem { IsSelected: true, DataContext: Income income })
+            await EditIncomeAsync(income.Clone<Income>());
+    }
+
+    private async void AddNewIncomeButton_Click(object sender, RoutedEventArgs e) =>
+        await EditIncomeAsync(new Income { AddedOn = DateTime.Now });
+
+    private async Task EditIncomeAsync(Income income)
+    {
+        try
+        {
+            var isNew = income.Id == Guid.Empty;
+            var editor = new IncomePanel { DataContext = income, Users = await server.GetUsersAsync() };
+            var accepted = await PopupDialog.Show(editor, PopupDialog.TypeDialogEnum.Confirm, options =>
+            {
+                options.Background = (SolidColorBrush)Application.Current.FindResource("Main.Background.lvl3");
+                options.SuccessButton.SuccessConfirmButtonText = isNew ? "Добавить" : "Сохранить";
+                options.AllowMissClick = false;
+                options.Title = isNew ? "Новый доход" : "Редактирование дохода";
+                return options;
+            }, () => ValidateIncome(income));
+            if (accepted != true)
+                return;
+
+            if (isNew)
+                await server.AddIncomeAsync(income);
+            else
+                await server.UpdateIncomeAsync(income);
+            await RefreshAsync();
+        }
+        catch (Exception error) when (CastarServerClient.IsConnectionError(error))
+        {
+            await PopupDialog.Show(CastarServerClient.DescribeError(error), PopupDialog.TypeDialogEnum.Default);
+        }
+    }
+
+    private static ValidatePopupDialog ValidateIncome(Income income)
+    {
+        if (income.User is null)
+            return new ValidatePopupDialog(false, "Выберите пользователя.");
+        if (string.IsNullOrWhiteSpace(income.Source))
+            return new ValidatePopupDialog(false, "Укажите источник дохода.");
+        if (income.Sum == 0 || income.AddedOn == default)
+            return new ValidatePopupDialog(false, "Укажите сумму и дату дохода.");
+        return new ValidatePopupDialog(true, null);
+    }
+
+    private async void DeleteIncomeButton_Click(object sender, RoutedEventArgs e)
+    {
+        var menu = (ContextMenu)((MenuItem)sender).Parent;
+        var rows = ((ListView)menu.PlacementTarget).SelectedItems.Cast<Income>().ToArray();
+        if (rows.Length == 0)
+            return;
+
+        var description = string.Join("\n", rows.Select(income => $"{income.Source} — {income.Sum.ToCurrency()}"));
+        var accepted = await PopupDialog.Show($"Удалить начисления?\n{description}", PopupDialog.TypeDialogEnum.Confirm,
+            options =>
+            {
+                options.SuccessButton.SuccessConfirmButtonText = "Удалить";
+                options.SuccessButton.SuccessConfirmButtonForeground = Brushes.OrangeRed;
+                return options;
+            });
+        if (accepted != true)
+            return;
+
+        try
+        {
+            foreach (var income in rows)
+                await server.DeleteIncomeAsync(income.Id);
+        }
+        catch (Exception error) when (CastarServerClient.IsConnectionError(error))
+        {
+            await PopupDialog.Show(CastarServerClient.DescribeError(error), PopupDialog.TypeDialogEnum.Default);
+        }
+        await RefreshAsync();
+    }
+
+    private sealed class IncomesContext : BaseSettingsModel
+    {
+        private bool isLoading;
+        private string status = "";
+        private ObservableCollection<Income> incomes = [];
+
+        public bool IsLoading { get => isLoading; set => SetField(ref isLoading, value); }
+        public string Status { get => status; set => SetField(ref status, value); }
+        public decimal TotalSum => Incomes.Sum(item => item.Sum);
+        public ObservableCollection<Income> Incomes
+        {
+            get => incomes;
+            set
+            {
+                if (SetField(ref incomes, value))
+                    OnPropertyChanged(nameof(TotalSum));
             }
         }
     }

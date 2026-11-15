@@ -22,6 +22,8 @@
                 <ResourceDictionary Source="pack://application:,,,/Castar;component/Styles/Tooltip.xaml"/>
                 <ResourceDictionary Source="pack://application:,,,/Castar;component/Styles/Separator.xaml"/>
                 <ResourceDictionary Source="pack://application:,,,/Castar;component/Styles/ListView.xaml"/>
+                <ResourceDictionary Source="pack://application:,,,/Castar;component/Styles/BudgetLists.xaml"/>
+                <ResourceDictionary Source="pack://application:,,,/Castar;component/Styles/FormControls.xaml"/>
                 <ResourceDictionary Source="pack://application:,,,/Castar;component/Styles/RadioButton.xaml"/>
                 <ResourceDictionary Source="pack://application:,,,/Castar;component/Styles/ScrollViewer.xaml"/>
                 <ResourceDictionary Source="pack://application:,,,/Castar;component/Styles/ProgressBar.xaml"/>

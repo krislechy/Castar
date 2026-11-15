@@ -1,4 +1,4 @@
-﻿
+
 Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio Version 17
 VisualStudioVersion = 17.0.31919.166
@@ -26,6 +26,10 @@ EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Castar.Services.Receipts.Nalog", "Castar.Services.Receipts.Nalog\Castar.Services.Receipts.Nalog.csproj", "{4CE0088A-E2DB-4221-8B5B-53F6EDB26168}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Castar.Services.Receipts.Barcode", "Castar.Services.Receipts.Barcode\Castar.Services.Receipts.Barcode.csproj", "{40B88F0C-E147-4601-919D-C43B38AA2CCF}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Castar.Api", "Castar.Api\Castar.Api.csproj", "{BBCF2A3B-1381-4CED-8D14-3FA99ED4E6EB}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Castar.Server", "Castar.Server\Castar.Server.csproj", "{AA9D295C-5590-411D-904E-0802205CAD38}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -81,6 +85,14 @@ Global
 		{40B88F0C-E147-4601-919D-C43B38AA2CCF}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{40B88F0C-E147-4601-919D-C43B38AA2CCF}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{40B88F0C-E147-4601-919D-C43B38AA2CCF}.Release|Any CPU.Build.0 = Release|Any CPU
+		{BBCF2A3B-1381-4CED-8D14-3FA99ED4E6EB}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{BBCF2A3B-1381-4CED-8D14-3FA99ED4E6EB}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{BBCF2A3B-1381-4CED-8D14-3FA99ED4E6EB}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{BBCF2A3B-1381-4CED-8D14-3FA99ED4E6EB}.Release|Any CPU.Build.0 = Release|Any CPU
+		{AA9D295C-5590-411D-904E-0802205CAD38}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{AA9D295C-5590-411D-904E-0802205CAD38}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{AA9D295C-5590-411D-904E-0802205CAD38}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{AA9D295C-5590-411D-904E-0802205CAD38}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

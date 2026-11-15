@@ -11,11 +11,11 @@
     <PackageVersion Include="Microsoft.EntityFrameworkCore.Sqlite" Version="11.0.0" />
     <PackageVersion Include="Microsoft.Extensions.DependencyInjection" Version="11.0.0" />
     <PackageVersion Include="SkiaSharp.HarfBuzz" Version="4.156.1" />
+    <PackageVersion Include="SkiaSharp" Version="4.156.1" />
+    <PackageVersion Include="SkiaSharp.NativeAssets.Linux.NoDependencies" Version="4.156.1" />
     <PackageVersion Include="SkiaSharp.Views.WPF" Version="4.156.1" />
-    <PackageVersion Include="System.Drawing.Common" Version="11.0.0" />
-    <PackageVersion Include="System.Management" Version="11.0.0" />
     <PackageVersion Include="Telegram.Bot" Version="22.10.4" />
-    <PackageVersion Include="ZXing.Net" Version="0.16.11" />
+    <PackageVersion Include="ZXingCpp" Version="0.5.3" />
   </ItemGroup>
 
   <ItemGroup>

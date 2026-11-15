@@ -2,6 +2,7 @@
 using Microsoft.Win32;
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
@@ -97,12 +98,23 @@ namespace Castar.Compontents
             var result = folderDialog.ShowDialog(Application.Current.MainWindow);
             if (result.HasValue && result.Value == true)
             {
-                var file = folderDialog.FileName;
-                var image = System.Drawing.Image.FromFile(file);
-                var dc = ((User)(this.DataContext));
-                    dc.Image = image;
-                this.DataContext = null;
-                this.DataContext = dc;
+                try
+                {
+                    var file = new FileInfo(folderDialog.FileName);
+                    if (file.Length > 1024 * 1024)
+                    {
+                        MessageBox.Show("Выберите изображение размером до 1 МБ.", "Castar", MessageBoxButton.OK);
+                        return;
+                    }
+                    var user = (User)DataContext;
+                    user.ImageRaw = File.ReadAllBytes(file.FullName);
+                    DataContext = null;
+                    DataContext = user;
+                }
+                catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+                {
+                    MessageBox.Show("Не удалось открыть изображение.", "Castar", MessageBoxButton.OK);
+                }
             }
         }
     }

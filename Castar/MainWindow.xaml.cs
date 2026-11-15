@@ -1,5 +1,4 @@
-﻿using Castar.BL;
-using Castar.BL.Settings;
+using Castar.Settings;
 using Castar.Commands;
 using Castar.Compontents;
 using Castar.Contents;
@@ -33,13 +32,18 @@ namespace Castar
     {
         private readonly SettingsContent settingsContent;
         private readonly IncomesContent incomesContent;
-        private readonly ISettingsService settingsService;
-        public MainWindow(SettingsContent settingsContent,ISettingsService settingsService,IncomesContent incomesContent)
+        private readonly PurchasesContent purchasesContent;
+        private readonly ClientSettings settings;
+        public MainWindow(SettingsContent settingsContent, ClientSettings settings, IncomesContent incomesContent,
+            PurchasesContent purchasesContent)
         {
             this.settingsContent = settingsContent;
-            this.settingsService = settingsService;
+            this.settings = settings;
             this.incomesContent = incomesContent;
+            this.purchasesContent = purchasesContent;
             InitializeComponent();
+            if (settings.ApiKey.Length == 0)
+                MainContent.Content = settingsContent;
         }
 
         #region TopControls
@@ -93,7 +97,7 @@ namespace Castar
         }
         private async void TryClose()
         {
-            if (settingsService.Get().Systems.IsHideInTray)
+            if (settings.IsHideInTray)
             {
                 this.Hide();
             }
@@ -145,7 +149,7 @@ namespace Castar
                 {
                     case ("Purchases"):
                         {
-                            Trace.WriteLine("purhcases");
+                            MainContent.Content = purchasesContent;
                             break;
                         }
                     case ("Incomes"):

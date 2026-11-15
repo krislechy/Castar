@@ -9,7 +9,7 @@
              d:DesignHeight="450" d:DesignWidth="800">
     <UserControl.Resources>
         <converters:DrawingColorToSolidColorBrushConverter x:Key="DrawingColorToSolidColorBrushConverter"/>
-        <converters:DrawingImageToBitmapConverter x:Key="DrawingImageToBitmapConverter"/>
+        <converters:ImageBytesToBitmapConverter x:Key="ImageBytesToBitmapConverter"/>
         <converters:SexConverter x:Key="SexConverter"/>
         <converters:HEXConverter x:Key="HEXConverter"/>
     </UserControl.Resources>
@@ -40,7 +40,7 @@
                         Width="{Binding SizeImage,RelativeSource={RelativeSource AncestorType=UserControl}}"
                         CornerRadius="200" 
                         Height="{Binding Width,RelativeSource={RelativeSource Mode=Self}}" BorderThickness="1"/>
-                    <Image Source="{Binding Image,Mode=OneWay,Converter={StaticResource DrawingImageToBitmapConverter}}" 
+                    <Image Source="{Binding ImageRaw,Mode=OneWay,Converter={StaticResource ImageBytesToBitmapConverter}}"
                        Width="{Binding ActualWidth,ElementName=Mask}"
                        Height="{Binding ActualHeight,ElementName=Mask}" Stretch="UniformToFill" 
                        RenderOptions.BitmapScalingMode="HighQuality" Panel.ZIndex="1"/>
@@ -184,7 +184,7 @@
                         Width="{Binding SizeImage,RelativeSource={RelativeSource AncestorType=UserControl}}"
                         CornerRadius="200" 
                         Height="{Binding Width,RelativeSource={RelativeSource Mode=Self}}" BorderThickness="1"/>
-                            <Image Source="{Binding Image,Mode=OneWay,Converter={StaticResource DrawingImageToBitmapConverter}}" 
+                            <Image Source="{Binding ImageRaw,Mode=OneWay,Converter={StaticResource ImageBytesToBitmapConverter}}"
                        Width="{Binding ActualWidth,ElementName=MaskEdit}"
                        Height="{Binding ActualHeight,ElementName=MaskEdit}" Stretch="UniformToFill" 
                        RenderOptions.BitmapScalingMode="HighQuality" Panel.ZIndex="1"/>

@@ -4,7 +4,7 @@
     <OutputType>WinExe</OutputType>
     <TargetFramework>net11.0-windows10.0.19041.0</TargetFramework>
     <RootNamespace>Castar</RootNamespace>
-    <Version>0.1.0</Version>
+    <Version>0.2.0</Version>
     <Nullable>enable</Nullable>
     <UseWPF>true</UseWPF>
     <Copyright>krislechy</Copyright>
@@ -20,23 +20,18 @@
     <PackageReference Include="LiveChartsCore.SkiaSharpView.WPF" />
     <PackageReference Include="SkiaSharp.Views.WPF" />
     <PackageReference Include="SkiaSharp.HarfBuzz" />
-    <PackageReference Include="System.Management" />
+    <PackageReference Include="System.Security.Cryptography.ProtectedData" />
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\Castar.BL\Castar.BL.csproj" />
-    <ProjectReference Include="..\Castar.DAL\Castar.DAL.csproj" />
+    <ProjectReference Include="..\Castar.Api\Castar.Api.csproj" />
+    <ProjectReference Include="..\Castar.Domain\Castar.Domain.csproj" />
     <ProjectReference Include="..\Castar.Logger\Castar.Logger.csproj" />
-    <ProjectReference Include="..\Castar.Services.Receipts.Barcode\Castar.Services.Receipts.Barcode.csproj" />
-    <ProjectReference Include="..\Castar.Services.Receipts.Nalog\Castar.Services.Receipts.Nalog.csproj" />
-    <ProjectReference Include="..\Castar.Services.TelegramBot\Castar.Services.TelegramBot.csproj" />
     <ProjectReference Include="..\Castar.TrayNotify.Windows\Castar.TrayNotify.Windows.csproj" />
   </ItemGroup>
 
   <ItemGroup>
     <Resource Include="logo.ico" />
-    <None Include="..\DataBase\UpgradeCastar.sql" Link="DataBase\UpgradeCastar.sql"
-          CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
   <ItemGroup>

@@ -82,6 +82,7 @@
                     <Grid Grid.Column="0">
                         <StackPanel x:Name="MenuToggleButtons" Grid.Row="0" Margin="0">
                             <ToggleButton Style="{DynamicResource Menu.ToggleButton}" Content="{DynamicResource Svg.Menu.Purchases}"
+                                          ToolTip="Расходы" AutomationProperties.Name="Расходы"
                                           Command="{x:Static menuCommands:MenuSelector.MenuSelect}" CommandParameter="Purchases"/>
                             <ToggleButton Style="{DynamicResource Menu.ToggleButton}" Content="{DynamicResource Svg.Menu.Incomes}" 
                                           Command="{x:Static menuCommands:MenuSelector.MenuSelect}" CommandParameter="Incomes"/>

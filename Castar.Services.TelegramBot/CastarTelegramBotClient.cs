@@ -1,7 +1,6 @@
 using System.ComponentModel;
 using System.Diagnostics;
 using System.Threading.Channels;
-using Castar.BL.Settings;
 using Castar.Domain.Models.SettingsModel;
 using Castar.Services.TelegramBot.Commands;
 using Microsoft.Extensions.DependencyInjection;
@@ -19,18 +18,16 @@ public sealed class CastarTelegramBotClient : ICastarTelegramBotClient
 
     private readonly SettingsModel settings;
     private readonly IServiceScopeFactory scopeFactory;
-    private readonly SynchronizationContext? uiContext;
     private readonly Channel<Configuration> changes = Channel.CreateBounded<Configuration>(
         new BoundedChannelOptions(1) { SingleReader = true, FullMode = BoundedChannelFullMode.DropOldest });
     private readonly Task worker;
     private long configurationVersion;
     private int disposed;
 
-    public CastarTelegramBotClient(ISettingsService settingsService, IServiceScopeFactory scopeFactory)
+    public CastarTelegramBotClient(SettingsModel settings, IServiceScopeFactory scopeFactory)
     {
-        settings = settingsService.Get();
+        this.settings = settings;
         this.scopeFactory = scopeFactory;
-        uiContext = SynchronizationContext.Current;
         settings.TelegramBot.PropertyChanged += OnSettingsChanged;
         settings.Systems.PropertyChanged += OnSettingsChanged;
         QueueConfiguration();
@@ -187,16 +184,8 @@ public sealed class CastarTelegramBotClient : ICastarTelegramBotClient
 
     private void PublishStatus(Configuration configuration, string status)
     {
-        void SetStatus()
-        {
-            if (Volatile.Read(ref disposed) == 0 && Volatile.Read(ref configurationVersion) == configuration.Version)
-                settings.TelegramBot.Status = status;
-        }
-
-        if (uiContext is null)
-            SetStatus();
-        else
-            uiContext.Post(_ => SetStatus(), null);
+        if (Volatile.Read(ref disposed) == 0 && Volatile.Read(ref configurationVersion) == configuration.Version)
+            settings.TelegramBot.Status = status;
     }
 
     internal static void LogError(Exception exception)

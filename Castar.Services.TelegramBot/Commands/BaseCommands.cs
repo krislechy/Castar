@@ -1,5 +1,4 @@
 using Castar.BL;
-using Castar.BL.Settings;
 using Castar.Domain.Models.SettingsModel;
 using Castar.Services.Receipts;
 using Telegram.Bot;
@@ -10,19 +9,18 @@ using BudgetUser = Castar.Domain.Models.DataBase.User;
 namespace Castar.Services.TelegramBot.Commands;
 
 public sealed partial class CommandHandler(
-    ISettingsService settingsService,
+    SettingsModel settings,
     IPurchasesService purchasesService,
     IIncomesService incomesService,
     IUsersService usersService,
     IEnumerable<IReceiptProvider> receiptProviders)
 {
-    private readonly SettingsModel settings = settingsService.Get();
     private readonly IReceiptProvider[] providers = receiptProviders.ToArray();
 
     internal async Task HandleAsync(ITelegramBotClient bot, Message message, bool edited, CancellationToken cancellationToken)
     {
         if (message is not { From: { IsBot: false } sender, Chat.Type: ChatType.Private }
-            || (message.Text is null && message.Photo is null))
+            || (message.Text is null && message.Photo is null && message.Document is null))
             return;
 
         var lines = message.Text?.Split('\n', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries) ?? [];
@@ -39,7 +37,7 @@ public sealed partial class CommandHandler(
             return;
         }
 
-        if (message.Photo is not null || lines.Any(IsReceiptContent))
+        if (message.Photo is not null || message.Document is not null || lines.Any(IsReceiptContent))
         {
             await ImportReceiptsAsync(bot, message, user, lines, cancellationToken);
             return;

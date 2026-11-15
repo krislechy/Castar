@@ -1,0 +1,158 @@
+<UserControl x:Class="Castar.Contents.PurchasesContent"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:c="clr-namespace:Castar.Compontents"
+             Loaded="Purchases_Loaded" Unloaded="Purchases_Unloaded"
+             IsVisibleChanged="Purchases_IsVisibleChanged">
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition/>
+        </Grid.RowDefinitions>
+        <c:IslandPanel IsMainTitle="True" Title="Покупки"/>
+        <c:SelectorRangeDates x:Name="Dates" Grid.Row="1" Margin="12,8"
+                              DateRangeChanged="Dates_DateRangeChanged"/>
+        <TextBlock x:Name="StatusText" Grid.Row="2" Margin="12,0,12,8"
+                   Foreground="{DynamicResource Warning.Svg.Brush}" TextWrapping="Wrap"
+                   Visibility="Collapsed" AutomationProperties.LiveSetting="Polite"/>
+        <Grid Grid.Row="3" Margin="8,0,8,8">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="4*"/>
+                <ColumnDefinition Width="8"/>
+                <ColumnDefinition Width="5*"/>
+            </Grid.ColumnDefinitions>
+            <ListView x:Name="PurchasesList" Style="{StaticResource BudgetList}"
+                      SelectionMode="Single" SelectionChanged="PurchasesList_SelectionChanged"
+                      ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                      AutomationProperties.Name="Покупки за период">
+                <ListView.ItemTemplate>
+                    <DataTemplate>
+                        <Grid Margin="4,0">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            <StackPanel>
+                                <TextBlock Text="{Binding Name}" ToolTip="{Binding Name}"
+                                           TextTrimming="CharacterEllipsis" FontWeight="SemiBold"
+                                           Foreground="{DynamicResource Foreground.White}"/>
+                                <TextBlock Text="{Binding AddedOn, StringFormat={}{0:dd.MM.yyyy HH:mm}}"
+                                           Margin="0,3,0,0"/>
+                            </StackPanel>
+                            <TextBlock Grid.Column="1" Margin="16,0,0,0" VerticalAlignment="Center"
+                                       FontWeight="SemiBold" Foreground="{DynamicResource Foreground.White}">
+                                <TextBlock.Text>
+                                    <MultiBinding StringFormat="{}{0:N2} {1}">
+                                        <Binding Path="TotalSum"/>
+                                        <Binding Path="Currency" TargetNullValue=""/>
+                                    </MultiBinding>
+                                </TextBlock.Text>
+                            </TextBlock>
+                        </Grid>
+                    </DataTemplate>
+                </ListView.ItemTemplate>
+            </ListView>
+            <TextBlock x:Name="EmptyPurchases" Text="За выбранный период покупок нет."
+                       Margin="20" TextWrapping="Wrap" TextAlignment="Center"
+                       HorizontalAlignment="Center" VerticalAlignment="Center" IsHitTestVisible="False"
+                       Foreground="{DynamicResource Foreground.Gray}" Visibility="Collapsed"/>
+            <c:IslandPanel x:Name="DetailsPanel" Grid.Column="2" Margin="0" Title="Позиции покупки"
+                           IsEnabled="{Binding HasItems, ElementName=PurchasesList}">
+                <Grid>
+                    <TextBlock Text="Выберите покупку, чтобы увидеть её позиции."
+                               TextWrapping="Wrap" Margin="10" TextAlignment="Center"
+                               HorizontalAlignment="Center" VerticalAlignment="Center">
+                        <TextBlock.Style>
+                            <Style TargetType="TextBlock">
+                                <Setter Property="Visibility" Value="Collapsed"/>
+                                <Style.Triggers>
+                                    <MultiDataTrigger>
+                                        <MultiDataTrigger.Conditions>
+                                            <Condition Binding="{Binding}" Value="{x:Null}"/>
+                                            <Condition Binding="{Binding IsEnabled, RelativeSource={RelativeSource AncestorType=c:IslandPanel}}" Value="True"/>
+                                        </MultiDataTrigger.Conditions>
+                                        <Setter Property="Visibility" Value="Visible"/>
+                                    </MultiDataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </TextBlock.Style>
+                    </TextBlock>
+                    <Grid Grid.IsSharedSizeScope="True">
+                        <Grid.Style>
+                            <Style TargetType="Grid">
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding}" Value="{x:Null}">
+                                        <Setter Property="Visibility" Value="Collapsed"/>
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </Grid.Style>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition/>
+                        </Grid.RowDefinitions>
+                        <StackPanel>
+                            <TextBlock Text="{Binding RetailPlace, TargetNullValue=''}" TextWrapping="Wrap"
+                                       Foreground="{DynamicResource Foreground.White}" FontWeight="SemiBold"/>
+                            <TextBlock Text="{Binding RetailPlaceAddress, TargetNullValue=''}" TextWrapping="Wrap"/>
+                            <StackPanel.Style>
+                                <Style TargetType="StackPanel">
+                                    <Setter Property="Margin" Value="8,0,8,8"/>
+                                    <Style.Triggers>
+                                        <MultiDataTrigger>
+                                            <MultiDataTrigger.Conditions>
+                                                <Condition Binding="{Binding RetailPlace, TargetNullValue=''}" Value=""/>
+                                                <Condition Binding="{Binding RetailPlaceAddress, TargetNullValue=''}" Value=""/>
+                                            </MultiDataTrigger.Conditions>
+                                            <Setter Property="Visibility" Value="Collapsed"/>
+                                        </MultiDataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </StackPanel.Style>
+                        </StackPanel>
+                        <Grid Grid.Row="1" Margin="11,4,11,4">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition/>
+                                <ColumnDefinition Width="Auto" SharedSizeGroup="ItemQuantity"/>
+                                <ColumnDefinition Width="Auto" SharedSizeGroup="ItemPrice"/>
+                                <ColumnDefinition Width="Auto" SharedSizeGroup="ItemTotal"/>
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Text="Наименование"/>
+                            <TextBlock Grid.Column="1" Text="Кол-во" Margin="12,0,0,0" TextAlignment="Right"/>
+                            <TextBlock Grid.Column="2" Text="Цена" Margin="12,0,0,0" TextAlignment="Right"/>
+                            <TextBlock Grid.Column="3" Text="Сумма" Margin="12,0,0,0" TextAlignment="Right"/>
+                        </Grid>
+                        <ListView Grid.Row="2" Style="{StaticResource BudgetList}" ItemsSource="{Binding Items}"
+                                  ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                                  AutomationProperties.Name="Позиции выбранной покупки">
+                            <ListView.ItemTemplate>
+                                <DataTemplate>
+                                    <Grid Margin="4,0">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition/>
+                                            <ColumnDefinition Width="Auto" SharedSizeGroup="ItemQuantity"/>
+                                            <ColumnDefinition Width="Auto" SharedSizeGroup="ItemPrice"/>
+                                            <ColumnDefinition Width="Auto" SharedSizeGroup="ItemTotal"/>
+                                        </Grid.ColumnDefinitions>
+                                        <TextBlock Text="{Binding Name}" ToolTip="{Binding Name}"
+                                                   TextTrimming="CharacterEllipsis"/>
+                                        <TextBlock Grid.Column="1" Text="{Binding Quantity, StringFormat={}{0:0.###}}"
+                                                   Margin="12,0,0,0" TextAlignment="Right"/>
+                                        <TextBlock Grid.Column="2" Text="{Binding Price, StringFormat={}{0:N2}}"
+                                                   Margin="12,0,0,0" TextAlignment="Right"/>
+                                        <TextBlock Grid.Column="3" Text="{Binding Sum, StringFormat={}{0:N2}}"
+                                                   Margin="12,0,0,0" TextAlignment="Right" FontWeight="SemiBold"/>
+                                    </Grid>
+                                </DataTemplate>
+                            </ListView.ItemTemplate>
+                        </ListView>
+                    </Grid>
+                </Grid>
+            </c:IslandPanel>
+            <c:Loader x:Name="Progress" Grid.ColumnSpan="3"/>
+        </Grid>
+    </Grid>
+</UserControl>

@@ -25,7 +25,6 @@ namespace Castar.DAL
             users.Property(x => x.ColorRaw).HasColumnName("Color");
             users.Property(x => x.ImageRaw).HasColumnName("Image");
             users.Ignore(x => x.Color);
-            users.Ignore(x => x.Image);
             users.Ignore(x => x.Items);
 
             var purchases = modelBuilder.Entity<Purchase>();

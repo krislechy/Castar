@@ -1,10 +1,10 @@
-using System.Drawing;
 using System.Text;
 using Castar.Domain.Models.DataBase;
 using Castar.Services.Receipts;
 using Castar.Services.Receipts.Barcode;
 using Castar.Services.Receipts.Exceptions;
 using Telegram.Bot;
+using Telegram.Bot.Exceptions;
 using Telegram.Bot.Types;
 using BudgetUser = Castar.Domain.Models.DataBase.User;
 
@@ -29,12 +29,20 @@ public sealed partial class CommandHandler
             return;
         }
 
-        if (message.Photo is { Length: > 0 } photos)
+        if (message.Photo is { Length: > 0 } || message.Document is not null)
         {
-            var code = await DecodePhotoAsync(bot, photos, cancellationToken);
+            if (message.Document?.FileSize > QrCode.MaxImageBytes)
+            {
+                await ReplyAsync(bot, message, "Отправьте изображение размером до 20 МБ.", cancellationToken);
+                return;
+            }
+
+            var code = await DecodeImageAsync(bot, message, cancellationToken);
             if (code is null)
             {
-                await ReplyAsync(bot, message, "QR-код чека не удалось прочитать. Отправьте чёткое фото или ссылку.", cancellationToken);
+                await ReplyAsync(bot, message,
+                    "QR-код чека не удалось прочитать. Отправьте изображение как файл или пришлите ссылку из QR-кода.",
+                    cancellationToken);
                 return;
             }
 
@@ -109,27 +117,60 @@ public sealed partial class CommandHandler
         }
     }
 
-    private static async Task<string?> DecodePhotoAsync(
-        ITelegramBotClient bot, PhotoSize[] photos, CancellationToken cancellationToken)
+    private static async Task<string?> DecodeImageAsync(
+        ITelegramBotClient bot, Message message, CancellationToken cancellationToken)
     {
+        IEnumerable<(string Id, long? Size)> files = message.Document is { } document
+            ? [(document.FileId, document.FileSize)]
+            : (message.Photo ?? []).OrderByDescending(photo => (long)photo.Width * photo.Height)
+                .Take(3).Select(photo => (photo.FileId, photo.FileSize));
+
         var decoder = new QrCode();
-        foreach (var photo in photos.OrderByDescending(photo => (long)photo.Width * photo.Height))
+        foreach (var (fileId, size) in files)
         {
-            using var stream = new MemoryStream();
-            await bot.GetInfoAndDownloadFile(photo.FileId, stream, cancellationToken);
-            stream.Position = 0;
+            if (size > QrCode.MaxImageBytes)
+                continue;
+
+            using var stream = new ImageBuffer();
             try
             {
-                using var bitmap = new Bitmap(stream);
-                if (decoder.Decode(bitmap)?.Trim() is { Length: > 0 } code)
-                    return code;
+                await bot.GetInfoAndDownloadFile(fileId, stream, cancellationToken);
             }
-            catch (ArgumentException ex)
+            catch (RequestException error) when (error.InnerException is InvalidDataException)
             {
-                CastarTelegramBotClient.LogError(ex);
+                continue;
             }
+            catch (RequestException) when (cancellationToken.IsCancellationRequested)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+            }
+
+            stream.Position = 0;
+            if (decoder.Decode(stream, cancellationToken)?.Trim() is { Length: > 0 } code)
+                return code;
         }
 
         return null;
+    }
+
+    private sealed class ImageBuffer : MemoryStream
+    {
+        public override void Write(byte[] buffer, int offset, int count)
+        {
+            CheckLength(count);
+            base.Write(buffer, offset, count);
+        }
+
+        public override void Write(ReadOnlySpan<byte> buffer)
+        {
+            CheckLength(buffer.Length);
+            base.Write(buffer);
+        }
+
+        private void CheckLength(int count)
+        {
+            if (Position + count > QrCode.MaxImageBytes)
+                throw new InvalidDataException("Файл Telegram превышает допустимый размер.");
+        }
     }
 }

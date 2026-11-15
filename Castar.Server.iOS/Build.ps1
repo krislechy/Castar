@@ -207,6 +207,9 @@ try {
         & $Ld64 @linkFlags "-F$frameworks" -S $appObject -framework UIKit -framework Foundation -lobjc -lSystem `
             -o (Join-Path $app 'CastarControl')
         Copy-Item -LiteralPath (Join-Path $appSource 'Info.plist') -Destination $app
+        foreach ($icon in @('AppIcon60@2x.png', 'AppIcon60@3x.png')) {
+            Copy-Item -LiteralPath (Join-Path $appSource $icon) -Destination $app
+        }
         Copy-Item -LiteralPath (Join-Path $appSource 'entitlements.plist') -Destination (Join-Path $bundle 'CastarControl.entitlements.plist')
     }
     finally {

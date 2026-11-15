@@ -12,10 +12,20 @@
     <string>CastarControl</string>
     <key>CFBundlePackageType</key>
     <string>APPL</string>
+    <key>CFBundleIcons</key>
+    <dict>
+        <key>CFBundlePrimaryIcon</key>
+        <dict>
+            <key>CFBundleIconFiles</key>
+            <array><string>AppIcon60</string></array>
+            <key>UIPrerenderedIcon</key>
+            <true/>
+        </dict>
+    </dict>
     <key>CFBundleShortVersionString</key>
     <string>0.4.0</string>
     <key>CFBundleVersion</key>
-    <string>1</string>
+    <string>2</string>
     <key>MinimumOSVersion</key>
     <string>15.0</string>
     <key>LSRequiresIPhoneOS</key>

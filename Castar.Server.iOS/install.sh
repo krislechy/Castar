@@ -19,7 +19,8 @@ for tool in "$ldid" uicache launchctl; do
 done
 for file in Castar.Server.dll castar-host castar-watchdog run-server.sh org.castar.server.plist \
             org.castar.watchdog.plist CastarControl.entitlements.plist CastarControl.app/CastarControl \
-            CastarControl.app/Info.plist lib/libcoreclr.dylib lib/libe_sqlite3.dylib lib/libSkiaSharp.dylib lib/libZXing.dylib; do
+            CastarControl.app/Info.plist CastarControl.app/AppIcon60@2x.png CastarControl.app/AppIcon60@3x.png \
+            lib/libcoreclr.dylib lib/libe_sqlite3.dylib lib/libSkiaSharp.dylib lib/libZXing.dylib; do
     [[ -f "$payload/$file" ]] || { printf 'Missing archive member: %s\n' "$file" >&2; exit 1; }
 done
 

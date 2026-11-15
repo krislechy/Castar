@@ -4,7 +4,7 @@ Castar учитывает доходы и покупки. Windows-клиент �
 
 ## Установка и обновление
 
-1. Скачайте архив Castar Server для Windows x64 или Linux x64 из [последнего выпуска](https://github.com/krislechy/Castar/releases/latest) и запустите сервер по [инструкции](Castar.Server/DEPLOYMENT.md).
+1. Скачайте архив Castar Server для Windows x64, Linux x64 или Linux ARM64 из [последнего выпуска](https://github.com/krislechy/Castar/releases/latest) и запустите сервер по [инструкции](Castar.Server/DEPLOYMENT.md).
 2. Установите [Microsoft .NET Desktop Runtime 11 для Windows x64](https://dotnet.microsoft.com/en-us/download/dotnet/11.0#runtime-desktop-11.0.0). Для первой установки клиента запустите `Castar-win-x64.exe`. Затем открывайте приложение через ярлык или `Castar.exe`.
 3. В клиенте откройте **Настройки → Подключение к Castar Server**. Укажите адрес и ключ API сервера, затем нажмите **Проверить и сохранить**. Для сервера на этой же машине используется `http://127.0.0.1:5080`, для удалённого — HTTPS.
 

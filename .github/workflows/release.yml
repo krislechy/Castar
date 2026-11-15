@@ -258,7 +258,8 @@ jobs:
           pattern: castar-*
           merge-multiple: true
           path: release-assets
-      - name: Publish the GitHub release
+      # The release operator adds the iPhone artifacts built with the supplied iPhoneOS SDK.
+      - name: Create the GitHub release draft
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
@@ -269,4 +270,4 @@ jobs:
             release-assets/Castar-Server-win-x64.zip \
             release-assets/Castar-Server-linux-x64.tar.gz \
             release-assets/Castar-Server-linux-arm64.tar.gz \
-            --verify-tag --latest --title "Castar ${GITHUB_REF_NAME#v}" --notes-file installer/ReleaseNotes.md
+            --verify-tag --draft --title "Castar ${GITHUB_REF_NAME#v}" --notes-file installer/ReleaseNotes.md

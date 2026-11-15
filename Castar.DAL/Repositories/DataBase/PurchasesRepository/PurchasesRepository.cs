@@ -68,6 +68,7 @@ namespace Castar.DAL.Repositories.DataBase
                 ?? throw new InvalidOperationException("Покупка больше не существует.");
 
             ThrowIfFiscal(Context, current);
+            current.Currency = purchase.Currency ?? current.Currency;
             current.Name = purchase.Name;
             current.RetailPlace = purchase.RetailPlace;
             current.RetailPlaceAddress = purchase.RetailPlaceAddress;

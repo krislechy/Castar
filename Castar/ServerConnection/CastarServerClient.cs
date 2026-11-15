@@ -261,7 +261,7 @@ public sealed class CastarServerClient(ClientSettings settings) : IDisposable
         new(user.TelegramId, user.Name, user.Sex, user.ColorRaw, user.ImageRaw);
 
     private static IncomeWriteDto IncomeWrite(Income income) =>
-        new(income.User?.Id ?? income.UserId, income.Sum, income.Source, income.AddedOn);
+        new(income.User?.Id ?? income.UserId, income.Sum, income.Source, income.AddedOn) { Currency = income.Currency };
 
     private static User ToUser(UserDto dto) => new()
     {
@@ -272,7 +272,7 @@ public sealed class CastarServerClient(ClientSettings settings) : IDisposable
     private static Income ToIncome(IncomeDto dto, User? user) => new()
     {
         Id = dto.Id, UserId = dto.UserId, User = user ?? ToUser(dto.User), MessageId = dto.MessageId,
-        Sum = dto.Sum, Source = dto.Source, AddedOn = dto.AddedOn
+        Sum = dto.Sum, Currency = dto.Currency, Source = dto.Source, AddedOn = dto.AddedOn
     };
 
     public void Dispose()

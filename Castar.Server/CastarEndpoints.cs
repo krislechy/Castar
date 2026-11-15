@@ -216,6 +216,8 @@ public static class CastarEndpoints
         var amount = decimal.Round(input.Sum, 2, MidpointRounding.AwayFromZero);
         if (amount <= -amountLimit || amount >= amountLimit || amount == 0)
             return InvalidInput("Укажите ненулевую сумму с точностью до копеек.");
+        if (input.Currency is { } currency && (currency.Length != 3 || !currency.All(char.IsAsciiLetter)))
+            return InvalidInput("Укажите трёхбуквенный код валюты.");
         if (input.AddedOn < new DateTime(1753, 1, 1) || input.AddedOn > new DateTime(9999, 12, 31, 23, 59, 59, 997))
             return InvalidInput("Укажите допустимую дату начисления.");
         if (string.IsNullOrWhiteSpace(input.Source) || input.Source.Length > 400)
@@ -249,6 +251,7 @@ public static class CastarEndpoints
         income.User = owner;
         income.Source = input.Source;
         income.Sum = input.Sum;
+        income.Currency = input.Currency?.ToUpperInvariant() ?? income.Currency;
         income.AddedOn = DateTime.SpecifyKind(input.AddedOn, DateTimeKind.Unspecified);
     }
 
@@ -257,11 +260,12 @@ public static class CastarEndpoints
 
     private static IncomeDto ToDto(Income income) =>
         new(income.Id, income.UserId, ToDto(income.User) with { ImageRaw = null }, income.MessageId,
-            income.Sum, income.Source, income.AddedOn);
+            income.Sum, income.Source, income.AddedOn) { Currency = income.Currency };
 
     private static PurchaseDto ToDto(Purchase purchase) =>
         new(purchase.Id, purchase.UserId, purchase.Name, purchase.TotalSum, purchase.Currency, purchase.MessageId,
             purchase.AddedOn, purchase.RetailPlace, purchase.RetailPlaceAddress,
             purchase.Items.Select(item => new PurchaseItemDto(
-                item.Id, item.Name, item.Category, item.Quantity, item.Price, item.Sum)).ToArray());
+                item.Id, item.Name, item.Category, item.Quantity, item.Price, item.Sum)).ToArray())
+        { ReceiptDate = purchase.ReceiptDate };
 }

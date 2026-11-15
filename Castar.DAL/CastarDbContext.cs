@@ -61,6 +61,7 @@ namespace Castar.DAL
             incomes.Property<int?>(LineNumber);
             incomes.HasIndex(nameof(Income.UserId), MessageIdField).HasDatabaseName("IX_Incomes_UserId_MessageId");
             incomes.Property(x => x.Sum).HasPrecision(24, 2);
+            incomes.Property(x => x.Currency).HasMaxLength(3);
             incomes.Property(x => x.Source).HasMaxLength(400);
             incomes.HasOne(x => x.User).WithMany().HasForeignKey(x => x.UserId)
                 .OnDelete(DeleteBehavior.NoAction).HasConstraintName("FK_Incomes_Users");

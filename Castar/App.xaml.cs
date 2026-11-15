@@ -1,5 +1,6 @@
 using Castar.Api;
 using Castar.Contents;
+using Castar.Currency;
 using Castar.Logger;
 using Castar.ServerConnection;
 using Castar.Settings;
@@ -42,6 +43,7 @@ public partial class App : Application
         services.AddSingleton(cLogger);
         services.AddSingleton(settings);
         services.AddSingleton<CastarServerClient>();
+        services.AddSingleton<HistoricalExchangeRates>();
         services.AddSingleton<BudgetEventConnection>();
         services.AddSingleton<Updates.GitHubUpdateService>();
         services.AddSingleton<ITrayIcon>(_ => new TrayIcon(
@@ -59,12 +61,13 @@ public partial class App : Application
         serviceProvider = services.BuildServiceProvider(validateScopes: true);
         var tray = serviceProvider.GetRequiredService<ITrayIcon>();
         ApplyPreferences(settings, tray);
-        settings.PropertyChanged += (_, _) =>
+        settings.PropertyChanged += (_, change) =>
         {
             try
             {
                 settings.Save();
-                ApplyPreferences(settings, tray);
+                if (change.PropertyName is nameof(ClientSettings.IsHideInTray) or nameof(ClientSettings.IsAutoRun))
+                    ApplyPreferences(settings, tray);
             }
             catch (Exception error) when (error is IOException or UnauthorizedAccessException or System.Security.SecurityException)
             {

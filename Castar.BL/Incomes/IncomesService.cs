@@ -21,7 +21,7 @@ namespace Castar.BL
             income.UserId = owner.Id;
             income.User = owner;
             income.AddedOn = income.AddedOn == default ? DateTime.Now : income.AddedOn;
-            income.Sum = RoundAmount(income.Sum);
+            RoundLegacyAmount(income);
             return await incomesRepository.Add(income);
         }
 
@@ -41,7 +41,7 @@ namespace Castar.BL
             {
                 if (income.AddedOn == default)
                     income.AddedOn = now;
-                income.Sum = RoundAmount(income.Sum);
+                RoundLegacyAmount(income);
             }
 
             await incomesRepository.SaveMessageIncomes(user.Id, messageId, incomes, cancellationToken);
@@ -55,7 +55,7 @@ namespace Castar.BL
                 income.MessageId = 0;
             }
 
-            income.Sum = RoundAmount(income.Sum);
+            RoundLegacyAmount(income);
             return incomesRepository.Update(income);
         }
 
@@ -65,6 +65,10 @@ namespace Castar.BL
             await usersRepository.FindByTelegramId(telegramUserId, cancellationToken)
             ?? throw new InvalidOperationException($"Пользователя с идентификатором {telegramUserId} нет в базе.");
 
-        private static decimal RoundAmount(decimal amount) => decimal.Round(amount, 2, MidpointRounding.AwayFromZero);
+        private static void RoundLegacyAmount(Income income)
+        {
+            if (income.Currency is null)
+                income.Sum = decimal.Round(income.Sum, 2, MidpointRounding.AwayFromZero);
+        }
     }
 }

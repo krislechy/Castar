@@ -1,19 +1,21 @@
 ﻿using Castar.Services.Receipts.Exceptions;
 using Castar.Services.Receipts.Models;
+using System.Globalization;
 using System.Net;
 using System.Net.Http.Json;
-using System.Text.Json;
 
 namespace Castar.Services.Receipts
 {
-    public sealed class Nalog : IReceiptProvider, IReceipt<Ticket>, IDisposable
+    public sealed class Nalog : ReceiptProvider, IReceipt<Ticket>
     {
         public const string ProviderId = "nalog";
         private const string ClientSecret = "IyvrAbKt9h/8p6a7QPh8gpkXYQ4=";
         private const string DeviceId = "7C82010F-16CC-558A-8F66-FC4080C66521";
 
+        public sealed record TicketIdentity(string? FiscalDriveNumber, int FiscalDocumentNumber, long FiscalSign,
+            string? TicketId) : ReceiptIdentitySource;
+
         private readonly Func<NetworkCredential> _getCredential;
-        private readonly HttpClient _client;
         private readonly SemaphoreSlim _gate = new(1);
         private NetworkCredential? _sessionCredential;
         private string? _sessionId;
@@ -23,56 +25,54 @@ namespace Castar.Services.Receipts
         {
         }
 
-        public Nalog(Func<NetworkCredential> getCredential)
-            : this(getCredential, new SocketsHttpHandler
-            {
-                AllowAutoRedirect = false,
-                UseCookies = false,
-                PooledConnectionLifetime = TimeSpan.FromMinutes(5)
-            })
+        public Nalog(Func<NetworkCredential> getCredential) : this(getCredential, CreateHttpHandler())
         {
         }
 
         internal Nalog(Func<NetworkCredential> getCredential, HttpMessageHandler handler)
+            : base(handler, new Uri("https://irkkt-mobile.nalog.ru:8888/v2/"))
         {
             ArgumentNullException.ThrowIfNull(getCredential);
             _getCredential = getCredential;
-            _client = new HttpClient(handler)
-            {
-                BaseAddress = new Uri("https://irkkt-mobile.nalog.ru:8888/v2/"),
-                Timeout = TimeSpan.FromSeconds(30),
-                MaxResponseContentBufferSize = 4 * 1024 * 1024
-            };
 
-            _client.DefaultRequestHeaders.Add("Device-OS", "iOS");
-            _client.DefaultRequestHeaders.Add("clientVersion", "2.25.0");
-            _client.DefaultRequestHeaders.Add("Device-Id", DeviceId);
-            _client.DefaultRequestHeaders.Accept.ParseAdd("*/*");
-            _client.DefaultRequestHeaders.UserAgent.ParseAdd("billchecker/2.9.0 (iPhone; iOS 13.6; Scale/2.00)");
-            _client.DefaultRequestHeaders.AcceptLanguage.ParseAdd("ru-RU;q=1, en-US;q=0.9");
+            Client.DefaultRequestHeaders.Add("Device-OS", "iOS");
+            Client.DefaultRequestHeaders.Add("clientVersion", "2.25.0");
+            Client.DefaultRequestHeaders.Add("Device-Id", DeviceId);
+            Client.DefaultRequestHeaders.Accept.ParseAdd("*/*");
+            Client.DefaultRequestHeaders.UserAgent.ParseAdd("billchecker/2.9.0 (iPhone; iOS 13.6; Scale/2.00)");
+            Client.DefaultRequestHeaders.AcceptLanguage.ParseAdd("ru-RU;q=1, en-US;q=0.9");
         }
 
-        public string Id => ProviderId;
+        public override string Id => ProviderId;
 
-        public bool CanHandle(string query) =>
+        public override bool CanHandle(string query) =>
             !string.IsNullOrWhiteSpace(query) && query.Trim().StartsWith("t=", StringComparison.OrdinalIgnoreCase);
 
         public Task<Ticket> GetReceipt(string query) => GetTicketAsync(query, CancellationToken.None);
 
-        public async Task<Receipt> GetReceiptAsync(string query, CancellationToken cancellationToken)
+        public override string GetReceiptIdentity(ReceiptIdentitySource source)
+        {
+            if (source is not TicketIdentity ticket)
+                throw new ArgumentException("Ожидается идентификатор чека ФНС.", nameof(source));
+
+            if (!string.IsNullOrWhiteSpace(ticket.FiscalDriveNumber)
+                && ticket.FiscalDocumentNumber > 0 && ticket.FiscalSign > 0)
+            {
+                return FormattableString.Invariant($"{ticket.FiscalDriveNumber}:{ticket.FiscalDocumentNumber}:{ticket.FiscalSign}");
+            }
+
+            if (string.IsNullOrWhiteSpace(ticket.TicketId))
+                throw new InvalidDataException("В ответе ФНС отсутствует номер чека.");
+
+            return ticket.TicketId;
+        }
+
+        public override async Task<Receipt> GetReceiptAsync(string query, CancellationToken cancellationToken)
         {
             var ticket = await GetTicketAsync(query, cancellationToken);
             var receipt = ticket.ticket?.document?.receipt;
             if (receipt is null || string.IsNullOrWhiteSpace(receipt.user) || receipt.items is not { Count: > 0 })
                 throw new InvalidDataException("В ответе ФНС отсутствуют данные для сохранения чека.");
-
-            var identity = !string.IsNullOrWhiteSpace(receipt.fiscalDriveNumber)
-                && receipt.fiscalDocumentNumber > 0 && receipt.fiscalSign > 0
-                ? FormattableString.Invariant($"{receipt.fiscalDriveNumber}:{receipt.fiscalDocumentNumber}:{receipt.fiscalSign}")
-                : ticket.id;
-
-            if (string.IsNullOrWhiteSpace(identity))
-                throw new InvalidDataException("В ответе ФНС отсутствует номер чека.");
 
             var items = new List<ReceiptItem>(receipt.items.Count);
             foreach (var item in receipt.items)
@@ -83,15 +83,26 @@ namespace Castar.Services.Receipts
                     throw new InvalidDataException("ФНС вернула товар с неверным количеством.");
                 }
 
-                var name = string.IsNullOrWhiteSpace(item.name) ? "Товар без названия" : item.name;
-                items.Add(new ReceiptItem(name, (decimal)item.quantity, item.priceDecimal, item.sumDecimal));
+                items.Add(new ReceiptItem(NormalizeItemName(item.name), (decimal)item.quantity, item.priceDecimal, item.sumDecimal));
             }
 
-            return new Receipt(
-                identity, receipt.user, receipt.retailPlace, receipt.retailPlaceAddress,
-                DateTimeOffset.FromUnixTimeSeconds(receipt.dateTime), "RUB", receipt.totalSumDecimal, items,
-                string.IsNullOrWhiteSpace(ticket.qr) ? query.Trim() : ticket.qr);
+            var issuedAt = DateTimeOffset.FromUnixTimeSeconds(receipt.dateTime);
+            var verificationCode = string.IsNullOrWhiteSpace(ticket.qr) ? query.Trim() : ticket.qr;
+            return CreateReceipt(
+                new TicketIdentity(receipt.fiscalDriveNumber, receipt.fiscalDocumentNumber, receipt.fiscalSign, ticket.id),
+                receipt.user, receipt.retailPlace, receipt.retailPlaceAddress,
+                issuedAt, "RUB", receipt.totalSumDecimal, items, verificationCode) with
+            { OperationDate = ReadOperationDate(verificationCode) ?? ReadOperationDate(query.Trim())
+                  ?? DateOnly.FromDateTime(issuedAt.Date) };
         }
+
+        private static DateOnly? ReadOperationDate(string verificationCode) =>
+            verificationCode.Length >= 15 && verificationCode.StartsWith("t=", StringComparison.OrdinalIgnoreCase)
+            && verificationCode[10] is 'T' or 't'
+            && DateOnly.TryParseExact(verificationCode.AsSpan(2, 8), "yyyyMMdd", CultureInfo.InvariantCulture,
+                DateTimeStyles.None, out var date)
+                ? date
+                : null;
 
         private async Task<Ticket> GetTicketAsync(string query, CancellationToken cancellationToken)
         {
@@ -202,25 +213,16 @@ namespace Castar.Services.Receipts
             if (data is not null)
                 request.Content = JsonContent.Create(data);
 
-            using var response = await _client.SendAsync(request, cancellationToken);
-            response.EnsureSuccessStatusCode();
-            try
-            {
-                return await response.Content.ReadFromJsonAsync<T>(cancellationToken)
-                    ?? throw new InvalidDataException("ФНС вернула пустой ответ.");
-            }
-            catch (JsonException)
-            {
-                throw new InvalidDataException("ФНС вернула ответ в неожиданном формате.");
-            }
+            return await SendJsonAsync<T>(request, "ФНС вернула пустой ответ.",
+                "ФНС вернула ответ в неожиданном формате.", cancellationToken);
         }
 
         private static bool IsUnauthorized(HttpRequestException exception) =>
             exception.StatusCode is HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden;
 
-        public void Dispose()
+        public override void Dispose()
         {
-            _client.Dispose();
+            base.Dispose();
             _gate.Dispose();
         }
     }

@@ -20,6 +20,7 @@ namespace Castar.Domain.Models.DataBase
         public string? RetailPlaceAddress { get; set; }
         public byte[]? RawData { get; set; }
         public string? Currency { get; set; }
+        public DateOnly? ReceiptDate { get; set; }
         public ObservableCollection<Item> Items { get; set; } = new();
         public DateTime? AddedOn { get; set; }
 
@@ -27,8 +28,10 @@ namespace Castar.Domain.Models.DataBase
         {
             foreach (var item in Items)
             {
-                item.Price = decimal.Round(item.Price, 2, MidpointRounding.AwayFromZero);
-                item.Sum = decimal.Round(item.Price * (decimal)item.Quantity, 2, MidpointRounding.AwayFromZero);
+                if (Currency is null)
+                    item.Price = decimal.Round(item.Price, 2, MidpointRounding.AwayFromZero);
+                var sum = item.Price * (decimal)item.Quantity;
+                item.Sum = Currency is null ? decimal.Round(sum, 2, MidpointRounding.AwayFromZero) : sum;
             }
 
             TotalSum = Items.Sum(x => x.Sum);

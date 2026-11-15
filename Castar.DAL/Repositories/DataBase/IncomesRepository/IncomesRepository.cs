@@ -29,8 +29,10 @@ namespace Castar.DAL.Repositories.DataBase
             current.MessageId = income.MessageId;
             current.Source = income.Source;
             current.Sum = income.Sum;
+            current.Currency = income.Currency ?? current.Currency;
             current.AddedOn = income.AddedOn;
             await Context.SaveChangesAsync(cancellationToken);
+            income.Currency = current.Currency;
         }
 
         public async Task SaveMessageIncomes(
@@ -51,6 +53,7 @@ namespace Castar.DAL.Repositories.DataBase
                 {
                     current.Source = income.Source;
                     current.Sum = income.Sum;
+                    current.Currency = income.Currency ?? current.Currency;
                     Context.Entry(current).Property<int?>(CastarDbContext.LineNumber).CurrentValue = index;
                 }
                 else

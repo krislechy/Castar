@@ -12,8 +12,12 @@
             <RowDefinition/>
         </Grid.RowDefinitions>
         <c:IslandPanel IsMainTitle="True" Title="Расходы"/>
-        <c:SelectorRangeDates x:Name="Dates" Grid.Row="1" Margin="12,8"
-                              DateRangeChanged="Dates_DateRangeChanged"/>
+        <DockPanel Grid.Row="1" Margin="12,8">
+            <TextBlock DockPanel.Dock="Right" x:Name="ExpenseTotal" Margin="12,0,0,0"
+                       VerticalAlignment="Center" FontWeight="SemiBold" Foreground="{DynamicResource Highlight}"
+                       AutomationProperties.Name="Сумма расходов за период"/>
+            <c:SelectorRangeDates x:Name="Dates" DateRangeChanged="Dates_DateRangeChanged"/>
+        </DockPanel>
         <TextBlock x:Name="StatusText" Grid.Row="2" Margin="12,0,12,8"
                    Foreground="{DynamicResource Warning.Svg.Brush}" TextWrapping="Wrap"
                    Visibility="Collapsed" AutomationProperties.LiveSetting="Polite"/>
@@ -42,14 +46,7 @@
                                            Margin="0,3,0,0"/>
                             </StackPanel>
                             <TextBlock Grid.Column="1" Margin="16,0,0,0" VerticalAlignment="Center"
-                                       FontWeight="SemiBold" Foreground="{DynamicResource Foreground.White}">
-                                <TextBlock.Text>
-                                    <MultiBinding StringFormat="{}{0:N2} {1}">
-                                        <Binding Path="TotalSum"/>
-                                        <Binding Path="Currency" TargetNullValue=""/>
-                                    </MultiBinding>
-                                </TextBlock.Text>
-                            </TextBlock>
+                                       Text="{Binding Amount}" FontWeight="SemiBold" Foreground="{DynamicResource Foreground.White}"/>
                         </Grid>
                     </DataTemplate>
                 </ListView.ItemTemplate>
@@ -94,24 +91,12 @@
                             <RowDefinition Height="Auto"/>
                             <RowDefinition/>
                         </Grid.RowDefinitions>
-                        <StackPanel>
+                        <StackPanel Margin="8,0,8,8">
                             <TextBlock Text="{Binding RetailPlace, TargetNullValue=''}" TextWrapping="Wrap"
                                        Foreground="{DynamicResource Foreground.White}" FontWeight="SemiBold"/>
                             <TextBlock Text="{Binding RetailPlaceAddress, TargetNullValue=''}" TextWrapping="Wrap"/>
-                            <StackPanel.Style>
-                                <Style TargetType="StackPanel">
-                                    <Setter Property="Margin" Value="8,0,8,8"/>
-                                    <Style.Triggers>
-                                        <MultiDataTrigger>
-                                            <MultiDataTrigger.Conditions>
-                                                <Condition Binding="{Binding RetailPlace, TargetNullValue=''}" Value=""/>
-                                                <Condition Binding="{Binding RetailPlaceAddress, TargetNullValue=''}" Value=""/>
-                                            </MultiDataTrigger.Conditions>
-                                            <Setter Property="Visibility" Value="Collapsed"/>
-                                        </MultiDataTrigger>
-                                    </Style.Triggers>
-                                </Style>
-                            </StackPanel.Style>
+                            <TextBlock Text="{Binding ReceiptTotal}" Margin="0,3,0,0" FontWeight="SemiBold"
+                                       AutomationProperties.Name="Итог чека"/>
                         </StackPanel>
                         <Grid Grid.Row="1" Margin="11,4,11,4">
                             <Grid.ColumnDefinitions>
@@ -141,9 +126,9 @@
                                                    TextTrimming="CharacterEllipsis"/>
                                         <TextBlock Grid.Column="1" Text="{Binding Quantity, StringFormat={}{0:0.###}}"
                                                    Margin="12,0,0,0" TextAlignment="Right"/>
-                                        <TextBlock Grid.Column="2" Text="{Binding Price, StringFormat={}{0:N2}}"
+                                        <TextBlock Grid.Column="2" Text="{Binding Price}"
                                                    Margin="12,0,0,0" TextAlignment="Right"/>
-                                        <TextBlock Grid.Column="3" Text="{Binding Sum, StringFormat={}{0:N2}}"
+                                        <TextBlock Grid.Column="3" Text="{Binding Sum}"
                                                    Margin="12,0,0,0" TextAlignment="Right" FontWeight="SemiBold"/>
                                     </Grid>
                                 </DataTemplate>

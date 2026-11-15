@@ -1,4 +1,5 @@
 using Castar.Compontents;
+using Castar.Currency;
 using Castar.Domain.Models.DataBase;
 using Castar.Domain.Models.SettingsModel;
 using Castar.ServerConnection;
@@ -361,6 +362,8 @@ public partial class SettingsContent : UserControl
         private ObservableCollection<User> users = [];
 
         public ClientSettings Settings { get; } = settings;
+        public CurrencyOption[] CurrencyOptions { get; } = HistoricalExchangeRates.SupportedCurrencies
+            .Select(code => new CurrencyOption(code, code)).Prepend(new CurrencyOption("", "Исходная валюта")).ToArray();
         public ServerSettingsViewModel ServerConfiguration { get; } = serverConfiguration;
         public string ServerAddress { get => address; set => SetField(ref address, value); }
         public string ConnectionStatus { get => connectionStatus; set => SetField(ref connectionStatus, value); }
@@ -370,4 +373,6 @@ public partial class SettingsContent : UserControl
         public bool UsersAvailable { get => usersAvailable; set => SetField(ref usersAvailable, value); }
         public ObservableCollection<User> Users { get => users; set => SetField(ref users, value); }
     }
+
+    private sealed record CurrencyOption(string Code, string Label);
 }

@@ -15,7 +15,7 @@ partial class CastarDbContextModelSnapshot : ModelSnapshot
     // If you encounter a merge conflict in the line below, it means you need to
     // discard one of the migration branches and recreate its migrations on top of
     // the other branch. See https://aka.ms/efcore-docs-migrations-conflicts for more info.
-    public override string LastMigrationId => "20261115161751_InitialSqlite";
+    public override string LastMigrationId => "20261115223016_OriginalCurrencyAndReceiptDate";
 
     protected override void BuildModel(ModelBuilder modelBuilder)
     {
@@ -32,6 +32,10 @@ partial class CastarDbContextModelSnapshot : ModelSnapshot
                     .HasColumnType("TEXT");
 
                 b.Property<DateTime>("CreatedOn")
+                    .HasColumnType("TEXT");
+
+                b.Property<string>("Currency")
+                    .HasMaxLength(3)
                     .HasColumnType("TEXT");
 
                 b.Property<int?>("LineNumber")
@@ -134,6 +138,9 @@ partial class CastarDbContextModelSnapshot : ModelSnapshot
 
                 b.Property<byte[]>("RawData")
                     .HasColumnType("BLOB");
+
+                b.Property<DateOnly?>("ReceiptDate")
+                    .HasColumnType("TEXT");
 
                 b.Property<byte[]>("ReceiptKey")
                     .HasMaxLength(32)

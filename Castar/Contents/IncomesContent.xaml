@@ -13,7 +13,7 @@
              d:DesignHeight="450" d:DesignWidth="800">
     <UserControl.Resources>
         <converters:TotalSumGroupConverter x:Key="TotalSumGroupConverter"/>
-        <CollectionViewSource x:Key='IncomesSRC' Source="{Binding Incomes,UpdateSourceTrigger=PropertyChanged,Mode=TwoWay}" 
+        <CollectionViewSource x:Key='IncomesSRC' Source="{Binding Incomes,Mode=OneWay}"
                                 VirtualizingPanel.IsVirtualizingWhenGrouping="True"
                                 VirtualizingPanel.VirtualizationMode="Recycling"
                                 VirtualizingPanel.IsVirtualizing="True"
@@ -24,7 +24,7 @@
                 <!--<componentModel:SortDescription PropertyName="dt" Direction="Descending"/>-->
             </CollectionViewSource.SortDescriptions>
             <CollectionViewSource.GroupDescriptions>
-                <PropertyGroupDescription PropertyName="Source" StringComparison="CurrentCultureIgnoreCase"/>
+                <PropertyGroupDescription PropertyName="Income.Source" StringComparison="CurrentCultureIgnoreCase"/>
             </CollectionViewSource.GroupDescriptions>
         </CollectionViewSource>
     </UserControl.Resources>
@@ -61,7 +61,7 @@
                     </Grid.ColumnDefinitions>
                     <TextBlock Grid.Column="0" Text="⯅" FontSize="20" Foreground="LightGreen" Margin="0,3,5,0"/>
                     <TextBlock Grid.Column="1" 
-                               Text="{Binding TotalSum,UpdateSourceTrigger=PropertyChanged,Mode=OneWay,StringFormat='{}{0:C2}'}" 
+                               Text="{Binding TotalSum,Mode=OneWay}"
                            TextElement.FontSize="20" TextElement.Foreground="{StaticResource Highlight}"/>
                 </Grid>
             </Grid>
@@ -151,8 +151,7 @@
                                             <TextBlock Grid.Column="0" Text="⯅" FontSize="20" Foreground="LightGreen" Margin="0,3,5,0"/>
                                             <TextBlock Grid.Column="1" Text="{Binding
                                                 Converter={StaticResource TotalSumGroupConverter},
-                                                UpdateSourceTrigger=PropertyChanged,Mode=OneWay,
-                                                StringFormat='{}{0:C2}'}"/>
+                                                Mode=OneWay}"/>
                                         </Grid>
                                     </Grid>
                                 </Border>
@@ -174,10 +173,12 @@
                                 <ColumnDefinition Width="auto"/>
                                 <ColumnDefinition Width="auto"/>
                             </Grid.ColumnDefinitions>
-                            <c:UserInfoPanel DataContext="{Binding User}" IsShortView="True" SizeImage="30"/>
-                            <TextBlock Grid.Column="2" Text="{Binding Sum,StringFormat='{}{0:C2}'}" 
-                                       FontWeight="DemiBold" VerticalAlignment="Center" FontSize="16" Margin="0,0,30,0"/>
-                            <TextBlock Grid.Column="3" Text="{Binding AddedOn}" VerticalAlignment="Center" Margin="0,0,30,0"/>
+                            <c:UserInfoPanel DataContext="{Binding Income.User}" IsShortView="True" SizeImage="30"/>
+                            <StackPanel Grid.Column="2" VerticalAlignment="Center" Margin="0,0,30,0">
+                                <TextBlock Text="{Binding AmountText}" FontWeight="DemiBold" FontSize="16" TextAlignment="Right"/>
+                                <TextBlock Text="{Binding OriginalText}" Style="{StaticResource ViewStatus}" Margin="0" TextAlignment="Right"/>
+                            </StackPanel>
+                            <TextBlock Grid.Column="3" Text="{Binding Income.AddedOn}" VerticalAlignment="Center" Margin="0,0,30,0"/>
                         </Grid>
                     </DataTemplate>
                 </ListView.ItemTemplate>

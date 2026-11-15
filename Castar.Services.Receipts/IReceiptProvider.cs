@@ -7,4 +7,6 @@ public interface IReceiptProvider
     bool CanHandle(string query);
 
     Task<Receipt> GetReceiptAsync(string query, CancellationToken cancellationToken);
+
+    string GetReceiptIdentity(ReceiptIdentitySource source);
 }

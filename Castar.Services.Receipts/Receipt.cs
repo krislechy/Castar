@@ -9,6 +9,9 @@ public sealed record Receipt(
     string Currency,
     decimal Total,
     IReadOnlyList<ReceiptItem> Items,
-    string? LegacyVerificationCode = null);
+    string? LegacyVerificationCode = null)
+{
+    public DateOnly OperationDate { get; init; } = DateOnly.FromDateTime(IssuedAt.Date);
+}
 
 public sealed record ReceiptItem(string Name, decimal Quantity, decimal UnitPrice, decimal Total);

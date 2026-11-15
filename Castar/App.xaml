@@ -17,6 +17,7 @@
                 <ResourceDictionary Source="pack://application:,,,/Castar;component/Styles/ToggleButtonIOS.xaml"/>
                 <ResourceDictionary Source="pack://application:,,,/Castar;component/Styles/CheckBox.xaml"/>
                 <ResourceDictionary Source="pack://application:,,,/Castar;component/Styles/TextBox.xaml"/>
+                <ResourceDictionary Source="pack://application:,,,/Castar;component/Styles/ComboBox.xaml"/>
                 <ResourceDictionary Source="pack://application:,,,/Castar;component/Styles/PasswordBox.xaml"/>
                 <ResourceDictionary Source="pack://application:,,,/Castar;component/Styles/ContextMenu.xaml"/>
                 <ResourceDictionary Source="pack://application:,,,/Castar;component/Styles/Tooltip.xaml"/>

@@ -13,6 +13,7 @@ namespace Castar.Domain.Models.DataBase
         }
 
         public decimal Sum { get; set; }
+        public string? Currency { get; set; }
         public string Source { get; set; } = string.Empty;
         public DateTime AddedOn { get; set; }
     }

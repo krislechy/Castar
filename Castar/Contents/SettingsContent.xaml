@@ -44,9 +44,9 @@
                             </StackPanel>
                             <CheckBox Content="Обработка чеков" IsChecked="{Binding ReceiptsEnabled}"/>
                             <TextBlock Text="Поставщик чеков" Style="{StaticResource FormFieldLabel}"/>
-                            <ComboBox ItemsSource="{Binding ReceiptProviders}" DisplayMemberPath="Label"
-                                      SelectedValuePath="Id" SelectedValue="{Binding ReceiptProvider}"
-                                      AutomationProperties.Name="Поставщик чеков"/>
+                            <c:CastarComboBox ItemsSource="{Binding ReceiptProviders}" DisplayMemberPath="Label"
+                                              SelectedValuePath="Id" SelectedValue="{Binding ReceiptProvider}"
+                                              AutomationProperties.Name="Поставщик чеков"/>
                             <StackPanel Visibility="{Binding SupportsCredentials, Converter={StaticResource ServerConnectionVisibility}}">
                                 <TextBlock Text="{Binding NalogStatus}" Style="{StaticResource ViewStatus}"/>
                                 <TextBlock Text="ИНН ФНС" Style="{StaticResource FormFieldLabel}"/>
@@ -82,6 +82,10 @@
                     <StackPanel>
                         <CheckBox IsChecked="{Binding Settings.IsHideInTray}" Content="При закрытии сворачивать в трей"/>
                         <CheckBox IsChecked="{Binding Settings.IsAutoRun}" Content="Запускать с Windows"/>
+                        <TextBlock Text="Валюта бюджета" Style="{StaticResource FormFieldLabel}"/>
+                        <c:CastarComboBox ItemsSource="{Binding CurrencyOptions}" DisplayMemberPath="Label" SelectedValuePath="Code"
+                                          SelectedValue="{Binding Settings.DisplayCurrency, Mode=TwoWay}"
+                                          AutomationProperties.Name="Валюта бюджета"/>
                     </StackPanel>
                 </c:IslandPanel>
                 <c:IslandPanel Title="Пользователи" ImageSvg="{DynamicResource Svg.Users}"

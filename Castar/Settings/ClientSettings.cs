@@ -1,12 +1,15 @@
 using System;
+using System.Collections.Generic;
 using System.ComponentModel;
 using System.Diagnostics;
 using System.IO;
+using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Security.Cryptography;
 using System.Text;
 using System.Xml.Linq;
 using System.Xml.Serialization;
+using Castar.Currency;
 
 namespace Castar.Settings;
 
@@ -18,6 +21,7 @@ public sealed class ClientSettings : INotifyPropertyChanged
 
     private bool hideInTray;
     private bool autoRun;
+    private string displayCurrency = "";
     private string settingsPath = Path.Combine(DataDirectory, "Castar.Client.xml");
 
     public string ServerUrl { get; set; } = DefaultServerUrl;
@@ -33,6 +37,12 @@ public sealed class ClientSettings : INotifyPropertyChanged
     {
         get => autoRun;
         set => Set(ref autoRun, value);
+    }
+
+    public string DisplayCurrency
+    {
+        get => displayCurrency;
+        set => Set(ref displayCurrency, HistoricalExchangeRates.SupportedCurrencies.Contains(value) ? value : "");
     }
 
     [XmlIgnore]
@@ -159,9 +169,9 @@ public sealed class ClientSettings : INotifyPropertyChanged
 
     private static readonly XmlSerializer Serializer = new(typeof(ClientSettings));
 
-    private void Set(ref bool field, bool value, [CallerMemberName] string? property = null)
+    private void Set<T>(ref T field, T value, [CallerMemberName] string? property = null)
     {
-        if (field == value)
+        if (EqualityComparer<T>.Default.Equals(field, value))
             return;
         field = value;
         PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(property));

@@ -89,6 +89,7 @@ public sealed partial class CommandHandler
                 RetailPlace = receipt.RetailPlace,
                 RetailPlaceAddress = receipt.RetailPlaceAddress,
                 AddedOn = receipt.IssuedAt.LocalDateTime,
+                ReceiptDate = receipt.OperationDate,
                 Currency = receipt.Currency,
                 TotalSum = receipt.Total,
                 RawData = receipt.LegacyVerificationCode is { } legacyCode ? Encoding.UTF8.GetBytes(legacyCode) : null,

@@ -1,18 +1,9 @@
 ﻿using Castar.Domain.Models.DataBase;
-using System;
+using Castar.Currency;
 using System.Collections.Generic;
 using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
-using System.Windows.Data;
-using System.Windows.Documents;
-using System.Windows.Input;
-using System.Windows.Media;
-using System.Windows.Media.Imaging;
-using System.Windows.Navigation;
-using System.Windows.Shapes;
 
 namespace Castar.Compontents
 {
@@ -21,7 +12,7 @@ namespace Castar.Compontents
     /// </summary>
     public partial class IncomePanel : UserControl
     {
-        private static DependencyProperty UsersProperty = DependencyProperty.Register(nameof(Users), typeof(IEnumerable<User>), typeof(IncomePanel));
+        public static readonly DependencyProperty UsersProperty = DependencyProperty.Register(nameof(Users), typeof(IEnumerable<User>), typeof(IncomePanel));
         public IEnumerable<User> Users
         {
             get
@@ -33,17 +24,31 @@ namespace Castar.Compontents
                 SetValue(UsersProperty, value);
             }
         }
-        public IncomePanel()
+        public IReadOnlyList<string> CurrencyOptions { get; }
+
+        public IncomePanel() : this(null)
         {
+        }
+
+        internal IncomePanel(Income? income)
+        {
+            var currencies = HistoricalExchangeRates.SupportedCurrencies;
+            CurrencyOptions = income?.Currency is { } currency && !currencies.Contains(currency)
+                ? currencies.Append(currency).ToArray() : currencies;
             InitializeComponent();
+            DataContext = income;
+        }
+
+        internal bool ValidateAmount()
+        {
+            IncomeAmount.GetBindingExpression(TextBox.TextProperty)?.UpdateSource();
+            return !Validation.GetHasError(IncomeAmount);
         }
 
         private void UserControl_Loaded(object sender, RoutedEventArgs e)
         {
-            var dc = (Income)DataContext;
-            if (dc == null) return;
-            var user = Users.SingleOrDefault(x => x.Id == dc.UserId);
-            UsersListView.SelectedValue = user;
+            if (DataContext is Income income)
+                UsersListView.SetCurrentValue(ListView.SelectedValueProperty, Users?.SingleOrDefault(user => user.Id == income.UserId));
         }
     }
 }

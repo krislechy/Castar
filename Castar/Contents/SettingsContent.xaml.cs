@@ -21,12 +21,15 @@ namespace Castar.Contents;
 
 public partial class SettingsContent : UserControl
 {
+    private const string Connected = "Соединение установлено.";
     private readonly ClientSettings settings;
     private readonly CastarServerClient server;
     private readonly SettingsContext context;
     private readonly DispatcherTimer polling;
     private CancellationTokenSource? usersRequest;
     private bool showingServerSettings;
+    private bool checkingConnection;
+    private string savedConnectionStatus = CastarServerClient.ConnectionNotEstablished;
     private string pendingKey = "";
     private PasswordBox? keyInput;
 
@@ -38,6 +41,11 @@ public partial class SettingsContent : UserControl
         context = new SettingsContext(settings, new ServerSettingsViewModel(server))
         {
             UpdateStatus = $"Текущая версия {updateService.InstalledVersion}"
+        };
+        context.PropertyChanged += (_, change) =>
+        {
+            if (change.PropertyName == nameof(SettingsContext.ServerAddress))
+                RefreshConnectionStatus();
         };
         polling = new DispatcherTimer { Interval = TimeSpan.FromSeconds(15) };
         polling.Tick += async (_, _) =>
@@ -88,6 +96,7 @@ public partial class SettingsContent : UserControl
         server.ConnectionChanged -= Server_ConnectionChanged;
         context.ServerConfiguration.Close();
         ResetUsers();
+        SetSavedConnectionStatus(CastarServerClient.ConnectionNotEstablished);
     }
 
     private async void Server_ConnectionChanged(object? sender, EventArgs e)
@@ -112,30 +121,40 @@ public partial class SettingsContent : UserControl
     {
         keyInput = (PasswordBox)sender;
         pendingKey = keyInput.Password.Trim();
+        RefreshConnectionStatus();
     }
 
     private async void SaveServerConnection_Click(object sender, RoutedEventArgs e)
     {
         var button = (Button)sender;
         button.IsEnabled = false;
+        checkingConnection = true;
+        var addressInput = context.ServerAddress;
+        var enteredKey = pendingKey;
+        bool IsCurrentInput() => context.ServerAddress == addressInput && pendingKey == enteredKey;
         Uri? address = null;
         try
         {
-            address = CastarServerClient.ParseServerUrl(context.ServerAddress);
-            var key = pendingKey;
+            address = CastarServerClient.ParseServerUrl(addressInput);
+            var key = enteredKey;
             if (key.Length == 0 && Uri.TryCreate(settings.ServerUrl, UriKind.Absolute, out var saved) && saved == address)
                 key = settings.ApiKey;
 
             context.ConnectionStatus = "Проверка подключения…";
             await server.TestConnectionAsync(address, key);
+            if (!IsCurrentInput())
+                return;
+
             settings.SaveConnection(address, key);
             keyInput?.Clear();
             pendingKey = "";
-            context.ConnectionStatus = "Подключено";
+            savedConnectionStatus = Connected;
+            context.ConnectionStatus = Connected;
         }
         catch (Exception error) when (CastarServerClient.IsConnectionError(error))
         {
-            context.ConnectionStatus = CastarServerClient.DescribeConnectionFailure(error, address);
+            if (IsCurrentInput())
+                context.ConnectionStatus = CastarServerClient.DescribeConnectionFailure(error, address);
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException or CryptographicException)
         {
@@ -143,19 +162,57 @@ public partial class SettingsContent : UserControl
         }
         finally
         {
+            checkingConnection = false;
+            if (!IsCurrentInput())
+                RefreshConnectionStatus();
             button.IsEnabled = true;
         }
     }
 
+    private bool DisplaysSavedConnection => pendingKey.Length == 0
+        && Uri.TryCreate(context.ServerAddress.Trim().TrimEnd('/') + "/", UriKind.Absolute, out var shown)
+        && Uri.TryCreate(settings.ServerUrl, UriKind.Absolute, out var saved)
+        && shown == saved;
+
+    private void RefreshConnectionStatus()
+    {
+        if (!checkingConnection)
+            context.ConnectionStatus = DisplaysSavedConnection
+                ? savedConnectionStatus : CastarServerClient.ConnectionNotEstablished;
+    }
+
+    private void SetSavedConnectionStatus(string status)
+    {
+        savedConnectionStatus = status;
+        if (!checkingConnection && DisplaysSavedConnection)
+            context.ConnectionStatus = status;
+    }
+
     private async Task LoadUsersAsync()
     {
-        if (!showingServerSettings || usersRequest is not null || settings.ApiKey.Length == 0)
+        if (!showingServerSettings || usersRequest is not null)
             return;
+
+        var key = settings.ApiKey;
+        if (key.Length == 0)
+        {
+            SetSavedConnectionStatus(CastarServerClient.ConnectionNotEstablished);
+            return;
+        }
 
         using var current = new CancellationTokenSource();
         usersRequest = current;
+        Uri? address = null;
+        var verifiedConnection = false;
         try
         {
+            address = CastarServerClient.ParseServerUrl(settings.ServerUrl);
+            await server.TestConnectionAsync(address, key, current.Token);
+            if (usersRequest != current)
+                return;
+
+            verifiedConnection = true;
+            SetSavedConnectionStatus(Connected);
             var users = await server.GetUsersAsync(current.Token);
             if (usersRequest != current)
                 return;
@@ -173,7 +230,11 @@ public partial class SettingsContent : UserControl
         catch (Exception error) when (CastarServerClient.IsConnectionError(error))
         {
             if (usersRequest == current)
+            {
+                if (!verifiedConnection)
+                    SetSavedConnectionStatus(CastarServerClient.DescribeConnectionFailure(error, address));
                 ResetUsers();
+            }
         }
         finally
         {
@@ -265,7 +326,7 @@ public partial class SettingsContent : UserControl
     private sealed class SettingsContext(ClientSettings settings, ServerSettingsViewModel serverConfiguration) : BaseSettingsModel
     {
         private string address = settings.ServerUrl;
-        private string connectionStatus = "";
+        private string connectionStatus = CastarServerClient.ConnectionNotEstablished;
         private string updateStatus = "";
         private int updateDownloadPercent;
         private bool isDownloadingUpdate;

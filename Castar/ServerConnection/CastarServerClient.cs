@@ -19,7 +19,7 @@ namespace Castar.ServerConnection;
 
 public sealed class CastarServerClient(ClientSettings settings) : IDisposable
 {
-    private const string ConnectionNotEstablished = "Соединение с сервером не установлено.";
+    internal const string ConnectionNotEstablished = "Соединение с сервером не установлено.";
     private readonly HttpClient httpsClient = CreateHttpClient(useProxy: true);
     private readonly HttpClient localClient = CreateHttpClient(useProxy: false);
 
@@ -106,12 +106,12 @@ public sealed class CastarServerClient(ClientSettings settings) : IDisposable
         };
     }
 
-    public async Task TestConnectionAsync(Uri server, string apiKey)
+    public async Task TestConnectionAsync(Uri server, string apiKey, CancellationToken cancellationToken = default)
     {
         using var request = CreateRequest(HttpMethod.Get, server, apiKey, "api/status");
-        using var response = await TransportFor(request).SendAsync(request);
+        using var response = await TransportFor(request).SendAsync(request, cancellationToken);
         EnsureSuccess(response);
-        var status = await ReadResponseAsync<ServerStatus>(response);
+        var status = await ReadResponseAsync<ServerStatus>(response, cancellationToken);
         if (status.ApiVersion != 1)
             throw new HttpRequestException("Версия API Castar Server не поддерживается.", null, response.StatusCode);
     }

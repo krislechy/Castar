@@ -26,7 +26,8 @@
                         <PasswordBox AutomationProperties.Name="Ключ API" PasswordChanged="ApiKey_PasswordChanged"/>
                         <Button Content="Подключиться" Style="{StaticResource FormAction}"
                                 Click="SaveServerConnection_Click"/>
-                        <TextBlock Text="{Binding ConnectionStatus}" Style="{StaticResource ViewStatus}"/>
+                        <TextBlock Text="{Binding ConnectionStatus}" Style="{StaticResource ViewStatus}"
+                                   AutomationProperties.LiveSetting="Polite"/>
                     </StackPanel>
                 </c:IslandPanel>
                 <c:IslandPanel Title="Сервер" ImageSvg="{DynamicResource Svg.DataBase}"

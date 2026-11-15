@@ -131,7 +131,7 @@ public partial class SettingsContent : UserControl
         }
         catch (Exception error) when (CastarServerClient.IsConnectionError(error))
         {
-            context.ConnectionStatus = CastarServerClient.DescribeError(error, address);
+            context.ConnectionStatus = CastarServerClient.DescribeConnectionFailure(error, address);
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException or CryptographicException)
         {

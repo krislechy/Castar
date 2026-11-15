@@ -19,6 +19,7 @@ namespace Castar.ServerConnection;
 
 public sealed class CastarServerClient(ClientSettings settings) : IDisposable
 {
+    private const string ConnectionNotEstablished = "Соединение с сервером не установлено.";
     private readonly HttpClient httpsClient = CreateHttpClient(useProxy: true);
     private readonly HttpClient localClient = CreateHttpClient(useProxy: false);
 
@@ -54,6 +55,12 @@ public sealed class CastarServerClient(ClientSettings settings) : IDisposable
 
     internal static bool IsConnectionError(Exception error) =>
         error is ArgumentException or HttpRequestException or OperationCanceledException or JsonException;
+
+    internal static string DescribeConnectionFailure(Exception error, Uri? server = null)
+    {
+        var detail = DescribeError(error, server);
+        return detail == ConnectionNotEstablished ? detail : $"{ConnectionNotEstablished} {detail}";
+    }
 
     internal static string DescribeError(Exception error, Uri? server = null) => error switch
     {
@@ -222,7 +229,7 @@ public sealed class CastarServerClient(ClientSettings settings) : IDisposable
     private static HttpRequestMessage CreateRequest(HttpMethod method, Uri server, string apiKey, string path)
     {
         if (apiKey.Length < 32 || apiKey.Any(char.IsWhiteSpace))
-            throw new ArgumentException("Укажите ключ API Castar Server длиной от 32 символов.");
+            throw new ArgumentException(ConnectionNotEstablished);
         return new HttpRequestMessage(method, new Uri(server, path))
         {
             Headers = { Authorization = new AuthenticationHeaderValue("Bearer", apiKey) }

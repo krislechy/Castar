@@ -109,9 +109,9 @@ public sealed class CastarServerClient(ClientSettings settings) : IDisposable
             throw new HttpRequestException("Версия API Castar Server не поддерживается.", null, response.StatusCode);
     }
 
-    public async Task<ObservableCollection<User>> GetUsersAsync()
+    public async Task<ObservableCollection<User>> GetUsersAsync(CancellationToken cancellationToken = default)
     {
-        var users = await SendAsync<UserDto[]>(HttpMethod.Get, "api/users");
+        var users = await SendAsync<UserDto[]>(HttpMethod.Get, "api/users", cancellationToken: cancellationToken);
         return new ObservableCollection<User>(users.Select(ToUser));
     }
 
@@ -123,10 +123,12 @@ public sealed class CastarServerClient(ClientSettings settings) : IDisposable
 
     public Task<bool> DeleteUserAsync(Guid id) => DeleteAsync($"api/users/{id:D}");
 
-    public async Task<ObservableCollection<Income>> GetIncomesAsync(DateTime start, DateTime finish)
+    public async Task<ObservableCollection<Income>> GetIncomesAsync(DateTime start, DateTime finish,
+        CancellationToken cancellationToken = default)
     {
-        var incomes = SendAsync<IncomeDto[]>(HttpMethod.Get, $"api/incomes?{DateQuery(start, finish)}");
-        var users = GetUsersAsync();
+        var incomes = SendAsync<IncomeDto[]>(HttpMethod.Get, $"api/incomes?{DateQuery(start, finish)}",
+            cancellationToken: cancellationToken);
+        var users = GetUsersAsync(cancellationToken);
         await Task.WhenAll(incomes, users);
         var usersById = (await users).ToDictionary(user => user.Id);
         return new ObservableCollection<Income>((await incomes).Select(income =>

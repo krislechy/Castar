@@ -18,6 +18,7 @@ public partial class PurchasesContent : UserControl
     private PurchaseDto[] purchases = [];
     private CancellationTokenSource? activeRequest;
     private bool hasLoaded;
+    private bool refreshPending;
 
     public PurchasesContent(CastarServerClient server)
     {
@@ -85,9 +86,21 @@ public partial class PurchasesContent : UserControl
 
     private void CancelRefresh()
     {
+        refreshPending = false;
         var previous = activeRequest;
         activeRequest = null;
         previous?.Cancel();
+    }
+
+    internal Task RefreshAfterServerChangeAsync()
+    {
+        if (!polling.IsEnabled)
+            return Task.CompletedTask;
+        if (activeRequest is null)
+            return RefreshAsync();
+
+        refreshPending = true;
+        return Task.CompletedTask;
     }
 
     private async Task RefreshAsync()
@@ -107,7 +120,7 @@ public partial class PurchasesContent : UserControl
         try
         {
             var rows = await server.GetPurchasesAsync(range.StartDate, range.EndDate, request.Token);
-            if (request != activeRequest)
+            if (request != activeRequest || refreshPending)
                 return;
 
             rows = rows.OrderByDescending(purchase => purchase.AddedOn).ThenBy(purchase => purchase.Id).ToArray();
@@ -117,7 +130,7 @@ public partial class PurchasesContent : UserControl
         }
         catch (Exception error) when (CastarServerClient.IsConnectionError(error))
         {
-            if (request == activeRequest)
+            if (request == activeRequest && !refreshPending)
                 ShowStatus(CastarServerClient.DescribeError(error));
         }
         finally
@@ -125,7 +138,10 @@ public partial class PurchasesContent : UserControl
             if (request == activeRequest)
             {
                 activeRequest = null;
-                Progress.IsLoading = false;
+                if (refreshPending)
+                    _ = RefreshAsync();
+                else
+                    Progress.IsLoading = false;
             }
         }
     }

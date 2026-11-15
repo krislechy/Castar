@@ -1,5 +1,6 @@
 using System.Net;
 using System.Text.Json;
+using Castar.Api;
 using Castar.DAL;
 using Castar.Domain.Models.SettingsModel;
 using Castar.Server;
@@ -38,6 +39,9 @@ if (string.IsNullOrWhiteSpace(configuration["urls"]))
 builder.WebHost.ConfigureKestrel(options => options.Limits.MaxRequestBodySize = 6 * 1024 * 1024);
 builder.Services.AddProblemDetails();
 builder.Services.AddCastarData(configuration);
+builder.Services.AddSignalR();
+builder.Services.AddSingleton<BudgetEventPublisher>();
+builder.Services.AddHostedService(provider => provider.GetRequiredService<BudgetEventPublisher>());
 builder.Services.AddSingleton(settings);
 builder.Services.AddSingleton<IReceiptProvider, SerbiaReceiptProvider>();
 builder.Services.AddSingleton<IReceiptProvider>(_ => new Nalog(
@@ -60,12 +64,13 @@ app.Use(async (context, next) =>
         const string scheme = "Bearer ";
         var header = authorization.Count == 1 ? authorization[0] : null;
         if (header is null || !header.StartsWith(scheme, StringComparison.OrdinalIgnoreCase)
-            || !keys.IsAuthorized(header[scheme.Length..]))
+            || keys.GetAuthorizedKeyId(header[scheme.Length..]) is not Guid keyId)
         {
             context.Response.StatusCode = StatusCodes.Status401Unauthorized;
             context.Response.Headers.WWWAuthenticate = "Bearer";
             return;
         }
+        context.Items[typeof(BudgetEventsHub)] = keyId;
     }
     await next(context);
 });
@@ -78,6 +83,7 @@ app.MapGet("/api/status", async (CastarDbContext database, CancellationToken tok
         : Results.StatusCode(StatusCodes.Status503ServiceUnavailable);
 });
 app.MapCastarApi();
+app.MapHub<BudgetEventsHub>("/" + BudgetEvents.Path);
 try
 {
     await app.Services.GetRequiredService<ServerSettings>().InitializeAsync();

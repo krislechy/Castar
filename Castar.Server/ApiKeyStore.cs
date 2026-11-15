@@ -48,14 +48,19 @@ internal sealed class ApiKeyStore : IDisposable
         }
     }
 
-    public bool IsAuthorized(string presentedKey)
+    public Guid? GetAuthorizedKeyId(string presentedKey)
     {
         var presentedHash = Hash(presentedKey);
-        var authorized = false;
+        Guid? authorized = null;
         foreach (var entry in Volatile.Read(ref current).Keys)
-            authorized |= Matches(entry.Hash, presentedHash);
+        {
+            if (Matches(entry.Hash, presentedHash))
+                authorized = entry.Id;
+        }
         return authorized;
     }
+
+    public Guid[] GetActiveKeyIds() => Volatile.Read(ref current).Keys.Select(entry => entry.Id).ToArray();
 
     public IReadOnlyList<ApiKeyInfo> List() => Volatile.Read(ref current).Keys
         .Select(entry => new ApiKeyInfo(entry.Id, entry.Label, entry.Suffix, CanCopy(entry)))

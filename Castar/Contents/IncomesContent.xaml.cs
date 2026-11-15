@@ -6,6 +6,7 @@ using Castar.ServerConnection;
 using System;
 using System.Collections.ObjectModel;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
@@ -20,51 +21,92 @@ public partial class IncomesContent : UserControl
     private readonly CastarServerClient server;
     private readonly IncomesContext context = new();
     private readonly DispatcherTimer polling;
-    private int incomeRequest;
+    private CancellationTokenSource? activeRequest;
+    private bool refreshPending;
     private RangeDate Range => SelectorRangeDatesElement.RangeDate;
 
     public IncomesContent(CastarServerClient server)
     {
         this.server = server;
-        server.ConnectionChanged += (_, _) =>
-        {
-            incomeRequest++;
-            context.IsLoading = false;
-            context.Incomes = [];
-            context.Status = "";
-        };
         polling = new DispatcherTimer { Interval = TimeSpan.FromSeconds(15) };
         polling.Tick += async (_, _) =>
         {
-            if (IsVisible && !context.IsLoading)
+            if (activeRequest is null)
                 await RefreshAsync();
         };
         DataContext = context;
         InitializeComponent();
+        server.ConnectionChanged += Server_ConnectionChanged;
+        IsVisibleChanged += Incomes_IsVisibleChanged;
     }
 
-    private async void Incomes_Loaded(object sender, RoutedEventArgs e)
+    private async void Incomes_Loaded(object sender, RoutedEventArgs e) => await StartPollingAsync();
+
+    private void Incomes_Unloaded(object sender, RoutedEventArgs e) => StopPolling();
+
+    private async void Incomes_IsVisibleChanged(object sender, DependencyPropertyChangedEventArgs e)
     {
+        if (IsLoaded && IsVisible)
+            await StartPollingAsync();
+        else
+            StopPolling();
+    }
+
+    private async Task StartPollingAsync()
+    {
+        if (!IsVisible || polling.IsEnabled)
+            return;
         polling.Start();
         await RefreshAsync();
     }
 
-    private void Incomes_Unloaded(object sender, RoutedEventArgs e)
+    private void StopPolling()
     {
         polling.Stop();
-        incomeRequest++;
+        CancelRefresh();
+        context.IsLoading = false;
+    }
+
+    private async void Server_ConnectionChanged(object? sender, EventArgs e)
+    {
+        CancelRefresh();
+        context.Incomes = [];
+        context.Status = "";
+        if (polling.IsEnabled)
+            await RefreshAsync();
+    }
+
+    private void CancelRefresh()
+    {
+        refreshPending = false;
+        var previous = activeRequest;
+        activeRequest = null;
+        previous?.Cancel();
+    }
+
+    internal Task RefreshAfterServerChangeAsync()
+    {
+        if (!polling.IsEnabled)
+            return Task.CompletedTask;
+        if (activeRequest is null)
+            return RefreshAsync();
+
+        refreshPending = true;
+        return Task.CompletedTask;
     }
 
     private Task RefreshAsync() => RefreshAsync(Range.StartDate, Range.EndDate);
 
     private async Task RefreshAsync(DateTime start, DateTime finish)
     {
-        var request = ++incomeRequest;
+        CancelRefresh();
+        using var request = new CancellationTokenSource();
+        activeRequest = request;
         context.IsLoading = true;
         try
         {
-            var rows = await server.GetIncomesAsync(start, finish);
-            if (request != incomeRequest)
+            var rows = await server.GetIncomesAsync(start, finish, request.Token);
+            if (request != activeRequest || refreshPending)
                 return;
 
             if (context.Incomes.Count != rows.Count || !context.Incomes.Zip(rows).All(pair =>
@@ -81,19 +123,25 @@ public partial class IncomesContent : UserControl
         }
         catch (Exception error) when (CastarServerClient.IsConnectionError(error))
         {
-            if (request == incomeRequest)
+            if (request == activeRequest && !refreshPending)
                 context.Status = CastarServerClient.DescribeError(error);
         }
         finally
         {
-            if (request == incomeRequest)
-                context.IsLoading = false;
+            if (request == activeRequest)
+            {
+                activeRequest = null;
+                if (refreshPending)
+                    _ = RefreshAsync();
+                else
+                    context.IsLoading = false;
+            }
         }
     }
 
     private async void SelectorRangeDates_DateRangeChanged(object sender, EventArgs e)
     {
-        if (IsLoaded && e is RangeDate range)
+        if (polling.IsEnabled && e is RangeDate range)
             await RefreshAsync(range.StartDate, range.EndDate);
     }
 

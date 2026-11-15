@@ -1,3 +1,4 @@
+using Castar.Api;
 using Castar.Contents;
 using Castar.Logger;
 using Castar.ServerConnection;
@@ -9,6 +10,7 @@ using System;
 using System.Drawing;
 using System.IO;
 using System.Windows;
+using System.Windows.Threading;
 
 namespace Castar;
 
@@ -40,6 +42,7 @@ public partial class App : Application
         services.AddSingleton(cLogger);
         services.AddSingleton(settings);
         services.AddSingleton<CastarServerClient>();
+        services.AddSingleton<BudgetEventConnection>();
         services.AddSingleton<Updates.GitHubUpdateService>();
         services.AddSingleton<ITrayIcon>(_ => new TrayIcon(
             Icon.ExtractAssociatedIcon(Environment.ProcessPath!) ?? SystemIcons.Application, "Castar",
@@ -72,6 +75,32 @@ public partial class App : Application
 
         MainWindow = serviceProvider.GetRequiredService<MainWindow>();
         MainWindow.Show();
+
+        var budgetEvents = serviceProvider.GetRequiredService<BudgetEventConnection>();
+        var purchases = serviceProvider.GetRequiredService<PurchasesContent>();
+        var incomes = serviceProvider.GetRequiredService<IncomesContent>();
+        budgetEvents.Changed += change =>
+        {
+            switch (change.Kind)
+            {
+                case BudgetEvents.Purchase:
+                    _ = purchases.RefreshAfterServerChangeAsync();
+                    if (change.Created)
+                        tray.Notify("Добавлен расход");
+                    break;
+                case BudgetEvents.Income:
+                    _ = incomes.RefreshAfterServerChangeAsync();
+                    if (change.Created)
+                        tray.Notify("Добавлен доход");
+                    break;
+            }
+        };
+        budgetEvents.Synchronized += () =>
+        {
+            _ = purchases.RefreshAfterServerChangeAsync();
+            _ = incomes.RefreshAfterServerChangeAsync();
+        };
+        budgetEvents.Start(new DispatcherSynchronizationContext(Dispatcher, DispatcherPriority.Background));
     }
 
     private static void ApplyPreferences(ClientSettings settings, ITrayIcon tray)

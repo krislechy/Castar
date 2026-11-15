@@ -33,5 +33,6 @@
     <PackageVersion Include="OpenTK.Windowing.GraphicsLibraryFramework" Version="4.9.4" />
     <PackageVersion Include="SQLite" Version="3.54.1" />
     <PackageVersion Include="System.Security.Cryptography.ProtectedData" Version="11.0.0" />
+    <PackageVersion Include="Microsoft.AspNetCore.SignalR.Client" Version="11.0.0" />
   </ItemGroup>
 </Project>

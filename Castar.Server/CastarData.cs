@@ -18,7 +18,9 @@ public static class CastarData
         }
         var path = GetSqlitePath(configuration);
         var connectionString = new SqliteConnectionStringBuilder { DataSource = path, ForeignKeys = true }.ToString();
-        services.AddDbContext<CastarDbContext>(options => options.UseSqlite(connectionString));
+        services.AddScoped<BudgetSaveInterceptor>();
+        services.AddDbContext<CastarDbContext>((provider, options) =>
+            options.UseSqlite(connectionString).AddInterceptors(provider.GetRequiredService<BudgetSaveInterceptor>()));
 
         services.AddScoped<IPurchasesRepository, PurchasesRepository>();
         services.AddScoped<IItemsRepository, ItemsRepository>();

@@ -1,5 +1,7 @@
 ﻿<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
-                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                    xmlns:converters="clr-namespace:Castar.Converters">
+    <converters:ImageBytesToBitmapConverter x:Key="UserAvatarImageConverter"/>
     <!--<SolidColorBrush x:Key="Menu.Highlight" Color="#25dbca"/>-->
     <SolidColorBrush x:Key="Highlight" Color="#14cfff"/>
     <Color x:Key="Highlight.Color">

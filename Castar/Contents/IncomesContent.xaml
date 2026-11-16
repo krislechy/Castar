@@ -1,4 +1,4 @@
-﻿<UserControl x:Class="Castar.Contents.IncomesContent"
+<UserControl x:Class="Castar.Contents.IncomesContent"
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" 
@@ -42,29 +42,15 @@
                 <RowDefinition Height="auto"/>
                 <RowDefinition/>
             </Grid.RowDefinitions>
-            <Grid HorizontalAlignment="Stretch" Margin="0,5,30,5">
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="0.5*"/>
-                    <ColumnDefinition Width="1*"/>
-                    <ColumnDefinition Width="0.5*"/>
-                </Grid.ColumnDefinitions>
-                <Grid Grid.Column="0">
-                    <Button Content="Добавить доход" Click="AddNewIncomeButton_Click"/>
-                </Grid>
-                <Grid Grid.Column="1">
-                    <c:SelectorRangeDates x:Name="SelectorRangeDatesElement" DateRangeChanged="SelectorRangeDates_DateRangeChanged"/>
-                </Grid>
-                <Grid Grid.Column="2" HorizontalAlignment="Right">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="auto"/>
-                        <ColumnDefinition/>
-                    </Grid.ColumnDefinitions>
-                    <TextBlock Grid.Column="0" Text="⯅" FontSize="20" Foreground="LightGreen" Margin="0,3,5,0"/>
-                    <TextBlock Grid.Column="1" 
-                               Text="{Binding TotalSum,Mode=OneWay}"
-                           TextElement.FontSize="20" TextElement.Foreground="{StaticResource Highlight}"/>
-                </Grid>
-            </Grid>
+            <DockPanel x:Name="PeriodBar" Style="{StaticResource BudgetPeriodBar}">
+                <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Margin="12,0,0,0">
+                    <Button Content="Добавить доход" VerticalAlignment="Center" Click="AddNewIncomeButton_Click"/>
+                    <TextBlock Text="{Binding TotalSum}" Margin="12,0,0,0" VerticalAlignment="Center"
+                               FontWeight="SemiBold" Foreground="{DynamicResource Highlight}"/>
+                </StackPanel>
+                <c:SelectorRangeDates x:Name="SelectorRangeDatesElement" HorizontalAlignment="Left"
+                                      VerticalAlignment="Center" DateRangeChanged="SelectorRangeDates_DateRangeChanged"/>
+            </DockPanel>
             <!--<lvc:CartesianChart x:Name="IncomeChart" Grid.Row="1"
                                 XAxes="{Binding XAxis}"
                                 Series="{Binding SeriesIncomes,Mode=OneWay,UpdateSourceTrigger=PropertyChanged}"
@@ -121,67 +107,70 @@
                     </DataTemplate>
                 </lvc:CartesianChart.TooltipTemplate>
             </lvc:CartesianChart>-->
-            <TextBlock Grid.Row="1" Text="{Binding Status}" Style="{StaticResource ViewStatus}"/>
-            <ListView x:Name="IncomesListView" Grid.Row="2" Style="{StaticResource BudgetList}"
-                      ItemsSource="{Binding Source={StaticResource IncomesSRC},UpdateSourceTrigger=PropertyChanged,Mode=OneWay}">
-                <ListView.ContextMenu>
-                    <ContextMenu>
-                        <MenuItem Header="Удалить" Icon="{StaticResource Svg.Remove}"
-                                  Click="DeleteIncomeButton_Click"/>
-                    </ContextMenu>
-                </ListView.ContextMenu>
-                <ListView.GroupStyle>
-                    <GroupStyle>
-                        <GroupStyle.HeaderTemplate>
-                            <DataTemplate>
-                                <Border Background="{StaticResource Main.Background.lvl2}" Padding="20,10,30,10">
-                                    <Grid Margin="0,0,0,0" TextElement.FontSize="20" TextElement.Foreground="{StaticResource Highlight}">
-                                        <Grid.ColumnDefinitions>
-                                            <ColumnDefinition Width="auto"/>
-                                            <ColumnDefinition Width="auto"/>
-                                            <ColumnDefinition/>
-                                        </Grid.ColumnDefinitions>
-                                        <TextBlock Grid.Column="0" Text="{Binding ItemCount,Mode=OneWay,StringFormat={}({0})}"/>
-                                        <TextBlock Grid.Column="1" Text="{Binding Name,Mode=OneWay,StringFormat={} {0}}" TextTrimming="WordEllipsis" MaxWidth="300" HorizontalAlignment="Left"/>
-                                        <Grid Grid.Column="2" HorizontalAlignment="Right">
+            <TextBlock Grid.Row="1" Text="{Binding Status}" Style="{StaticResource ViewStatus}"
+                       Margin="{StaticResource BudgetStatusMargin}"/>
+            <Grid x:Name="BudgetContent" Grid.Row="2" Margin="{StaticResource BudgetContentMargin}">
+                <ListView x:Name="IncomesListView" Style="{StaticResource BudgetList}"
+                          ItemsSource="{Binding Source={StaticResource IncomesSRC},UpdateSourceTrigger=PropertyChanged,Mode=OneWay}">
+                    <ListView.ContextMenu>
+                        <ContextMenu>
+                            <MenuItem Header="Удалить" Icon="{StaticResource Svg.Remove}"
+                                      Click="DeleteIncomeButton_Click"/>
+                        </ContextMenu>
+                    </ListView.ContextMenu>
+                    <ListView.GroupStyle>
+                        <GroupStyle>
+                            <GroupStyle.HeaderTemplate>
+                                <DataTemplate>
+                                    <Border Background="{StaticResource Main.Background.lvl2}" Padding="20,10,30,10">
+                                        <Grid Margin="0,0,0,0" TextElement.FontSize="20" TextElement.Foreground="{StaticResource Highlight}">
                                             <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="auto"/>
                                                 <ColumnDefinition Width="auto"/>
                                                 <ColumnDefinition/>
                                             </Grid.ColumnDefinitions>
-                                            <TextBlock Grid.Column="0" Text="⯅" FontSize="20" Foreground="LightGreen" Margin="0,3,5,0"/>
-                                            <TextBlock Grid.Column="1" Text="{Binding
-                                                Converter={StaticResource TotalSumGroupConverter},
-                                                Mode=OneWay}"/>
+                                            <TextBlock Grid.Column="0" Text="{Binding ItemCount,Mode=OneWay,StringFormat={}({0})}"/>
+                                            <TextBlock Grid.Column="1" Text="{Binding Name,Mode=OneWay,StringFormat={} {0}}" TextTrimming="WordEllipsis" MaxWidth="300" HorizontalAlignment="Left"/>
+                                            <Grid Grid.Column="2" HorizontalAlignment="Right">
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="auto"/>
+                                                    <ColumnDefinition/>
+                                                </Grid.ColumnDefinitions>
+                                                <TextBlock Grid.Column="0" Text="⯅" FontSize="20" Foreground="LightGreen" Margin="0,3,5,0"/>
+                                                <TextBlock Grid.Column="1" Text="{Binding
+                                                    Converter={StaticResource TotalSumGroupConverter},
+                                                    Mode=OneWay}"/>
+                                            </Grid>
                                         </Grid>
-                                    </Grid>
-                                </Border>
-                            </DataTemplate>
-                        </GroupStyle.HeaderTemplate>
-                    </GroupStyle>
-                </ListView.GroupStyle>
-                <ListView.ItemContainerStyle>
-                    <Style TargetType="{x:Type ListViewItem}" BasedOn="{StaticResource BudgetListItem}">
-                        <EventSetter Event="MouseDoubleClick" Handler="IncomesListView_MouseDoubleClick"/>
-                    </Style>
-                </ListView.ItemContainerStyle>
-                <ListView.ItemTemplate>
-                    <DataTemplate>
-                        <Grid>
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="auto"/>
-                                <ColumnDefinition/>
-                                <ColumnDefinition Width="auto"/>
-                                <ColumnDefinition Width="auto"/>
-                            </Grid.ColumnDefinitions>
-                            <c:UserInfoPanel DataContext="{Binding Income.User}" IsShortView="True" SizeImage="30"/>
-                            <c:MoneyAmount Grid.Column="2" Display="{Binding Amount}" FontWeight="DemiBold"
-                                           FontSize="16" VerticalAlignment="Center" Margin="0,0,30,0"/>
-                            <TextBlock Grid.Column="3" Text="{Binding Income.AddedOn}" VerticalAlignment="Center" Margin="0,0,30,0"/>
-                        </Grid>
-                    </DataTemplate>
-                </ListView.ItemTemplate>
-            </ListView>
-            <c:Loader Grid.Row="2" IsLoading="{Binding IsLoading,Mode=OneWay}"/>
+                                    </Border>
+                                </DataTemplate>
+                            </GroupStyle.HeaderTemplate>
+                        </GroupStyle>
+                    </ListView.GroupStyle>
+                    <ListView.ItemContainerStyle>
+                        <Style TargetType="{x:Type ListViewItem}" BasedOn="{StaticResource BudgetListItem}">
+                            <EventSetter Event="MouseDoubleClick" Handler="IncomesListView_MouseDoubleClick"/>
+                        </Style>
+                    </ListView.ItemContainerStyle>
+                    <ListView.ItemTemplate>
+                        <DataTemplate>
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="auto"/>
+                                    <ColumnDefinition/>
+                                    <ColumnDefinition Width="auto"/>
+                                    <ColumnDefinition Width="auto"/>
+                                </Grid.ColumnDefinitions>
+                                <c:UserInfoPanel DataContext="{Binding Income.User}" IsShortView="True" SizeImage="30"/>
+                                <c:MoneyAmount Grid.Column="2" Display="{Binding Amount}" FontWeight="DemiBold"
+                                               FontSize="16" VerticalAlignment="Center" Margin="0,0,30,0"/>
+                                <TextBlock Grid.Column="3" Text="{Binding Income.AddedOn}" VerticalAlignment="Center" Margin="0,0,30,0"/>
+                            </Grid>
+                        </DataTemplate>
+                    </ListView.ItemTemplate>
+                </ListView>
+                <c:Loader IsLoading="{Binding IsLoading,Mode=OneWay}"/>
+            </Grid>
         </Grid>
     </Grid>
 </UserControl>

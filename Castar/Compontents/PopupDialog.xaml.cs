@@ -1,3 +1,4 @@
+using Castar.Domain.Models.SettingsModel;
 using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
@@ -15,7 +16,6 @@ public sealed record ValidatePopupDialog(bool Result, string? Message);
 public partial class PopupDialog : UserControl
 {
     private readonly Queue<Request> pending = new();
-    private Request? active;
     private IInputElement? previousFocus;
     private bool closing;
 
@@ -56,37 +56,12 @@ public partial class PopupDialog : UserControl
         }
     }
 
-    public static readonly DependencyProperty TypeDialogProperty =
-        DependencyProperty.Register(nameof(TypeDialog), typeof(TypeDialogEnum), typeof(PopupDialog));
-    public TypeDialogEnum TypeDialog => (TypeDialogEnum)GetValue(TypeDialogProperty);
+    private static readonly DependencyPropertyKey ActiveDialogPropertyKey = DependencyProperty.RegisterReadOnly(
+        nameof(ActiveDialog), typeof(Request), typeof(PopupDialog), new PropertyMetadata(null));
 
-    public static readonly DependencyProperty ObjectContentProperty =
-        DependencyProperty.Register(nameof(ObjectContent), typeof(object), typeof(PopupDialog));
-    public object? ObjectContent => GetValue(ObjectContentProperty);
+    public static readonly DependencyProperty ActiveDialogProperty = ActiveDialogPropertyKey.DependencyProperty;
 
-    public static readonly DependencyProperty DefaultButtonTextProperty =
-        DependencyProperty.Register(nameof(DefaultButtonText), typeof(string), typeof(PopupDialog));
-    public string? DefaultButtonText => (string?)GetValue(DefaultButtonTextProperty);
-
-    public static readonly DependencyProperty SuccessConfirmButtonTextProperty =
-        DependencyProperty.Register(nameof(SuccessConfirmButtonText), typeof(string), typeof(PopupDialog));
-    public string? SuccessConfirmButtonText => (string?)GetValue(SuccessConfirmButtonTextProperty);
-
-    public static readonly DependencyProperty CancelConfirmButtonTextProperty =
-        DependencyProperty.Register(nameof(CancelConfirmButtonText), typeof(string), typeof(PopupDialog));
-    public string? CancelConfirmButtonText => (string?)GetValue(CancelConfirmButtonTextProperty);
-
-    public static readonly DependencyProperty BackgroundModalProperty =
-        DependencyProperty.Register(nameof(BackgroundModal), typeof(SolidColorBrush), typeof(PopupDialog));
-    public SolidColorBrush? BackgroundModal => (SolidColorBrush?)GetValue(BackgroundModalProperty);
-
-    public static readonly DependencyProperty TitleProperty =
-        DependencyProperty.Register(nameof(Title), typeof(string), typeof(PopupDialog));
-    public string? Title => (string?)GetValue(TitleProperty);
-
-    public static readonly DependencyProperty ValidateMessageProperty =
-        DependencyProperty.Register(nameof(ValidateMessage), typeof(string), typeof(PopupDialog));
-    public string? ValidateMessage => (string?)GetValue(ValidateMessageProperty);
+    public Request? ActiveDialog => (Request?)GetValue(ActiveDialogProperty);
 
     public static Task<bool?> Show(object content, TypeDialogEnum typeDialog,
         Func<Options, Options>? options = null, Func<ValidatePopupDialog>? validation = null)
@@ -108,40 +83,28 @@ public partial class PopupDialog : UserControl
 
     internal static void SetContentWarning(UIElement content, string? message)
     {
-        if (Application.Current?.MainWindow is MainWindow { MainDialog: { active: not null } dialog }
+        if (Application.Current?.MainWindow is MainWindow { MainDialog: { ActiveDialog: { } request } dialog }
             && dialog.DialogContent.IsAncestorOf(content))
-            dialog.SetValue(ValidateMessageProperty, message);
+            request.Warning = message;
     }
 
     private void ShowNext()
     {
-        if (active is not null || !pending.TryDequeue(out var request))
+        if (closing || ActiveDialog is not null || !pending.TryDequeue(out var request))
             return;
 
-        active = request;
         if (!IsVisible && Window.GetWindow(this) is { } owner)
         {
             previousFocus = Keyboard.FocusedElement is UIElement focused && owner.IsAncestorOf(focused)
                 ? focused : FocusManager.GetFocusedElement(owner);
         }
 
-        var options = request.Options;
-        SetValue(TypeDialogProperty, request.Type);
-        SetValue(TitleProperty, options.Title);
-        SetValue(BackgroundModalProperty, options.Background);
-        SetValue(ObjectContentProperty, request.Content);
-        SetValue(ValidateMessageProperty, null);
-        SetValue(DefaultButtonTextProperty, options.DefaultButton.DefaultButtonText);
-        SetValue(SuccessConfirmButtonTextProperty, options.SuccessButton.SuccessConfirmButtonText);
-        SetValue(CancelConfirmButtonTextProperty, options.CancelButton.CancelConfirmButtonText);
-        DefaultButton.Foreground = options.DefaultButton.DefaultButtonForeground;
-        ConfirmButton.Foreground = options.SuccessButton.SuccessConfirmButtonForeground;
-        CancelButton.Foreground = options.CancelButton.CancelConfirmButtonForeground;
+        SetValue(ActiveDialogPropertyKey, request);
         Visibility = Visibility.Visible;
 
         _ = Dispatcher.InvokeAsync(() =>
         {
-            if (active != request || closing || !IsVisible)
+            if (ActiveDialog != request || closing || !IsVisible)
                 return;
             if (request.Content is UIElement { } editor && editor.MoveFocus(new TraversalRequest(FocusNavigationDirection.First)))
                 return;
@@ -151,12 +114,12 @@ public partial class PopupDialog : UserControl
 
     private void Close(bool? result)
     {
-        if (active is not { } request || closing)
+        if (ActiveDialog is not { } request || closing)
             return;
 
         if (result == true && request.Validation?.Invoke() is { Result: false } invalid)
         {
-            SetValue(ValidateMessageProperty, invalid.Message);
+            request.Warning = invalid.Message;
             return;
         }
 
@@ -167,13 +130,10 @@ public partial class PopupDialog : UserControl
         };
         fade.Completed += (_, _) =>
         {
-            if (active != request)
+            if (ActiveDialog != request)
                 return;
 
-            active = null;
-            closing = false;
-            SetValue(ObjectContentProperty, null);
-            SetValue(ValidateMessageProperty, null);
+            SetValue(ActiveDialogPropertyKey, null);
             if (pending.Count == 0)
             {
                 Visibility = Visibility.Collapsed;
@@ -182,6 +142,7 @@ public partial class PopupDialog : UserControl
                 previousFocus = null;
             }
             BeginAnimation(OpacityProperty, null);
+            closing = false;
             ShowNext();
             request.Completion.TrySetResult(result);
         };
@@ -198,18 +159,17 @@ public partial class PopupDialog : UserControl
 
     private void CancelPending()
     {
-        var request = active;
-        active = null;
-        closing = false;
+        var request = ActiveDialog;
+        closing = true;
+        SetValue(ActiveDialogPropertyKey, null);
         previousFocus = null;
         Visibility = Visibility.Collapsed;
         BeginAnimation(OpacityProperty, null);
-        SetValue(ObjectContentProperty, null);
-        SetValue(ValidateMessageProperty, null);
 
         request?.Completion.TrySetResult(null);
         while (pending.TryDequeue(out var queued))
             queued.Completion.TrySetResult(null);
+        closing = false;
     }
 
     private void Dialog_KeyDown(object sender, KeyEventArgs e)
@@ -217,7 +177,7 @@ public partial class PopupDialog : UserControl
         if (e.Key != Key.Escape)
             return;
         e.Handled = true;
-        Close(active?.Type == TypeDialogEnum.Confirm ? false : null);
+        Close(ActiveDialog?.Type == TypeDialogEnum.Confirm ? false : null);
     }
 
     private void SuccessConfirmEvent(object sender, RoutedEventArgs e) => Close(true);
@@ -226,12 +186,39 @@ public partial class PopupDialog : UserControl
 
     private void ButtonOutsideClickEvent(object sender, MouseButtonEventArgs e)
     {
-        if (!border.IsMouseOver && active?.Options.AllowMissClick == true)
-            Close(active.Type == TypeDialogEnum.Confirm ? false : null);
+        if (!border.IsMouseOver && ActiveDialog is { AllowMissClick: true } request)
+            Close(request.Type == TypeDialogEnum.Confirm ? false : null);
     }
 
-    private sealed record Request(object Content, TypeDialogEnum Type, Options Options, Func<ValidatePopupDialog>? Validation)
+    public sealed class Request : BaseSettingsModel
     {
-        public TaskCompletionSource<bool?> Completion { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        private string? warning;
+
+        internal Request(object content, TypeDialogEnum type, Options options, Func<ValidatePopupDialog>? validation)
+        {
+            Content = content;
+            Type = type;
+            Title = options.Title;
+            Background = options.Background;
+            DefaultButton = new(options.DefaultButton.DefaultButtonText, options.DefaultButton.DefaultButtonForeground);
+            ConfirmButton = new(options.SuccessButton.SuccessConfirmButtonText, options.SuccessButton.SuccessConfirmButtonForeground);
+            CancelButton = new(options.CancelButton.CancelConfirmButtonText, options.CancelButton.CancelConfirmButtonForeground);
+            AllowMissClick = options.AllowMissClick;
+            Validation = validation;
+        }
+
+        public object Content { get; }
+        public TypeDialogEnum Type { get; }
+        public string? Title { get; }
+        public SolidColorBrush Background { get; }
+        public ButtonPresentation DefaultButton { get; }
+        public ButtonPresentation ConfirmButton { get; }
+        public ButtonPresentation CancelButton { get; }
+        public string? Warning { get => warning; internal set => SetField(ref warning, value); }
+        internal bool AllowMissClick { get; }
+        internal Func<ValidatePopupDialog>? Validation { get; }
+        internal TaskCompletionSource<bool?> Completion { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
     }
+
+    public sealed record ButtonPresentation(string Text, Brush Foreground);
 }

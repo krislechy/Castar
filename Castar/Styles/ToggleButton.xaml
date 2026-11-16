@@ -78,7 +78,85 @@
         </Setter>
     </Style>
     <Style x:Key="Menu.ToggleButton" TargetType="{x:Type ToggleButton}" BasedOn="{StaticResource {x:Type ToggleButton}}">
-        <Setter Property="MinHeight" Value="{Binding ActualWidth,RelativeSource={RelativeSource Mode=Self}}"/>
+        <Setter Property="MinHeight" Value="48"/>
         <Setter Property="Margin" Value="0"/>
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="ToggleButton">
+                    <Grid Background="Transparent" SnapsToDevicePixels="True">
+                        <Border x:Name="Feedback" Margin="4,3" CornerRadius="7" Opacity="0"
+                                Background="{DynamicResource Main.MouseOver}"/>
+                        <Border x:Name="FocusOutline" Margin="4,3" CornerRadius="7" Visibility="Collapsed"
+                                BorderBrush="{DynamicResource Highlight}" BorderThickness="1"/>
+                        <Border x:Name="SelectedMark" HorizontalAlignment="Left" Width="3" Height="20"
+                                CornerRadius="0,2,2,0" Visibility="Collapsed" Background="{DynamicResource Highlight}"/>
+                        <ContentPresenter x:Name="MenuIcon" Width="23" Height="23" Opacity="0.85"
+                                          HorizontalAlignment="Center" VerticalAlignment="Center"
+                                          RenderTransformOrigin="0.5,0.5" TextElement.Foreground="{TemplateBinding Foreground}">
+                            <ContentPresenter.RenderTransform>
+                                <ScaleTransform x:Name="IconScale"/>
+                            </ContentPresenter.RenderTransform>
+                        </ContentPresenter>
+                    </Grid>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsMouseOver" Value="True">
+                            <Setter TargetName="Feedback" Property="Opacity" Value="0.65"/>
+                            <Setter TargetName="MenuIcon" Property="Opacity" Value="1"/>
+                        </Trigger>
+                        <Trigger Property="IsChecked" Value="True">
+                            <Setter TargetName="Feedback" Property="Opacity" Value="1"/>
+                            <Setter TargetName="SelectedMark" Property="Visibility" Value="Visible"/>
+                            <Setter TargetName="MenuIcon" Property="Opacity" Value="1"/>
+                            <Setter TargetName="MenuIcon" Property="TextElement.Foreground" Value="{DynamicResource Highlight}"/>
+                        </Trigger>
+                        <Trigger Property="IsKeyboardFocused" Value="True">
+                            <Setter TargetName="FocusOutline" Property="Visibility" Value="Visible"/>
+                        </Trigger>
+                        <Trigger Property="IsEnabled" Value="False">
+                            <Setter TargetName="MenuIcon" Property="Opacity" Value="0.55"/>
+                        </Trigger>
+                        <MultiDataTrigger>
+                            <MultiDataTrigger.Conditions>
+                                <Condition Binding="{Binding IsMouseOver, RelativeSource={RelativeSource TemplatedParent}}" Value="True"/>
+                                <Condition Binding="{Binding IsEnabled, RelativeSource={RelativeSource TemplatedParent}}" Value="True"/>
+                                <Condition Binding="{Binding Source={x:Static SystemParameters.ClientAreaAnimation}}" Value="True"/>
+                            </MultiDataTrigger.Conditions>
+                            <MultiDataTrigger.EnterActions>
+                                <BeginStoryboard>
+                                    <Storyboard FillBehavior="Stop">
+                                        <DoubleAnimationUsingKeyFrames Storyboard.TargetName="IconScale" Storyboard.TargetProperty="ScaleX">
+                                            <DiscreteDoubleKeyFrame KeyTime="0:0:0" Value="0.96"/>
+                                            <SplineDoubleKeyFrame KeyTime="0:0:0.12" Value="1" KeySpline="0.23,1 0.32,1"/>
+                                        </DoubleAnimationUsingKeyFrames>
+                                        <DoubleAnimationUsingKeyFrames Storyboard.TargetName="IconScale" Storyboard.TargetProperty="ScaleY">
+                                            <DiscreteDoubleKeyFrame KeyTime="0:0:0" Value="0.96"/>
+                                            <SplineDoubleKeyFrame KeyTime="0:0:0.12" Value="1" KeySpline="0.23,1 0.32,1"/>
+                                        </DoubleAnimationUsingKeyFrames>
+                                    </Storyboard>
+                                </BeginStoryboard>
+                            </MultiDataTrigger.EnterActions>
+                        </MultiDataTrigger>
+                        <MultiDataTrigger>
+                            <MultiDataTrigger.Conditions>
+                                <Condition Binding="{Binding IsChecked, RelativeSource={RelativeSource TemplatedParent}}" Value="True"/>
+                                <Condition Binding="{Binding IsMouseOver, RelativeSource={RelativeSource TemplatedParent}}" Value="True"/>
+                                <Condition Binding="{Binding IsEnabled, RelativeSource={RelativeSource TemplatedParent}}" Value="True"/>
+                                <Condition Binding="{Binding Source={x:Static SystemParameters.ClientAreaAnimation}}" Value="True"/>
+                            </MultiDataTrigger.Conditions>
+                            <MultiDataTrigger.EnterActions>
+                                <BeginStoryboard>
+                                    <Storyboard FillBehavior="Stop">
+                                        <DoubleAnimationUsingKeyFrames Storyboard.TargetName="SelectedMark" Storyboard.TargetProperty="Opacity">
+                                            <DiscreteDoubleKeyFrame KeyTime="0:0:0" Value="0.6"/>
+                                            <SplineDoubleKeyFrame KeyTime="0:0:0.12" Value="1" KeySpline="0.23,1 0.32,1"/>
+                                        </DoubleAnimationUsingKeyFrames>
+                                    </Storyboard>
+                                </BeginStoryboard>
+                            </MultiDataTrigger.EnterActions>
+                        </MultiDataTrigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
     </Style>
 </ResourceDictionary>

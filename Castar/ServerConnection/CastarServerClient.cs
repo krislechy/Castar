@@ -131,6 +131,19 @@ public sealed class CastarServerClient(ClientSettings settings) : IDisposable
         return (ToUser(user), user.TelegramNotificationsEnabled.HasValue);
     }
 
+    internal async Task<byte[]?> GetUserAvatarAsync(Guid id)
+    {
+        const int maxAvatarSize = 1024 * 1024;
+        using var request = CreateRequest(HttpMethod.Get, ParseServerUrl(settings.ServerUrl), settings.ApiKey, $"api/users/{id:D}/avatar");
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(8));
+        using var response = await TransportFor(request).SendAsync(request, HttpCompletionOption.ResponseHeadersRead, timeout.Token);
+        if (response.StatusCode == HttpStatusCode.NotFound || response.Content.Headers.ContentLength > maxAvatarSize)
+            return null;
+        EnsureSuccess(response);
+        await response.Content.LoadIntoBufferAsync(maxAvatarSize, timeout.Token);
+        return await response.Content.ReadAsByteArrayAsync(timeout.Token);
+    }
+
     public async Task<User> UpdateUserAsync(User user, bool updateTelegramNotifications = false)
     {
         var input = UserWrite(user);
@@ -191,6 +204,11 @@ public sealed class CastarServerClient(ClientSettings settings) : IDisposable
 
     public Task<ServerSettingsDto> GetServerSettingsAsync(CancellationToken cancellationToken = default) =>
         SendAsync<ServerSettingsDto>(HttpMethod.Get, "api/settings", cancellationToken: cancellationToken);
+
+    internal Task<CurrencyRateDto[]> GetExchangeRatesAsync(string target, CurrencyRateKeyDto[] rates,
+        CancellationToken cancellationToken) =>
+        SendAsync<CurrencyRateDto[]>(HttpMethod.Post, "api/exchange-rates",
+            new CurrencyRateQueryDto(target, rates), cancellationToken);
 
     public Task<ServerSettingsDto> SaveServerSettingsAsync(ServerSettingsWriteDto settings, CancellationToken cancellationToken = default) =>
         SendAsync<ServerSettingsDto>(HttpMethod.Put, "api/settings", settings, cancellationToken, readProblemDetails: true);

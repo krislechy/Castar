@@ -37,18 +37,19 @@
             <RowDefinition/>
         </Grid.RowDefinitions>
         <c:IslandPanel IsMainTitle="True" Title="Расходы"/>
-        <DockPanel Grid.Row="1" Margin="12,8">
+        <DockPanel x:Name="PeriodBar" Grid.Row="1" Style="{StaticResource BudgetPeriodBar}">
             <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Margin="12,0,0,0">
                 <TextBlock x:Name="ExpenseTotal" VerticalAlignment="Center" FontWeight="SemiBold"
                            Foreground="{DynamicResource Highlight}" AutomationProperties.Name="Сумма расходов за период"/>
                 <ContentControl x:Name="ExpenseTotalWarning" Style="{StaticResource ExpenseAmountWarning}"/>
             </StackPanel>
-            <c:SelectorRangeDates x:Name="Dates" DateRangeChanged="Dates_DateRangeChanged"/>
+            <c:SelectorRangeDates x:Name="Dates" HorizontalAlignment="Left" VerticalAlignment="Center"
+                                  DateRangeChanged="Dates_DateRangeChanged"/>
         </DockPanel>
-        <TextBlock x:Name="StatusText" Grid.Row="2" Margin="12,0,12,8"
+        <TextBlock x:Name="StatusText" Grid.Row="2" Margin="{StaticResource BudgetStatusMargin}"
                    Foreground="{DynamicResource Warning.Svg.Brush}" TextWrapping="Wrap"
                    Visibility="Collapsed" AutomationProperties.LiveSetting="Polite"/>
-        <Grid Grid.Row="3" Margin="8,0,8,8">
+        <Grid x:Name="BudgetContent" Grid.Row="3" Margin="{StaticResource BudgetContentMargin}">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="4*"/>
                 <ColumnDefinition Width="8"/>

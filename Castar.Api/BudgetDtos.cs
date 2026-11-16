@@ -27,11 +27,15 @@ public sealed record PurchaseDto(Guid Id, Guid UserId, string Name, decimal Tota
     public DateOnly? ReceiptDate { get; init; }
     public long? Revision { get; init; }
     public bool HasReceiptSource { get; init; }
+    public bool SupportsCurrencyEdit { get; init; }
 }
 
 public sealed record PurchaseItemDto(Guid Id, string Name, int? Category, double Quantity, decimal Price, decimal Sum);
 
-public sealed record PurchaseWriteDto(string Name, string? RetailPlace, string? RetailPlaceAddress, DateTime AddedOn);
+public sealed record PurchaseWriteDto(string Name, string? RetailPlace, string? RetailPlaceAddress, DateTime AddedOn)
+{
+    public string? Currency { get; init; }
+}
 
 public sealed record PurchaseItemWriteDto(string Name, double Quantity, decimal Price);
 

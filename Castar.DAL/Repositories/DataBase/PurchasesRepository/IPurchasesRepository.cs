@@ -1,4 +1,5 @@
 using Castar.Domain.Models.DataBase;
+using Castar.Domain.Models.SettingsModel;
 
 namespace Castar.DAL.Repositories.DataBase
 {
@@ -16,7 +17,8 @@ namespace Castar.DAL.Repositories.DataBase
             Guid purchaseId, Guid itemId, long expectedRevision, CancellationToken cancellationToken = default);
         Task<PurchaseMutationResult> EditPurchaseAsync(
             Guid purchaseId, long expectedRevision, string name, string? retailPlace, string? retailPlaceAddress,
-            DateTime addedOn, CancellationToken cancellationToken = default);
+            DateTime addedOn, string? currency = null, ManualCurrencySettings? currencyPolicy = null,
+            CancellationToken cancellationToken = default);
         Task<PurchaseMutationResult> EditPurchaseItemAsync(
             Guid purchaseId, Guid itemId, long expectedRevision, string name, double quantity, decimal price,
             CancellationToken cancellationToken = default);
@@ -26,6 +28,7 @@ namespace Castar.DAL.Repositories.DataBase
     {
         Applied,
         NotFound,
-        Conflict
+        Conflict,
+        InvalidCurrency
     }
 }

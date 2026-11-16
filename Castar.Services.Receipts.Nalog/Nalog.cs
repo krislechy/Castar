@@ -45,6 +45,9 @@ namespace Castar.Services.Receipts
 
         public override string Id => ProviderId;
 
+        public override ReceiptProviderAuthentication Authentication { get; } = new(false, true,
+            [new("inn", "ИНН", true, false), new("password", "Пароль", true, true)]);
+
         public override bool CanHandle(string query) =>
             !string.IsNullOrWhiteSpace(query) && query.Trim().StartsWith("t=", StringComparison.OrdinalIgnoreCase);
 
@@ -106,7 +109,10 @@ namespace Castar.Services.Receipts
             await _gate.WaitAsync(cancellationToken);
             try
             {
-                var credential = _getCredential();
+                var credential = ConfiguredAuthentication is { } authentication
+                    ? new NetworkCredential(authentication.Values.GetValueOrDefault("inn"),
+                        authentication.Values.GetValueOrDefault("password"))
+                    : _getCredential();
                 if (credential is null || string.IsNullOrWhiteSpace(credential.UserName) || string.IsNullOrWhiteSpace(credential.Password))
                     throw new InvalidDataException("Укажите ИНН и пароль ФНС в настройках.");
 

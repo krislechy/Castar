@@ -2,6 +2,7 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using Castar.Domain.Models.DataBase;
+using Castar.Domain.Models.SettingsModel;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 
@@ -176,7 +177,8 @@ namespace Castar.DAL.Repositories.DataBase
 
         public async Task<PurchaseMutationResult> EditPurchaseAsync(
             Guid purchaseId, long expectedRevision, string name, string? retailPlace, string? retailPlaceAddress,
-            DateTime addedOn, CancellationToken cancellationToken = default)
+            DateTime addedOn, string? currency = null, ManualCurrencySettings? currencyPolicy = null,
+            CancellationToken cancellationToken = default)
         {
             var purchase = await WithItems(Context.Purchases)
                 .SingleOrDefaultAsync(x => x.Id == purchaseId, cancellationToken);
@@ -185,8 +187,19 @@ namespace Castar.DAL.Repositories.DataBase
             if (purchase.Revision != expectedRevision)
                 return PurchaseMutationResult.Conflict;
 
+            var updatedCurrency = purchase.Currency;
+            if (currency is not null)
+            {
+                updatedCurrency = ManualCurrencySettings.NormalizeCode(currency);
+                if (updatedCurrency is null ||
+                    (!string.Equals(updatedCurrency, purchase.Currency, StringComparison.OrdinalIgnoreCase)
+                     && !(currencyPolicy ?? ManualCurrencySettings.Default).Allows(updatedCurrency)))
+                    return PurchaseMutationResult.InvalidCurrency;
+            }
+
             if (purchase.Name == name && purchase.RetailPlace == retailPlace &&
-                purchase.RetailPlaceAddress == retailPlaceAddress && purchase.AddedOn == addedOn)
+                purchase.RetailPlaceAddress == retailPlaceAddress && purchase.AddedOn == addedOn &&
+                purchase.Currency == updatedCurrency)
                 return PurchaseMutationResult.Applied;
 
             if (IsFiscal(Context, purchase))
@@ -195,6 +208,7 @@ namespace Castar.DAL.Repositories.DataBase
             purchase.RetailPlace = retailPlace;
             purchase.RetailPlaceAddress = retailPlaceAddress;
             purchase.AddedOn = addedOn;
+            purchase.Currency = updatedCurrency;
             purchase.Revision = checked(purchase.Revision + 1);
             await Context.SaveChangesAsync(cancellationToken);
             return PurchaseMutationResult.Applied;

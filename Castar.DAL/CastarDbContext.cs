@@ -15,6 +15,7 @@ namespace Castar.DAL
         public DbSet<Purchase> Purchases => Set<Purchase>();
         public DbSet<Item> Items => Set<Item>();
         public DbSet<Income> Incomes => Set<Income>();
+        public DbSet<ExchangeRateEntry> ExchangeRates => Set<ExchangeRateEntry>();
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
@@ -66,6 +67,12 @@ namespace Castar.DAL
             incomes.Property(x => x.Source).HasMaxLength(400);
             incomes.HasOne(x => x.User).WithMany().HasForeignKey(x => x.UserId)
                 .OnDelete(DeleteBehavior.NoAction).HasConstraintName("FK_Incomes_Users");
+
+            var rates = modelBuilder.Entity<ExchangeRateEntry>();
+            rates.ToTable("ExchangeRates");
+            rates.HasKey(x => new { x.Target, x.Source, x.Date });
+            rates.Property(x => x.Target).HasMaxLength(3);
+            rates.Property(x => x.Source).HasMaxLength(3);
         }
 
         public override int SaveChanges(bool acceptAllChangesOnSuccess)

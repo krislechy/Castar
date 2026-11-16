@@ -15,12 +15,39 @@ partial class CastarDbContextModelSnapshot : ModelSnapshot
     // If you encounter a merge conflict in the line below, it means you need to
     // discard one of the migration branches and recreate its migrations on top of
     // the other branch. See https://aka.ms/efcore-docs-migrations-conflicts for more info.
-    public override string LastMigrationId => "20261116001454_UserTelegramNotificationPreference";
+    public override string LastMigrationId => "20261116085106_HistoricalExchangeRateCache";
 
     protected override void BuildModel(ModelBuilder modelBuilder)
     {
 #pragma warning disable 612, 618
         modelBuilder.HasAnnotation("ProductVersion", "11.0.0");
+
+        modelBuilder.Entity("Castar.DAL.ExchangeRateEntry", b =>
+            {
+                b.Property<string>("Target")
+                    .HasMaxLength(3)
+                    .HasColumnType("TEXT");
+
+                b.Property<string>("Source")
+                    .HasMaxLength(3)
+                    .HasColumnType("TEXT");
+
+                b.Property<DateOnly>("Date")
+                    .HasColumnType("TEXT");
+
+                b.Property<DateOnly>("QuotedOn")
+                    .HasColumnType("TEXT");
+
+                b.Property<decimal>("Rate")
+                    .HasColumnType("TEXT");
+
+                b.Property<DateTime>("RetrievedUtc")
+                    .HasColumnType("TEXT");
+
+                b.HasKey("Target", "Source", "Date");
+
+                b.ToTable("ExchangeRates");
+            });
 
         modelBuilder.Entity("Castar.Domain.Models.DataBase.Income", b =>
             {

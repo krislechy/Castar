@@ -1,6 +1,7 @@
 using System.Net;
 using Castar.Api;
 using Castar.BL;
+using Castar.DAL;
 using Castar.DAL.Repositories.DataBase;
 using Castar.Domain.Models.DataBase;
 using Castar.Domain.Models.SettingsModel;
@@ -17,10 +18,12 @@ public static class CastarEndpoints
     {
         var api = endpoints.MapGroup("/api");
         api.AddEndpointFilter(HandleDatabaseConflicts);
+        api.MapExchangeRates();
         api.MapGet("/settings", (ServerSettings settings) => Results.Ok(settings.Read()));
         api.MapPut("/settings", UpdateServerSettingsAsync);
         api.MapGet("/users", GetUsers);
         api.MapGet("/users/{id:guid}", GetUser);
+        api.MapGet("/users/{id:guid}/avatar", GetUserAvatar);
         api.MapPost("/users", CreateUser).AddEndpointFilter(SerializeUserWrites);
         api.MapPut("/users/{id:guid}", UpdateUser).AddEndpointFilter(SerializeUserWrites);
         api.MapDelete("/users/{id:guid}", DeleteUser);
@@ -43,7 +46,8 @@ public static class CastarEndpoints
     private static Task<IResult> UpdateServerSettingsAsync(ServerSettings settings, ServerSettingsWriteDto requested,
         HttpContext context, CancellationToken token)
     {
-        if ((requested.TelegramToken is not null || requested.NalogCredentials is not null) && !context.Request.IsHttps)
+        if ((requested.TelegramToken is not null || requested.NalogCredentials is not null ||
+            requested.ReceiptAuthentication?.Values is not null) && !context.Request.IsHttps)
         {
             var address = context.Connection.RemoteIpAddress;
             if (address?.IsIPv4MappedToIPv6 == true)
@@ -100,6 +104,31 @@ public static class CastarEndpoints
     {
         var user = await users.Find(id, cancellationToken);
         return user is null ? Results.NotFound() : Results.Ok(ToDto(user));
+    }
+
+    private static async Task<IResult> GetUserAvatar(Guid id, CastarDbContext database,
+        HttpContext context, CancellationToken cancellationToken)
+    {
+        var image = await database.Users.AsNoTracking().Where(user => user.Id == id)
+            .Select(user => user.ImageRaw).SingleOrDefaultAsync(cancellationToken);
+        if (image is not { Length: > 0 })
+            return Results.NotFound();
+
+        context.Response.Headers.XContentTypeOptions = "nosniff";
+        return Results.Stream(new MemoryStream(image, writable: false), AvatarContentType(image));
+    }
+
+    private static string AvatarContentType(ReadOnlySpan<byte> bytes)
+    {
+        if (bytes.StartsWith((ReadOnlySpan<byte>)[137, 80, 78, 71, 13, 10, 26, 10]))
+            return "image/png";
+        if (bytes.StartsWith((ReadOnlySpan<byte>)[255, 216, 255]))
+            return "image/jpeg";
+        if (bytes.StartsWith("GIF87a"u8) || bytes.StartsWith("GIF89a"u8))
+            return "image/gif";
+        if (bytes.StartsWith("BM"u8))
+            return "image/bmp";
+        return "application/octet-stream";
     }
 
     private static async Task<IResult> CreateUser(UserWriteDto input, IUsersService users, CancellationToken cancellationToken)
@@ -236,7 +265,7 @@ public static class CastarEndpoints
         : PurchaseMutation(await purchases.DeletePurchaseItemAsync(purchaseId, itemId, revision, token));
 
     private static async Task<IResult> EditPurchase(Guid purchaseId, long revision, PurchaseWriteDto input,
-        IPurchasesRepository purchases, CancellationToken token)
+        IPurchasesRepository purchases, SettingsModel settings, CancellationToken token)
     {
         if (revision < 0)
             return InvalidInput("Укажите версию покупки.");
@@ -247,8 +276,10 @@ public static class CastarEndpoints
         if (input.AddedOn == default)
             return InvalidInput("Укажите дату покупки.");
 
-        return PurchaseMutation(await purchases.EditPurchaseAsync(purchaseId, revision, input.Name, input.RetailPlace,
-            input.RetailPlaceAddress, DateTime.SpecifyKind(input.AddedOn, DateTimeKind.Unspecified), token));
+        var policy = settings.ManualCurrencies;
+        var result = await purchases.EditPurchaseAsync(purchaseId, revision, input.Name, input.RetailPlace,
+            input.RetailPlaceAddress, DateTime.SpecifyKind(input.AddedOn, DateTimeKind.Unspecified), input.Currency, policy, token);
+        return result == PurchaseMutationResult.InvalidCurrency ? InvalidManualCurrency(policy) : PurchaseMutation(result);
     }
 
     private static async Task<IResult> EditPurchaseItem(Guid purchaseId, Guid itemId, long revision,
@@ -355,6 +386,7 @@ public static class CastarEndpoints
         {
             ReceiptDate = purchase.ReceiptDate,
             Revision = purchase.Revision,
-            HasReceiptSource = PurchasesRepository.HasReceiptSource(purchase)
+            HasReceiptSource = PurchasesRepository.HasReceiptSource(purchase),
+            SupportsCurrencyEdit = true
         };
 }

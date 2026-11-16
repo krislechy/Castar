@@ -7,6 +7,8 @@ public abstract record ReceiptIdentitySource;
 
 public abstract class ReceiptProvider : IReceiptProvider, IDisposable
 {
+    private ReceiptAuthenticationSettings? authenticationSettings;
+
     protected ReceiptProvider(HttpMessageHandler handler, Uri? baseAddress = null)
     {
         Client = new HttpClient(handler)
@@ -20,6 +22,13 @@ public abstract class ReceiptProvider : IReceiptProvider, IDisposable
     protected HttpClient Client { get; }
 
     public abstract string Id { get; }
+
+    public virtual ReceiptProviderAuthentication Authentication => ReceiptProviderAuthentication.AnonymousOnly;
+
+    protected ReceiptAuthenticationSettings? ConfiguredAuthentication => Volatile.Read(ref authenticationSettings);
+
+    public void ConfigureAuthentication(ReceiptAuthenticationSettings settings) =>
+        Volatile.Write(ref authenticationSettings, settings);
 
     public abstract bool CanHandle(string query);
 

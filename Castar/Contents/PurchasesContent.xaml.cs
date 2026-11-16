@@ -15,7 +15,6 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
-using System.Windows.Threading;
 
 namespace Castar.Contents;
 
@@ -24,7 +23,7 @@ public partial class PurchasesContent : UserControl
     private readonly CastarServerClient server;
     private readonly ClientSettings settings;
     private readonly HistoricalExchangeRates exchangeRates;
-    private readonly DispatcherTimer polling = new() { Interval = TimeSpan.FromSeconds(15) };
+    private bool listeningForChanges;
     private PurchaseRow[] purchases = [];
     private CancellationTokenSource? activeRequest;
     private CancellationTokenSource? purchaseAction;
@@ -41,44 +40,39 @@ public partial class PurchasesContent : UserControl
         InitializeComponent();
         server.ConnectionChanged += Server_ConnectionChanged;
         settings.PropertyChanged += Settings_PropertyChanged;
-        polling.Tick += async (_, _) =>
-        {
-            if (activeRequest is null)
-                await RefreshAsync();
-        };
     }
 
-    private async void Purchases_Loaded(object sender, RoutedEventArgs e) => await StartPollingAsync();
+    private async void Purchases_Loaded(object sender, RoutedEventArgs e) => await StartListeningAsync();
 
-    private void Purchases_Unloaded(object sender, RoutedEventArgs e) => StopPolling();
+    private void Purchases_Unloaded(object sender, RoutedEventArgs e) => StopListening();
 
     private async void Purchases_IsVisibleChanged(object sender, DependencyPropertyChangedEventArgs e)
     {
         if (IsLoaded && IsVisible)
-            await StartPollingAsync();
+            await StartListeningAsync();
         else
-            StopPolling();
+            StopListening();
     }
 
-    private async Task StartPollingAsync()
+    private async Task StartListeningAsync()
     {
-        if (!IsVisible || polling.IsEnabled)
+        if (!IsVisible || listeningForChanges)
             return;
 
-        polling.Start();
+        listeningForChanges = true;
         await RefreshAsync();
     }
 
-    private void StopPolling()
+    private void StopListening()
     {
-        polling.Stop();
+        listeningForChanges = false;
         CancelRefresh();
         purchaseAction?.Cancel();
     }
 
     private async void Dates_DateRangeChanged(object sender, EventArgs e)
     {
-        if (!polling.IsEnabled)
+        if (!listeningForChanges)
             return;
 
         ClearPurchases();
@@ -92,13 +86,13 @@ public partial class PurchasesContent : UserControl
         purchaseAction?.Cancel();
         CancelRefresh();
         ClearPurchases();
-        if (polling.IsEnabled)
+        if (listeningForChanges)
             await RefreshAsync();
     }
 
     private async void Settings_PropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
-        if (e.PropertyName == nameof(ClientSettings.DisplayCurrency) && polling.IsEnabled)
+        if (e.PropertyName == nameof(ClientSettings.DisplayCurrency) && listeningForChanges)
             await RefreshAsync();
     }
 
@@ -120,7 +114,7 @@ public partial class PurchasesContent : UserControl
 
     internal Task RefreshAfterServerChangeAsync()
     {
-        if (!polling.IsEnabled)
+        if (!listeningForChanges)
             return Task.CompletedTask;
         if (activeRequest is null)
             return RefreshAsync();
@@ -268,9 +262,16 @@ public partial class PurchasesContent : UserControl
             return;
 
         e.Handled = true;
-        var editor = new PurchaseEditor(row.Source);
-        await ConfirmMutationAsync("Изменить покупку", editor, "Сохранить",
-            token => server.EditPurchaseAsync(row.Id, revision, editor.Result!, token), validate: editor.Validate);
+        await RunPurchaseActionAsync(async token =>
+        {
+            var currencies = row.Source.SupportsCurrencyEdit
+                ? (await server.GetServerSettingsAsync(token)).ManualCurrency?.Currencies
+                : null;
+            token.ThrowIfCancellationRequested();
+            var editor = new PurchaseEditor(row.Source, currencies);
+            await ConfirmAndApplyAsync("Изменить покупку", editor, "Сохранить",
+                request => server.EditPurchaseAsync(row.Id, revision, editor.Result!, request), token, editor.Validate);
+        });
     }
 
     private async void PurchaseItemRow_DoubleClick(object sender, MouseButtonEventArgs e)
@@ -308,25 +309,29 @@ public partial class PurchasesContent : UserControl
 
     private Task ConfirmMutationAsync(string title, object content, string action, Func<CancellationToken, Task<bool>> mutate,
         Func<ValidatePopupDialog>? validate = null, Brush? foreground = null) =>
-        RunPurchaseActionAsync(async token =>
-        {
-            var accepted = await PopupDialog.Show(content, PopupDialog.TypeDialogEnum.Confirm, options =>
-            {
-                options.Title = title;
-                options.SuccessButton.SuccessConfirmButtonText = action;
-                if (foreground is not null)
-                    options.SuccessButton.SuccessConfirmButtonForeground = foreground;
-                options.AllowMissClick = false;
-                return options;
-            }, validate);
-            if (accepted != true || token.IsCancellationRequested)
-                return;
+        RunPurchaseActionAsync(token => ConfirmAndApplyAsync(title, content, action, mutate, token, validate, foreground));
 
-            var updated = await mutate(token);
-            await RefreshAfterPurchaseMutationAsync(token);
-            if (!updated && !token.IsCancellationRequested)
-                await ShowPurchaseActionMessageAsync("Покупка или позиция уже удалена.");
-        });
+    private async Task ConfirmAndApplyAsync(string title, object content, string action,
+        Func<CancellationToken, Task<bool>> mutate, CancellationToken token,
+        Func<ValidatePopupDialog>? validate = null, Brush? foreground = null)
+    {
+        var accepted = await PopupDialog.Show(content, PopupDialog.TypeDialogEnum.Confirm, options =>
+        {
+            options.Title = title;
+            options.SuccessButton.SuccessConfirmButtonText = action;
+            if (foreground is not null)
+                options.SuccessButton.SuccessConfirmButtonForeground = foreground;
+            options.AllowMissClick = false;
+            return options;
+        }, validate);
+        if (accepted != true || token.IsCancellationRequested)
+            return;
+
+        var updated = await mutate(token);
+        await RefreshAfterPurchaseMutationAsync(token);
+        if (!updated && !token.IsCancellationRequested)
+            await ShowPurchaseActionMessageAsync("Покупка или позиция уже удалена.");
+    }
 
     private static Task<bool?> ShowPurchaseActionMessageAsync(string message) =>
         PopupDialog.Show(message, PopupDialog.TypeDialogEnum.Default, options =>
@@ -388,7 +393,7 @@ public partial class PurchasesContent : UserControl
 
     private async Task RefreshAfterPurchaseMutationAsync(CancellationToken token)
     {
-        if (token.IsCancellationRequested || !polling.IsEnabled)
+        if (token.IsCancellationRequested || !listeningForChanges)
             return;
         await RefreshAsync();
     }

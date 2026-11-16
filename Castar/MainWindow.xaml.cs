@@ -21,6 +21,7 @@ using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using System.Windows.Navigation;
 using System.Windows.Shapes;
+using System.Windows.Threading;
 
 namespace Castar
 {
@@ -35,6 +36,7 @@ namespace Castar
         private readonly Lazy<StatisticsContent>? statisticsContent;
         private readonly ClientSettings settings;
         private (string Kind, Guid? Id, DateTime? AddedOn)? notificationTarget;
+        private IInputElement? focusBeforeSettings;
         public MainWindow(SettingsContent settingsContent, ClientSettings settings, IncomesContent incomesContent,
             PurchasesContent purchasesContent, Lazy<StatisticsContent>? statisticsContent = null)
         {
@@ -55,7 +57,7 @@ namespace Castar
             };
             settings.ConnectionChanged += (_, _) => notificationTarget = null;
             if (settings.ApiKey.Length == 0)
-                MainContent.Content = settingsContent;
+                ShowSettings();
         }
 
         #region TopControls
@@ -154,6 +156,7 @@ namespace Castar
             if (section is null)
                 return;
 
+            CloseSettings(restoreFocus: false);
             var button = MenuToggleButtons.Children.OfType<ToggleButton>()
                 .First(toggle => Equals(toggle.CommandParameter, section));
             button.IsChecked = true;
@@ -170,8 +173,63 @@ namespace Castar
 
         private void MenuSelectorCommandBinding_Executed(object sender, ExecutedRoutedEventArgs e)
         {
+            if (e.Parameter is "Settings")
+            {
+                if (SettingsOverlay.Visibility == Visibility.Visible)
+                    CloseSettings();
+                else
+                    ShowSettings();
+                return;
+            }
+
             if (ResetMenuToggleButtons((ToggleButton)e.Source) && e.Parameter is string section)
                 SelectSection(section);
+        }
+
+        private void ShowSettings()
+        {
+            if (SettingsOverlay.Visibility == Visibility.Visible)
+                return;
+
+            focusBeforeSettings = Keyboard.FocusedElement;
+            SettingsPresenter.Content = settingsContent;
+            SettingsMenuButton.IsChecked = true;
+            SettingsOverlay.Visibility = Visibility.Visible;
+            _ = Dispatcher.InvokeAsync(() =>
+            {
+                if (SettingsOverlay.IsVisible && !MainDialog.IsVisible)
+                    SettingsOverlay.MoveFocus(new TraversalRequest(FocusNavigationDirection.First));
+            }, DispatcherPriority.Input);
+        }
+
+        private void CloseSettings(bool restoreFocus = true)
+        {
+            if (SettingsOverlay.Visibility != Visibility.Visible)
+                return;
+
+            SettingsOverlay.Visibility = Visibility.Collapsed;
+            SettingsPresenter.Content = null;
+            SettingsMenuButton.IsChecked = false;
+            var previous = focusBeforeSettings;
+            focusBeforeSettings = null;
+            if (restoreFocus)
+                Keyboard.Focus(previous is UIElement { IsVisible: true, IsEnabled: true } element && IsAncestorOf(element)
+                    ? element : SettingsMenuButton);
+        }
+
+        private void SettingsBackdrop_Click(object sender, MouseButtonEventArgs e)
+        {
+            e.Handled = true;
+            CloseSettings();
+        }
+
+        private void SettingsOverlay_PreviewKeyDown(object sender, KeyEventArgs e)
+        {
+            if (e.Key != Key.Escape || MainDialog.IsVisible)
+                return;
+
+            e.Handled = true;
+            CloseSettings();
         }
 
         private void SelectSection(string section)
@@ -186,9 +244,6 @@ namespace Castar
                     break;
                 case "Statistics" when statisticsContent is not null:
                     MainContent.Content = statisticsContent.Value;
-                    break;
-                case "Settings":
-                    MainContent.Content = settingsContent;
                     break;
             }
         }

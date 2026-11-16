@@ -50,6 +50,7 @@ if (string.IsNullOrWhiteSpace(configuration["urls"]))
 builder.WebHost.ConfigureKestrel(options => options.Limits.MaxRequestBodySize = 6 * 1024 * 1024);
 builder.Services.AddProblemDetails();
 builder.Services.AddCastarData(configuration);
+builder.Services.AddExchangeRates();
 builder.Services.AddSignalR();
 builder.Services.AddSingleton<BudgetEventPublisher>();
 builder.Services.AddHostedService(provider => provider.GetRequiredService<BudgetEventPublisher>());

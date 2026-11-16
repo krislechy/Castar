@@ -41,22 +41,15 @@
                     <ControlTemplate.Triggers>
                         <Trigger Property="IsChecked" Value="true">
                             <Setter Property="Opacity" TargetName="optionMark" Value="1"/>
-                            <!--<Setter Property="Background" TargetName="checkBoxBorder" Value="{StaticResource Highlight}"/>-->
+                            <Setter Property="Background" TargetName="checkBoxBorder" Value="{DynamicResource Highlight}"/>
                             <Setter Property="BorderBrush" TargetName="checkBoxBorder" Value="Transparent"/>
                             <Trigger.EnterActions>
                                 <BeginStoryboard>
-                                    <Storyboard Storyboard.TargetName="checkBoxBorder" Storyboard.TargetProperty="Background.Color">
-                                        <ColorAnimation To="{StaticResource Highlight.Color}" Duration="0:0:0:0.2"/>
+                                    <Storyboard Storyboard.TargetName="optionMark" Storyboard.TargetProperty="Opacity">
+                                        <DoubleAnimation From="0.65" To="1" Duration="0:0:0.12" FillBehavior="Stop"/>
                                     </Storyboard>
                                 </BeginStoryboard>
                             </Trigger.EnterActions>
-                            <Trigger.ExitActions>
-                                <BeginStoryboard>
-                                    <Storyboard Storyboard.TargetName="checkBoxBorder" Storyboard.TargetProperty="Background.Color">
-                                        <ColorAnimation Duration="0:0:0:0.2"/>
-                                    </Storyboard>
-                                </BeginStoryboard>
-                            </Trigger.ExitActions>
                         </Trigger>
                         <Trigger Property="IsEnabled" Value="false">
                             <Setter Property="Background" TargetName="checkBoxBorder" Value="{StaticResource Background.Disabled}"/>

@@ -84,6 +84,9 @@
                                 <DataTrigger Binding="{Binding IsVisible, ElementName=MainDialog}" Value="True">
                                     <Setter Property="IsEnabled" Value="False"/>
                                 </DataTrigger>
+                                <DataTrigger Binding="{Binding IsVisible, ElementName=SettingsOverlay}" Value="True">
+                                    <Setter Property="IsEnabled" Value="False"/>
+                                </DataTrigger>
                             </Style.Triggers>
                         </Style>
                     </Grid.Style>
@@ -93,7 +96,11 @@
                     </Grid.ColumnDefinitions>
                     <!--#region Menu-->
                     <Grid Grid.Column="0">
-                        <StackPanel x:Name="MenuToggleButtons" Grid.Row="0" Margin="0">
+                        <Grid.RowDefinitions>
+                            <RowDefinition/>
+                            <RowDefinition Height="Auto"/>
+                        </Grid.RowDefinitions>
+                        <StackPanel x:Name="MenuToggleButtons">
                             <ToggleButton Style="{DynamicResource Menu.ToggleButton}" Content="{DynamicResource Svg.Menu.Purchases}"
                                           ToolTip="Расходы" AutomationProperties.Name="Расходы"
                                           Command="{x:Static menuCommands:MenuSelector.MenuSelect}" CommandParameter="Purchases"/>
@@ -104,10 +111,11 @@
                                           Content="{DynamicResource Svg.Menu.Statistics}" ToolTip="Статистика"
                                           AutomationProperties.Name="Статистика"
                                           Command="{x:Static menuCommands:MenuSelector.MenuSelect}" CommandParameter="Statistics"/>
-                            <ToggleButton Style="{DynamicResource Menu.ToggleButton}" Content="{DynamicResource Svg.Menu.Settings}"
-                                          ToolTip="Настройки" AutomationProperties.Name="Настройки"
-                                          Command="{x:Static menuCommands:MenuSelector.MenuSelect}" CommandParameter="Settings"/>
                         </StackPanel>
+                        <ToggleButton x:Name="SettingsMenuButton" Grid.Row="1" Margin="0,0,0,4"
+                                      Style="{DynamicResource Menu.ToggleButton}" Content="{DynamicResource Svg.Menu.Settings}"
+                                      ToolTip="Настройки" AutomationProperties.Name="Настройки"
+                                      Command="{x:Static menuCommands:MenuSelector.MenuSelect}" CommandParameter="Settings"/>
                     </Grid>
                     <!--#endregion-->
                     <!--#region Content-->
@@ -117,6 +125,26 @@
                     <!--#endregion-->
                 </Grid>
                 <!--#region Popup-->
+                <Grid x:Name="SettingsOverlay" Visibility="Collapsed"
+                      KeyboardNavigation.TabNavigation="Cycle" KeyboardNavigation.ControlTabNavigation="Cycle"
+                      PreviewKeyDown="SettingsOverlay_PreviewKeyDown">
+                    <Grid.Style>
+                        <Style TargetType="Grid">
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding IsVisible, ElementName=MainDialog}" Value="True">
+                                    <Setter Property="IsEnabled" Value="False"/>
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </Grid.Style>
+                    <Border Background="#66000000" MouseLeftButtonDown="SettingsBackdrop_Click"/>
+                    <Border Margin="58,12,12,12" MaxWidth="980" CornerRadius="8"
+                            Background="{DynamicResource Main.Background.lvl2}"
+                            BorderBrush="{DynamicResource Main.Top.Panel}" BorderThickness="1"
+                            Padding="6">
+                        <ContentPresenter x:Name="SettingsPresenter"/>
+                    </Border>
+                </Grid>
                 <c:PopupDialog x:Name="MainDialog"/>
                 <!--#endregion-->
             </Grid>

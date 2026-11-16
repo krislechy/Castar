@@ -18,7 +18,12 @@
         <c:IslandPanel IsMainTitle="True" Title="Настройки"/>
         <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">
             <WrapPanel>
-                <c:IslandPanel Title="Подключение" ImageSvg="{DynamicResource Svg.DataBase}">
+                <WrapPanel.Resources>
+                    <Style x:Key="SettingsCard" TargetType="c:IslandPanel">
+                        <Setter Property="Margin" Value="6"/>
+                    </Style>
+                </WrapPanel.Resources>
+                <c:IslandPanel Title="Подключение" Style="{StaticResource SettingsCard}" ImageSvg="{DynamicResource Svg.DataBase}">
                     <StackPanel Width="330">
                         <TextBlock Text="Адрес сервера" Style="{StaticResource FormFieldLabel}"/>
                         <TextBox AutomationProperties.Name="Адрес сервера"
@@ -31,7 +36,7 @@
                                    AutomationProperties.LiveSetting="Polite"/>
                     </StackPanel>
                 </c:IslandPanel>
-                <c:IslandPanel Title="Сервер" ImageSvg="{DynamicResource Svg.DataBase}"
+                <c:IslandPanel Title="Сервер" Style="{StaticResource SettingsCard}" ImageSvg="{DynamicResource Svg.DataBase}"
                                DataContext="{Binding ServerConfiguration}"
                                Visibility="{Binding HasConnection, Converter={StaticResource ServerConnectionVisibility}}">
                     <StackPanel Width="330">
@@ -48,15 +53,12 @@
                             <c:CastarComboBox ItemsSource="{Binding ReceiptProviders}" DisplayMemberPath="Label"
                                               SelectedValuePath="Id" SelectedValue="{Binding ReceiptProvider}"
                                               AutomationProperties.Name="Поставщик чеков"/>
-                            <StackPanel Visibility="{Binding SupportsCredentials, Converter={StaticResource ServerConnectionVisibility}}">
-                                <TextBlock Text="{Binding NalogStatus}" Style="{StaticResource ViewStatus}"/>
-                                <TextBlock Text="ИНН ФНС" Style="{StaticResource FormFieldLabel}"/>
-                                <PasswordBox AutomationProperties.Name="ИНН ФНС" PasswordChanged="NalogInn_PasswordChanged"/>
-                                <TextBlock Text="Пароль ФНС" Style="{StaticResource FormFieldLabel}"/>
-                                <PasswordBox AutomationProperties.Name="Пароль ФНС" PasswordChanged="NalogPassword_PasswordChanged"/>
-                                <TextBlock Text="{Binding NalogInputError}" Style="{StaticResource ViewStatus}"
-                                           AutomationProperties.LiveSetting="Polite"/>
-                            </StackPanel>
+                            <CheckBox Content="Анонимная авторизация" IsChecked="{Binding UseAnonymous, Mode=TwoWay}"
+                                      IsEnabled="{Binding CanChooseAuthentication}"
+                                      Visibility="{Binding HasAuthenticationProfile, Converter={StaticResource ServerConnectionVisibility}}"/>
+                            <Button Content="Установить данные для входа" Style="{StaticResource FormAction}"
+                                    Click="ConfigureReceiptCredentials_Click"
+                                    Visibility="{Binding ShowReceiptCredentials, Converter={StaticResource ServerConnectionVisibility}}"/>
                             <StackPanel Visibility="{Binding SupportsManualCurrency, Converter={StaticResource ServerConnectionVisibility}}">
                                 <TextBlock Text="{Binding ManualCurrency.DefaultCurrency, StringFormat='Валюта ручного добавления — {0}'}"
                                            Style="{StaticResource FormFieldLabel}"/>
@@ -85,7 +87,7 @@
                         </StackPanel>
                     </StackPanel>
                 </c:IslandPanel>
-                <c:IslandPanel Title="Приложение" ImageSvg="{DynamicResource Svg.Tools}">
+                <c:IslandPanel Title="Приложение" Style="{StaticResource SettingsCard}" ImageSvg="{DynamicResource Svg.Tools}">
                     <StackPanel>
                         <CheckBox IsChecked="{Binding Settings.IsHideInTray}" Content="При закрытии сворачивать в трей"/>
                         <CheckBox IsChecked="{Binding Settings.IsAutoRun}" Content="Запускать с Windows"/>
@@ -119,7 +121,7 @@
                         </StackPanel>
                     </StackPanel>
                 </c:IslandPanel>
-                <c:IslandPanel Title="Пользователи" ImageSvg="{DynamicResource Svg.Users}"
+                <c:IslandPanel Title="Пользователи" Style="{StaticResource SettingsCard}" ImageSvg="{DynamicResource Svg.Users}"
                                Visibility="{Binding UsersAvailable, Converter={StaticResource ServerConnectionVisibility}}">
                     <StackPanel Width="330">
                         <UniformGrid Columns="3" Margin="7,0,7,0">
@@ -139,7 +141,16 @@
                             <ListView.ItemTemplate>
                                 <DataTemplate>
                                     <UniformGrid Columns="3">
-                                        <TextBlock Text="{Binding Name}" Style="{StaticResource BudgetTableCell}"/>
+                                        <Grid>
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="Auto"/>
+                                                <ColumnDefinition/>
+                                            </Grid.ColumnDefinitions>
+                                            <c:UserAvatar Width="24" Height="24" Margin="0,0,3,0"
+                                                          UserName="{Binding Name}"
+                                                          Photo="{Binding ImageRaw, Converter={StaticResource UserAvatarImageConverter}}"/>
+                                            <TextBlock Grid.Column="1" Text="{Binding Name}" Style="{StaticResource BudgetTableCell}"/>
+                                        </Grid>
                                         <TextBlock Text="{Binding TelegramId}" Style="{StaticResource BudgetTableCell}"/>
                                         <TextBlock Text="{Binding Sex, Converter={StaticResource UserSex}}"
                                                    Style="{StaticResource BudgetTableCell}"/>
@@ -151,7 +162,7 @@
                                 Style="{StaticResource FormAction}" Click="NewUserButton_Click"/>
                     </StackPanel>
                 </c:IslandPanel>
-                <c:IslandPanel Title="Обновления" ImageSvg="{DynamicResource Svg.Tools}">
+                <c:IslandPanel Title="Обновления" Style="{StaticResource SettingsCard}" ImageSvg="{DynamicResource Svg.Tools}">
                     <StackPanel>
                         <TextBlock Text="{Binding UpdateStatus}" Style="{StaticResource ViewStatus}"/>
                         <ProgressBar Minimum="0" Maximum="100" Value="{Binding UpdateDownloadPercent, Mode=OneWay}"

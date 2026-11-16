@@ -68,7 +68,8 @@ public partial class App : Application
         services.AddSingleton(provider =>
         {
             var window = provider.GetRequiredService<MainWindow>();
-            return new CastarNotificationCenter(window, window.ShowBudgetNotification);
+            return new CastarNotificationCenter(window, window.ShowBudgetNotification,
+                provider.GetRequiredService<CastarServerClient>().GetUserAvatarAsync);
         });
 
         serviceProvider = services.BuildServiceProvider(validateScopes: true);
@@ -127,11 +128,10 @@ public partial class App : Application
             }
             if (change.Created)
             {
-                var count = Math.Max(1, change.CreatedCount);
                 if (settings.NotificationMode == NotificationMode.Castar)
-                    notifications.Publish(change.Kind, count, change.EntityId, change.AddedOn);
+                    notifications.Publish(change);
                 else
-                    tray.Notify(WindowsNotificationMessage(change.Kind, count));
+                    tray.Notify(BudgetNotificationText.Format(change.Kind, Math.Max(1, change.CreatedCount), change.Preview));
             }
             RefreshOpenStatistics();
         };
@@ -143,14 +143,6 @@ public partial class App : Application
         };
         budgetEvents.Start(new DispatcherSynchronizationContext(Dispatcher, DispatcherPriority.Background));
     }
-
-    private static string WindowsNotificationMessage(string kind, int count) => (kind, count) switch
-    {
-        (BudgetEvents.Purchase, 1) => "Добавлен расход",
-        (BudgetEvents.Income, 1) => "Добавлен доход",
-        (BudgetEvents.Purchase, _) => $"Новые расходы ({count})",
-        _ => $"Новые доходы ({count})"
-    };
 
     private static Task<bool?> ShowSettingsWarning(string message) =>
         PopupDialog.Show(message, PopupDialog.TypeDialogEnum.Default, options =>

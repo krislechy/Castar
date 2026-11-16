@@ -1,6 +1,8 @@
 using System.Threading.Channels;
 using Castar.Api;
+using Castar.DAL;
 using Microsoft.AspNetCore.SignalR;
+using Microsoft.EntityFrameworkCore;
 
 namespace Castar.Server;
 
@@ -15,7 +17,8 @@ internal readonly record struct BudgetChange(bool Changed, int CreatedCount, Gui
 }
 
 internal sealed class BudgetEventPublisher(
-    IHubContext<BudgetEventsHub> hub, ApiKeyStore keys, ILogger<BudgetEventPublisher> logger) : BackgroundService
+    IHubContext<BudgetEventsHub> hub, ApiKeyStore keys,
+    IServiceScopeFactory scopes, ILogger<BudgetEventPublisher> logger) : BackgroundService
 {
     private readonly Channel<bool> wake = Channel.CreateBounded<bool>(
         new BoundedChannelOptions(1) { SingleReader = true, FullMode = BoundedChannelFullMode.DropWrite });
@@ -58,6 +61,10 @@ internal sealed class BudgetEventPublisher(
 
     private async Task SendAsync(string kind, BudgetChange change, CancellationToken stoppingToken)
     {
+        var preview = change.CreatedCount > 0 && change.EntityId is { } id
+            ? await ReadPreviewAsync(kind, id, stoppingToken)
+            : null;
+
         // An already connected client loses future events when its key is revoked.
         var groups = keys.GetActiveKeyIds().Select(id => id.ToString("N")).ToArray();
         if (groups.Length == 0)
@@ -71,7 +78,8 @@ internal sealed class BudgetEventPublisher(
             {
                 CreatedCount = change.CreatedCount,
                 EntityId = change.EntityId,
-                AddedOn = change.AddedOn
+                AddedOn = change.AddedOn,
+                Preview = preview
             };
             await hub.Clients.Groups(groups).SendAsync(BudgetEvents.Method, notification, timeout.Token);
         }
@@ -83,6 +91,31 @@ internal sealed class BudgetEventPublisher(
         catch (Exception error)
         {
             logger.LogWarning("Could not send a budget change notification: {Type}", error.GetType().Name);
+        }
+    }
+
+    private async Task<BudgetOperationPreviewDto?> ReadPreviewAsync(string kind, Guid id, CancellationToken stoppingToken)
+    {
+        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(stoppingToken);
+        timeout.CancelAfter(TimeSpan.FromSeconds(1));
+        try
+        {
+            // Read the committed operation in a fresh scope, without loading its detail or avatar bytes.
+            await using var scope = scopes.CreateAsyncScope();
+            var database = scope.ServiceProvider.GetRequiredService<CastarDbContext>();
+            database.Database.SetCommandTimeout(1);
+            return kind == BudgetEvents.Purchase
+                ? await database.Purchases.AsNoTracking().Where(x => x.Id == id)
+                    .Select(x => new BudgetOperationPreviewDto(x.UserId, x.User.Name, x.Name, x.TotalSum, x.Currency,
+                        x.User.ImageRaw != null && x.User.ImageRaw.Length != 0)).SingleOrDefaultAsync(timeout.Token)
+                : await database.Incomes.AsNoTracking().Where(x => x.Id == id)
+                    .Select(x => new BudgetOperationPreviewDto(x.UserId, x.User.Name, x.Source, x.Sum, x.Currency,
+                        x.User.ImageRaw != null && x.User.ImageRaw.Length != 0)).SingleOrDefaultAsync(timeout.Token);
+        }
+        catch (Exception error) when (!stoppingToken.IsCancellationRequested)
+        {
+            logger.LogDebug("Could not load a budget notification preview: {Type}", error.GetType().Name);
+            return null;
         }
     }
 }

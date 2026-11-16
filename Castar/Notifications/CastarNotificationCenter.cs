@@ -4,7 +4,10 @@ using System;
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.Diagnostics;
+using System.IO;
 using System.Linq;
+using System.Net.Http;
+using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Input;
 using System.Windows.Interop;
@@ -19,6 +22,7 @@ internal sealed class CastarNotificationCenter : IDisposable
 
     private readonly Window mainWindow;
     private readonly Action<string, Guid?, DateTime?> openEvent;
+    private readonly Func<Guid, Task<byte[]?>> loadAvatar;
     private readonly List<Notice> visible = [];
     private readonly List<Notice> pending = [];
     private readonly Stopwatch clock = Stopwatch.StartNew();
@@ -30,10 +34,12 @@ internal sealed class CastarNotificationCenter : IDisposable
     private bool layoutPending;
     private bool disposed;
 
-    internal CastarNotificationCenter(Window mainWindow, Action<string, Guid?, DateTime?> openEvent)
+    internal CastarNotificationCenter(Window mainWindow, Action<string, Guid?, DateTime?> openEvent,
+        Func<Guid, Task<byte[]?>> loadAvatar)
     {
         this.mainWindow = mainWindow;
         this.openEvent = openEvent;
+        this.loadAvatar = loadAvatar;
         expiration = new DispatcherTimer(DispatcherPriority.Background, mainWindow.Dispatcher)
         {
             Interval = TimeSpan.FromMilliseconds(150)
@@ -56,21 +62,21 @@ internal sealed class CastarNotificationCenter : IDisposable
         Arrange();
     }
 
-    internal void Publish(string kind, int count, Guid? entityId, DateTime? addedOn)
+    internal void Publish(BudgetEventDto change)
     {
-        if (disposed || count <= 0 || kind is not (BudgetEvents.Purchase or BudgetEvents.Income))
+        if (disposed || !change.Created || change.Kind is not (BudgetEvents.Purchase or BudgetEvents.Income))
             return;
 
         var now = clock.Elapsed;
-        var group = visible.Concat(pending).Where(notice => notice.Kind == kind && now - notice.LastArrival <= GroupingWindow)
+        var group = visible.Concat(pending).Where(notice => notice.Kind == change.Kind && now - notice.LastArrival <= GroupingWindow)
             .MaxBy(notice => notice.LastArrival);
         if (group is null)
         {
-            group = new Notice(kind);
+            group = new Notice(change.Kind);
             pending.Add(group);
         }
 
-        group.Append(count, entityId, addedOn, now);
+        group.Append(Math.Max(1, change.CreatedCount), change.EntityId, change.AddedOn, change.Preview, now);
         if (visible.Contains(group))
             group.Start(now);
         Arrange();
@@ -182,6 +188,23 @@ internal sealed class CastarNotificationCenter : IDisposable
             NotificationPlacement.Position(handle, area, corner, toast.Width, toast.Height);
         }
         expiration.Start();
+        foreach (var notice in visible)
+            if (notice.BeginAvatarLoad() is { } userId)
+                _ = LoadAvatarAsync(notice, userId);
+    }
+
+    private async Task LoadAvatarAsync(Notice notice, Guid userId)
+    {
+        try
+        {
+            var image = await loadAvatar(userId);
+            if (!disposed && (visible.Contains(notice) || pending.Contains(notice)))
+                notice.SetAvatar(userId, image);
+        }
+        catch (Exception error) when (error is HttpRequestException or IOException or OperationCanceledException or ArgumentException)
+        {
+            // Keep the initials when the image cannot be loaded.
+        }
     }
 
     private void FillVisible(int capacity)
@@ -241,12 +264,19 @@ internal sealed class CastarNotificationCenter : IDisposable
         openEvent(notice.Kind, notice.EntityId, notice.AddedOn);
     }
 
-    internal sealed class Notice(string kind)
+    internal sealed class Notice(string kind) : INotifyPropertyChanged
     {
         public string Kind { get; } = kind;
-        public string Title => Kind == BudgetEvents.Purchase
-            ? Count == 1 ? "Новый расход" : $"Новые расходы ({Count})"
-            : Count == 1 ? "Новый доход" : $"Новые доходы ({Count})";
+        public BudgetOperationPreviewDto? Preview { get; private set; }
+        public string Title => Preview is { } preview
+            ? BudgetNotificationText.Title(preview) : BudgetNotificationText.Format(Kind, Count, null);
+        public string Details => Preview is { } preview ? BudgetNotificationText.Details(preview) : "";
+        public string GroupLabel => Preview is not null
+            ? BudgetNotificationText.Format(Kind, Count, null) : "";
+        public string AccessibleText => BudgetNotificationText.Format(Kind, Count, Preview);
+        public byte[]? Avatar { get; private set; }
+        public event PropertyChangedEventHandler? PropertyChanged;
+        private Guid? avatarRequestedFor;
         private int Count { get; set; }
         internal Guid? EntityId { get; private set; }
         internal DateTime? AddedOn { get; private set; }
@@ -254,12 +284,34 @@ internal sealed class CastarNotificationCenter : IDisposable
         private TimeSpan ShownAt { get; set; }
         internal TimeSpan ExpiresAt { get; private set; }
 
-        internal void Append(int count, Guid? entityId, DateTime? addedOn, TimeSpan now)
+        internal void Append(int count, Guid? entityId, DateTime? addedOn, BudgetOperationPreviewDto? preview, TimeSpan now)
         {
             Count = (int)Math.Min(int.MaxValue, (long)Count + count);
             EntityId = entityId == Guid.Empty ? null : entityId;
             AddedOn = addedOn;
+            if (preview?.UserId != Preview?.UserId || preview?.HasAvatar != Preview?.HasAvatar)
+            {
+                avatarRequestedFor = null;
+                Avatar = null;
+            }
+            Preview = preview;
             LastArrival = now;
+        }
+
+        internal Guid? BeginAvatarLoad()
+        {
+            if (Preview is not { HasAvatar: true } preview || preview.UserId == avatarRequestedFor)
+                return null;
+            avatarRequestedFor = preview.UserId;
+            return preview.UserId;
+        }
+
+        internal void SetAvatar(Guid userId, byte[]? image)
+        {
+            if (Preview is not { HasAvatar: true } preview || preview.UserId != userId)
+                return;
+            Avatar = image;
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(Avatar)));
         }
 
         internal void Start(TimeSpan now)

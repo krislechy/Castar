@@ -18,7 +18,6 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
-using System.Windows.Threading;
 
 namespace Castar.Contents;
 
@@ -28,7 +27,7 @@ public partial class IncomesContent : UserControl
     private readonly ClientSettings settings;
     private readonly HistoricalExchangeRates exchangeRates;
     private readonly IncomesContext context = new();
-    private readonly DispatcherTimer polling;
+    private bool listeningForChanges;
     private CancellationTokenSource? activeRequest;
     private bool refreshPending;
     private Guid? notificationTarget;
@@ -39,12 +38,6 @@ public partial class IncomesContent : UserControl
         this.server = server;
         this.settings = settings;
         this.exchangeRates = exchangeRates;
-        polling = new DispatcherTimer { Interval = TimeSpan.FromSeconds(15) };
-        polling.Tick += async (_, _) =>
-        {
-            if (activeRequest is null)
-                await RefreshAsync();
-        };
         DataContext = context;
         InitializeComponent();
         server.ConnectionChanged += Server_ConnectionChanged;
@@ -52,29 +45,29 @@ public partial class IncomesContent : UserControl
         IsVisibleChanged += Incomes_IsVisibleChanged;
     }
 
-    private async void Incomes_Loaded(object sender, RoutedEventArgs e) => await StartPollingAsync();
+    private async void Incomes_Loaded(object sender, RoutedEventArgs e) => await StartListeningAsync();
 
-    private void Incomes_Unloaded(object sender, RoutedEventArgs e) => StopPolling();
+    private void Incomes_Unloaded(object sender, RoutedEventArgs e) => StopListening();
 
     private async void Incomes_IsVisibleChanged(object sender, DependencyPropertyChangedEventArgs e)
     {
         if (IsLoaded && IsVisible)
-            await StartPollingAsync();
+            await StartListeningAsync();
         else
-            StopPolling();
+            StopListening();
     }
 
-    private async Task StartPollingAsync()
+    private async Task StartListeningAsync()
     {
-        if (!IsVisible || polling.IsEnabled)
+        if (!IsVisible || listeningForChanges)
             return;
-        polling.Start();
+        listeningForChanges = true;
         await RefreshAsync();
     }
 
-    private void StopPolling()
+    private void StopListening()
     {
-        polling.Stop();
+        listeningForChanges = false;
         CancelRefresh();
         context.IsLoading = false;
     }
@@ -85,13 +78,13 @@ public partial class IncomesContent : UserControl
         CancelRefresh();
         context.Incomes = [];
         context.Status = "";
-        if (polling.IsEnabled)
+        if (listeningForChanges)
             await RefreshAsync();
     }
 
     private async void Settings_PropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
-        if (e.PropertyName == nameof(ClientSettings.DisplayCurrency) && polling.IsEnabled)
+        if (e.PropertyName == nameof(ClientSettings.DisplayCurrency) && listeningForChanges)
             await RefreshAsync();
     }
 
@@ -105,7 +98,7 @@ public partial class IncomesContent : UserControl
 
     internal Task RefreshAfterServerChangeAsync()
     {
-        if (!polling.IsEnabled)
+        if (!listeningForChanges)
             return Task.CompletedTask;
         if (activeRequest is null)
             return RefreshAsync();
@@ -231,7 +224,7 @@ public partial class IncomesContent : UserControl
 
     private async void SelectorRangeDates_DateRangeChanged(object sender, EventArgs e)
     {
-        if (polling.IsEnabled && e is RangeDate range)
+        if (listeningForChanges && e is RangeDate range)
             await RefreshAsync(range.StartDate, range.EndDate);
     }
 

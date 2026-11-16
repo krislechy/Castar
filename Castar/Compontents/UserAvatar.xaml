@@ -1,0 +1,27 @@
+<UserControl x:Class="Castar.Compontents.UserAvatar"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             x:Name="Avatar" Focusable="False" IsTabStop="False" IsHitTestVisible="False">
+    <Grid>
+        <Ellipse Fill="{DynamicResource Main.Top.Panel}"/>
+        <TextBlock Text="{Binding Initials, ElementName=Avatar}" Foreground="{DynamicResource Foreground.White}"
+                   HorizontalAlignment="Center" VerticalAlignment="Center" FontSize="11" FontWeight="SemiBold">
+            <TextBlock.Style>
+                <Style TargetType="TextBlock">
+                    <Setter Property="Visibility" Value="Collapsed"/>
+                    <Style.Triggers>
+                        <DataTrigger Binding="{Binding ImageSource, ElementName=PhotoBrush}" Value="{x:Null}">
+                            <Setter Property="Visibility" Value="Visible"/>
+                        </DataTrigger>
+                    </Style.Triggers>
+                </Style>
+            </TextBlock.Style>
+        </TextBlock>
+        <Ellipse>
+            <Ellipse.Fill>
+                <ImageBrush x:Name="PhotoBrush" Stretch="UniformToFill"
+                            ImageSource="{Binding Photo, ElementName=Avatar}"/>
+            </Ellipse.Fill>
+        </Ellipse>
+    </Grid>
+</UserControl>

@@ -12,16 +12,18 @@
             <RowDefinition/>
         </Grid.RowDefinitions>
         <c:IslandPanel IsMainTitle="True" Title="Статистика"/>
-        <DockPanel Grid.Row="1" Margin="12,8">
+        <DockPanel x:Name="PeriodBar" Grid.Row="1" Style="{StaticResource BudgetPeriodBar}">
             <c:CastarComboBox x:Name="CurrencyPicker" DockPanel.Dock="Right" MinWidth="88" Margin="12,0,0,0"
+                              VerticalAlignment="Center"
                               Visibility="Collapsed" AutomationProperties.Name="Валюта статистики"
                               SelectionChanged="CurrencyPicker_SelectionChanged"/>
-            <c:SelectorRangeDates x:Name="Dates" DateRangeChanged="Dates_DateRangeChanged"/>
+            <c:SelectorRangeDates x:Name="Dates" HorizontalAlignment="Left" VerticalAlignment="Center"
+                                  DateRangeChanged="Dates_DateRangeChanged"/>
         </DockPanel>
-        <TextBlock x:Name="MissingAmounts" Grid.Row="2" Margin="12,0,12,8"
+        <TextBlock x:Name="MissingAmounts" Grid.Row="2" Margin="{StaticResource BudgetStatusMargin}"
                    Foreground="{DynamicResource Warning.Svg.Brush}" TextWrapping="Wrap"
                    AutomationProperties.LiveSetting="Polite" Visibility="Collapsed"/>
-        <Grid Grid.Row="3" Margin="8,0,8,8">
+        <Grid x:Name="BudgetContent" Grid.Row="3" Margin="{StaticResource BudgetContentMargin}">
             <TextBlock x:Name="StatusText" TextWrapping="Wrap" Margin="16"
                        Foreground="{DynamicResource Foreground.Gray}" TextAlignment="Center"
                        HorizontalAlignment="Center" VerticalAlignment="Center" AutomationProperties.LiveSetting="Polite"/>

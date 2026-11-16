@@ -2,6 +2,7 @@ using Castar.Api;
 using Castar.Domain.Models.SettingsModel;
 using Castar.ServerConnection;
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Net;
 using System.Net.Http;
@@ -24,15 +25,16 @@ internal sealed class ServerSettingsViewModel(CastarServerClient server) : BaseS
     private string? receiptProvider;
     private ManualCurrencySettingsDto? manualCurrency;
     private string telegramToken = "";
-    private string nalogInn = "";
-    private string nalogPassword = "";
+    private ReceiptAuthenticationProfileDto[] authenticationProfiles = [];
+    private Dictionary<string, string>? receiptCredentials;
+    private bool useAnonymous;
     private string status = "";
 
     public bool HasConnection => connection is not null;
     public ServerUpdateViewModel Updates { get; } = new(server);
     public bool CanReload => active && HasConnection && request is null;
     public bool CanEdit => CanReload && saved is not null;
-    public bool SupportsCredentials => saved?.NalogConfigured is not null;
+    public bool SupportsCredentials => saved?.ReceiptAuthenticationProfiles is not null || saved?.NalogConfigured is not null;
     public bool SupportsManualCurrency => SavedManualCurrency is not null;
     public ManualCurrencySettingsDto? SavedManualCurrency => saved?.ManualCurrency;
     public ManualCurrencySettingsDto? ManualCurrency
@@ -49,10 +51,10 @@ internal sealed class ServerSettingsViewModel(CastarServerClient server) : BaseS
         && ReceiptProviders.Any(provider => provider.Id == ReceiptProvider)
         && (!TelegramEnabled || current.TelegramConfigured || HasTelegramToken)
         && (telegramToken.Length == 0 || HasTelegramToken)
-        && (!HasNalogInput || HasNalogCredentials)
-        && (!RequiresNalogCredentials || current.NalogConfigured == true || HasNalogCredentials)
+        && (!ReceiptsEnabled || AuthenticationProfile is not { } profile || UseAnonymous
+            || profile.CredentialsConfigured || receiptCredentials is not null || !profile.Fields.Any(input => input.Required))
         && (TelegramEnabled != current.TelegramEnabled || ReceiptsEnabled != current.ReceiptsEnabled
-            || ReceiptProvider != current.ReceiptProvider || HasTelegramToken || HasNalogCredentials
+            || ReceiptProvider != current.ReceiptProvider || HasTelegramToken || AuthenticationChanged
             || !SameCurrencySettings(ManualCurrency, current.ManualCurrency));
     public string TelegramStatus => saved?.TelegramConfigured switch
     {
@@ -60,21 +62,30 @@ internal sealed class ServerSettingsViewModel(CastarServerClient server) : BaseS
         false => "На сервере не задан токен Telegram.",
         _ => ""
     };
-    public string NalogStatus => saved?.NalogConfigured switch
+    public ReceiptAuthenticationProfileDto? AuthenticationProfile =>
+        authenticationProfiles.FirstOrDefault(profile => profile.Provider == ReceiptProvider);
+    public bool HasAuthenticationProfile => AuthenticationProfile is not null;
+    public bool CanChooseAuthentication => AuthenticationProfile is { SupportsAnonymous: true, SupportsCredentials: true };
+    public bool ShowReceiptCredentials => !UseAnonymous && AuthenticationProfile?.SupportsCredentials == true;
+    public bool UseAnonymous
     {
-        true => "ИНН и пароль ФНС заданы.",
-        false => "ИНН и пароль ФНС не заданы.",
-        _ => ""
-    };
-    public string NalogInputError => HasNalogInput && !HasNalogCredentials ? "Введите ИНН и пароль вместе." : "";
+        get => useAnonymous;
+        set
+        {
+            if (!CanChooseAuthentication || useAnonymous == value)
+                return;
+            useAnonymous = value;
+            if (value)
+                receiptCredentials = null;
+            NotifyAuthentication();
+        }
+    }
     public ProviderOption[] ReceiptProviders { get; private set; } = [];
     public event EventHandler? CredentialsCleared;
 
     private bool HasTelegramToken => SupportsCredentials && !string.IsNullOrWhiteSpace(telegramToken);
-    private bool HasNalogInput => nalogInn.Length != 0 || nalogPassword.Length != 0;
-    private bool HasNalogCredentials => SupportsCredentials && !string.IsNullOrWhiteSpace(nalogInn)
-        && !string.IsNullOrWhiteSpace(nalogPassword);
-    private bool RequiresNalogCredentials => SupportsCredentials && ReceiptsEnabled && ReceiptProvider == "nalog";
+    private bool AuthenticationChanged => receiptCredentials is not null
+        || AuthenticationProfile is { } profile && UseAnonymous != profile.UseAnonymous;
 
     public bool TelegramEnabled
     {
@@ -104,16 +115,29 @@ internal sealed class ServerSettingsViewModel(CastarServerClient server) : BaseS
         get => receiptProvider;
         set
         {
-            if (SetField(ref receiptProvider, value))
-                OnPropertyChanged(nameof(CanSave));
+            if (receiptProvider == value)
+                return;
+            receiptProvider = value;
+            ResetAuthenticationDraft();
+            OnPropertyChanged(nameof(ReceiptProvider));
         }
     }
 
     public string Status { get => status; private set => SetField(ref status, value); }
 
-    public void EnterTelegramToken(string value) => SetCredential(ref telegramToken, value);
-    public void EnterNalogInn(string value) => SetCredential(ref nalogInn, value);
-    public void EnterNalogPassword(string value) => SetCredential(ref nalogPassword, value);
+    public void EnterTelegramToken(string value)
+    {
+        telegramToken = SupportsCredentials && active ? value : "";
+        OnPropertyChanged(nameof(CanSave));
+    }
+
+    public void SetReceiptCredentials(ReceiptAuthenticationProfileDto profile, Dictionary<string, string> values)
+    {
+        if (!CanEdit || !ShowReceiptCredentials || !ReferenceEquals(profile, AuthenticationProfile))
+            return;
+        receiptCredentials = values;
+        OnPropertyChanged(nameof(CanSave));
+    }
 
     public void SetManualCurrency(ManualCurrencySettingsDto original, ManualCurrencySettingsDto updated)
     {
@@ -168,10 +192,14 @@ internal sealed class ServerSettingsViewModel(CastarServerClient server) : BaseS
         if (!CanSave || saved is null || ReceiptProvider is null)
             return Task.CompletedTask;
 
+        var legacy = saved.ReceiptAuthenticationProfiles is null;
         var update = new ServerSettingsWriteDto(TelegramEnabled, ReceiptsEnabled, ReceiptProvider, saved.Revision)
         {
             TelegramToken = HasTelegramToken ? telegramToken.Trim() : null,
-            NalogCredentials = HasNalogCredentials ? new NalogCredentialsWriteDto(nalogInn.Trim(), nalogPassword) : null,
+            NalogCredentials = legacy && ReceiptProvider == "nalog" && receiptCredentials is { } credentials
+                ? new NalogCredentialsWriteDto(credentials["inn"].Trim(), credentials["password"]) : null,
+            ReceiptAuthentication = !legacy && AuthenticationChanged
+                ? new ReceiptAuthenticationWriteDto(UseAnonymous, receiptCredentials) : null,
             ManualCurrency = SameCurrencySettings(ManualCurrency, saved.ManualCurrency) ? null : ManualCurrency
         };
         return RunAsync(token => server.SaveServerSettingsAsync(update, token), "Сохранение…", isSave: true);
@@ -242,35 +270,51 @@ internal sealed class ServerSettingsViewModel(CastarServerClient server) : BaseS
             _ => id
         })).ToArray() ?? [];
         OnPropertyChanged(nameof(ReceiptProviders));
+        authenticationProfiles = value?.ReceiptAuthenticationProfiles ?? LegacyProfiles(value);
         receiptProvider = value?.ReceiptProvider;
+        ResetAuthenticationDraft();
         OnPropertyChanged(nameof(ReceiptProvider));
         OnPropertyChanged(nameof(TelegramStatus));
-        OnPropertyChanged(nameof(NalogStatus));
         OnPropertyChanged(nameof(SupportsCredentials));
         OnPropertyChanged(nameof(SupportsManualCurrency));
         OnPropertyChanged(nameof(SavedManualCurrency));
     }
 
-    private void SetCredential(ref string field, string value)
-    {
-        var next = SupportsCredentials && active ? value : "";
-        if (field == next)
-            return;
+    private static ReceiptAuthenticationProfileDto[] LegacyProfiles(ServerSettingsDto? value) =>
+        value?.ReceiptProviders.Select(id => id switch
+        {
+            "serbia" => new ReceiptAuthenticationProfileDto(id, true, false, true, false, []),
+            "nalog" when value.NalogConfigured is { } configured =>
+                new ReceiptAuthenticationProfileDto(id, false, true, false, configured,
+                    [new("inn", "ИНН", true, true), new("password", "Пароль", true, true)]),
+            _ => null
+        }).OfType<ReceiptAuthenticationProfileDto>().ToArray() ?? [];
 
-        field = next;
-        OnPropertyChanged(nameof(NalogInputError));
+    private void ResetAuthenticationDraft()
+    {
+        receiptCredentials = null;
+        useAnonymous = AuthenticationProfile?.UseAnonymous ?? false;
+        NotifyAuthentication();
+    }
+
+    private void NotifyAuthentication()
+    {
+        OnPropertyChanged(nameof(AuthenticationProfile));
+        OnPropertyChanged(nameof(HasAuthenticationProfile));
+        OnPropertyChanged(nameof(CanChooseAuthentication));
+        OnPropertyChanged(nameof(ShowReceiptCredentials));
+        OnPropertyChanged(nameof(UseAnonymous));
         OnPropertyChanged(nameof(CanSave));
     }
 
     private void ClearCredentials()
     {
-        if (telegramToken.Length == 0 && !HasNalogInput)
-            return;
-
-        telegramToken = nalogInn = nalogPassword = "";
-        CredentialsCleared?.Invoke(this, EventArgs.Empty);
-        OnPropertyChanged(nameof(NalogInputError));
-        OnPropertyChanged(nameof(CanSave));
+        if (telegramToken.Length != 0)
+        {
+            telegramToken = "";
+            CredentialsCleared?.Invoke(this, EventArgs.Empty);
+        }
+        ResetAuthenticationDraft();
     }
 
     private void NotifyActions()

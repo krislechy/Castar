@@ -36,8 +36,6 @@ public partial class SettingsContent : UserControl
     private string pendingKey = "";
     private PasswordBox? keyInput;
     private PasswordBox? telegramTokenInput;
-    private PasswordBox? nalogInnInput;
-    private PasswordBox? nalogPasswordInput;
 
     public SettingsContent(ClientSettings settings, CastarServerClient server, GitHubUpdateService updateService,
         HistoricalExchangeRates exchangeRates)
@@ -50,12 +48,7 @@ public partial class SettingsContent : UserControl
         {
             UpdateStatus = $"Текущая версия {updateService.InstalledVersion}"
         };
-        context.ServerConfiguration.CredentialsCleared += (_, _) =>
-        {
-            telegramTokenInput?.Clear();
-            nalogInnInput?.Clear();
-            nalogPasswordInput?.Clear();
-        };
+        context.ServerConfiguration.CredentialsCleared += (_, _) => telegramTokenInput?.Clear();
         context.PropertyChanged += (_, change) =>
         {
             if (change.PropertyName == nameof(SettingsContext.ServerAddress))
@@ -175,16 +168,22 @@ public partial class SettingsContent : UserControl
         context.ServerConfiguration.EnterTelegramToken(telegramTokenInput.Password);
     }
 
-    private void NalogInn_PasswordChanged(object sender, RoutedEventArgs e)
+    private async void ConfigureReceiptCredentials_Click(object sender, RoutedEventArgs e)
     {
-        nalogInnInput = (PasswordBox)sender;
-        context.ServerConfiguration.EnterNalogInn(nalogInnInput.Password);
-    }
+        var viewModel = context.ServerConfiguration;
+        if (!viewModel.ShowReceiptCredentials || viewModel.AuthenticationProfile is not { } profile)
+            return;
 
-    private void NalogPassword_PasswordChanged(object sender, RoutedEventArgs e)
-    {
-        nalogPasswordInput = (PasswordBox)sender;
-        context.ServerConfiguration.EnterNalogPassword(nalogPasswordInput.Password);
+        var panel = new ReceiptCredentialsPanel(profile.Fields);
+        var accepted = await PopupDialog.Show(panel, PopupDialog.TypeDialogEnum.Confirm, options =>
+        {
+            options.Title = "Данные для входа";
+            options.SuccessButton.SuccessConfirmButtonText = "Применить";
+            options.AllowMissClick = false;
+            return options;
+        }, panel.Validate);
+        if (accepted == true)
+            viewModel.SetReceiptCredentials(profile, panel.Values);
     }
 
     private void ApiKey_PasswordChanged(object sender, RoutedEventArgs e)

@@ -1,4 +1,6 @@
+using Castar.Api;
 using Castar.Domain.Models.SettingsModel;
+using Castar.ServerConnection;
 using System;
 using System.Collections.Generic;
 using System.Globalization;
@@ -18,24 +20,39 @@ public sealed class HistoricalExchangeRates : IDisposable
     internal static IReadOnlyList<string> SupportedCurrencies => ManualCurrencySettings.Default.Currencies;
 
     private readonly HttpClient http;
+    private readonly CastarServerClient? server;
     private readonly SemaphoreSlim requests = new(1);
     private readonly Dictionary<(string Source, string Target, DateOnly Date), CachedRate> cache = [];
 
-    public HistoricalExchangeRates() : this(new SocketsHttpHandler
+    public HistoricalExchangeRates() : this(CreateHandler())
+    {
+    }
+
+    public HistoricalExchangeRates(CastarServerClient server) : this(CreateHandler(), server)
+    {
+    }
+
+    private static SocketsHttpHandler CreateHandler() => new()
     {
         AllowAutoRedirect = false,
         UseCookies = false,
         PooledConnectionLifetime = TimeSpan.FromMinutes(5)
-    })
+    };
+
+    internal HistoricalExchangeRates(HttpMessageHandler handler) : this(handler, null)
     {
     }
 
-    internal HistoricalExchangeRates(HttpMessageHandler handler) => http = new HttpClient(handler)
+    internal HistoricalExchangeRates(HttpMessageHandler handler, CastarServerClient? server)
     {
-        BaseAddress = new Uri("https://api.frankfurter.dev/v2/"),
-        Timeout = TimeSpan.FromSeconds(6),
-        MaxResponseContentBufferSize = 4 * 1024 * 1024
-    };
+        this.server = server;
+        http = new HttpClient(handler)
+        {
+            BaseAddress = new Uri("https://api.frankfurter.dev/v2/"),
+            Timeout = TimeSpan.FromSeconds(6),
+            MaxResponseContentBufferSize = 4 * 1024 * 1024
+        };
+    }
 
     internal async Task<IReadOnlyList<string>> GetCurrencyCatalogAsync(CancellationToken token)
     {
@@ -56,12 +73,18 @@ public sealed class HistoricalExchangeRates : IDisposable
         if (!IsCurrencyCode(target))
             return result;
 
-        var sources = amounts.Where(amount => IsCurrencyCode(amount.Currency) && amount.Currency != target)
-            .Select(amount => (Currency: amount.Currency!, amount.Date)).Distinct().GroupBy(amount => amount.Currency);
+        var keys = amounts.Where(amount => IsCurrencyCode(amount.Currency) && amount.Currency != target)
+            .Select(amount => (Currency: amount.Currency!, amount.Date)).Distinct().ToArray();
+        if (keys.Length == 0)
+            return result;
+
+        if (server is not null && await TryGetServerRatesAsync(server, target!, keys, result, token).ConfigureAwait(false))
+            return result;
+
         await requests.WaitAsync(token).ConfigureAwait(false);
         try
         {
-            foreach (var source in sources)
+            foreach (var source in keys.GroupBy(key => key.Currency))
             {
                 var dates = source.Select(amount => amount.Date).Order().ToArray();
                 var now = DateTimeOffset.UtcNow;
@@ -82,6 +105,36 @@ public sealed class HistoricalExchangeRates : IDisposable
             requests.Release();
         }
         return result;
+    }
+
+    private static async Task<bool> TryGetServerRatesAsync(CastarServerClient server, string target,
+        (string Currency, DateOnly Date)[] keys, Dictionary<(string Currency, DateOnly Date), decimal> result,
+        CancellationToken token)
+    {
+        foreach (var batch in keys.Chunk(512))
+        {
+            CurrencyRateDto[] quotes;
+            try
+            {
+                quotes = await server.GetExchangeRatesAsync(target,
+                    batch.Select(key => new CurrencyRateKeyDto(key.Currency, key.Date)).ToArray(), token).ConfigureAwait(false);
+            }
+            catch (HttpRequestException error) when (error.StatusCode is HttpStatusCode.NotFound or HttpStatusCode.MethodNotAllowed)
+            {
+                return false;
+            }
+            catch (Exception error) when (!token.IsCancellationRequested && CastarServerClient.IsConnectionError(error))
+            {
+                break;
+            }
+
+            var requested = batch.ToHashSet();
+            foreach (var quote in quotes)
+                if (quote is { Rate: > 0 } && requested.Contains((quote.Currency, quote.Date))
+                    && quote.QuotedOn <= quote.Date && quote.Date.DayNumber - quote.QuotedOn.DayNumber <= 7)
+                    result[(quote.Currency, quote.Date)] = quote.Rate;
+        }
+        return true;
     }
 
     private async Task FetchAsync(string source, string target, DateOnly[] dates, CancellationToken token)

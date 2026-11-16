@@ -1,6 +1,9 @@
 using Castar.Api;
 using System;
+using System.Collections.Generic;
 using System.Globalization;
+using System.Linq;
+using System.Windows;
 using System.Windows.Controls;
 
 namespace Castar.Compontents;
@@ -12,7 +15,7 @@ public partial class PurchaseEditor : UserControl
     private readonly PurchaseDto original;
     private readonly string originalDateText;
 
-    internal PurchaseEditor(PurchaseDto purchase)
+    internal PurchaseEditor(PurchaseDto purchase, IReadOnlyList<string>? allowedCurrencies = null)
     {
         original = purchase;
         InitializeComponent();
@@ -21,6 +24,16 @@ public partial class PurchaseEditor : UserControl
         RetailPlaceAddress.Text = purchase.RetailPlaceAddress ?? "";
         originalDateText = purchase.AddedOn?.ToString(DisplayDateFormat, CultureInfo.InvariantCulture) ?? "";
         OperationDate.Text = originalDateText;
+        if (allowedCurrencies is not null)
+        {
+            var options = allowedCurrencies.Append(purchase.Currency)
+                .Distinct(StringComparer.Ordinal)
+                .Select(code => new CurrencyOption(code, code ?? "Не указана"))
+                .ToArray();
+            PurchaseCurrency.ItemsSource = options;
+            PurchaseCurrency.SelectedItem = options.First(option => option.Code == purchase.Currency);
+            CurrencyField.Visibility = Visibility.Visible;
+        }
     }
 
     internal PurchaseWriteDto? Result { get; private set; }
@@ -43,7 +56,11 @@ public partial class PurchaseEditor : UserControl
 
         if (original.AddedOn is { } originalDate && dateText == originalDateText)
             date = originalDate;
-        Result = new(name, place, address, DateTime.SpecifyKind(date, DateTimeKind.Unspecified));
+        var currency = (PurchaseCurrency.SelectedItem as CurrencyOption)?.Code;
+        Result = new(name, place, address, DateTime.SpecifyKind(date, DateTimeKind.Unspecified))
+        {
+            Currency = currency == original.Currency ? null : currency
+        };
         return new(true, null);
     }
 
@@ -53,4 +70,6 @@ public partial class PurchaseEditor : UserControl
             return original;
         return string.IsNullOrWhiteSpace(text) ? null : text.Trim();
     }
+
+    private sealed record CurrencyOption(string? Code, string Label);
 }

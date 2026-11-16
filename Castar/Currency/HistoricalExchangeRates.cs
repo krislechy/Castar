@@ -1,3 +1,4 @@
+using Castar.Domain.Models.SettingsModel;
 using System;
 using System.Collections.Generic;
 using System.Globalization;
@@ -6,6 +7,7 @@ using System.Net;
 using System.Net.Http;
 using System.Net.Http.Json;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -13,8 +15,7 @@ namespace Castar.Currency;
 
 public sealed class HistoricalExchangeRates : IDisposable
 {
-    internal static IReadOnlyList<string> SupportedCurrencies { get; } =
-        Array.AsReadOnly(new[] { "RSD", "RUB", "EUR", "USD", "GBP", "CHF" });
+    internal static IReadOnlyList<string> SupportedCurrencies => ManualCurrencySettings.Default.Currencies;
 
     private readonly HttpClient http;
     private readonly SemaphoreSlim requests = new(1);
@@ -35,6 +36,18 @@ public sealed class HistoricalExchangeRates : IDisposable
         Timeout = TimeSpan.FromSeconds(6),
         MaxResponseContentBufferSize = 4 * 1024 * 1024
     };
+
+    internal async Task<IReadOnlyList<string>> GetCurrencyCatalogAsync(CancellationToken token)
+    {
+        var currencies = await http.GetFromJsonAsync<CatalogCurrency?[]>("currencies", token).ConfigureAwait(false);
+        var codes = (currencies ?? []).OfType<CatalogCurrency>()
+            .Where(currency => currency is { Type: "currency", StartDate: not null, NumericCode.Length: 3 }
+                && currency.NumericCode.All(char.IsAsciiDigit) && IsCurrencyCode(currency.Code))
+            .Select(currency => currency.Code).Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal).ToArray();
+        if (codes.Length == 0)
+            throw new JsonException("Справочник исторических валют пуст.");
+        return codes;
+    }
 
     internal async Task<IReadOnlyDictionary<(string Currency, DateOnly Date), decimal>> GetAsync(
         IEnumerable<(string? Currency, DateOnly Date)> amounts, string? target, CancellationToken token)
@@ -129,4 +142,9 @@ public sealed class HistoricalExchangeRates : IDisposable
 
     private sealed record RateRow(DateOnly Date, string Base, string Quote, decimal Rate);
     private sealed record CachedRate(decimal? Rate, DateTimeOffset ExpiresAt);
+    private sealed record CatalogCurrency(
+        [property: JsonPropertyName("iso_code")] string Code,
+        [property: JsonPropertyName("iso_numeric")] string? NumericCode,
+        string Type,
+        [property: JsonPropertyName("start_date")] DateOnly? StartDate);
 }

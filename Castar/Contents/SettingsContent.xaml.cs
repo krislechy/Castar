@@ -25,11 +25,13 @@ public partial class SettingsContent : UserControl
     private const string Connected = "Соединение установлено.";
     private readonly ClientSettings settings;
     private readonly CastarServerClient server;
+    private readonly HistoricalExchangeRates exchangeRates;
     private readonly SettingsContext context;
     private readonly DispatcherTimer polling;
     private CancellationTokenSource? usersRequest;
     private bool showingServerSettings;
     private bool checkingConnection;
+    private bool editingUser;
     private string savedConnectionStatus = CastarServerClient.ConnectionNotEstablished;
     private string pendingKey = "";
     private PasswordBox? keyInput;
@@ -37,11 +39,13 @@ public partial class SettingsContent : UserControl
     private PasswordBox? nalogInnInput;
     private PasswordBox? nalogPasswordInput;
 
-    public SettingsContent(ClientSettings settings, CastarServerClient server, GitHubUpdateService updateService)
+    public SettingsContent(ClientSettings settings, CastarServerClient server, GitHubUpdateService updateService,
+        HistoricalExchangeRates exchangeRates)
     {
         this.settings = settings;
         this.server = server;
         this.updateService = updateService;
+        this.exchangeRates = exchangeRates;
         context = new SettingsContext(settings, new ServerSettingsViewModel(server))
         {
             UpdateStatus = $"Текущая версия {updateService.InstalledVersion}"
@@ -57,6 +61,17 @@ public partial class SettingsContent : UserControl
             if (change.PropertyName == nameof(SettingsContext.ServerAddress))
                 RefreshConnectionStatus();
         };
+        context.ServerConfiguration.PropertyChanged += (_, change) =>
+        {
+            if (change.PropertyName == nameof(ServerSettingsViewModel.SavedManualCurrency))
+                context.RefreshCurrencyOptions();
+        };
+        settings.PropertyChanged += (_, change) =>
+        {
+            if (change.PropertyName == nameof(ClientSettings.DisplayCurrency))
+                context.RefreshCurrencyOptions();
+        };
+        context.RefreshCurrencyOptions();
         polling = new DispatcherTimer { Interval = TimeSpan.FromSeconds(15) };
         polling.Tick += async (_, _) =>
         {
@@ -123,6 +138,33 @@ public partial class SettingsContent : UserControl
 
     private async void ReloadServerSettings_Click(object sender, RoutedEventArgs e) =>
         await context.ServerConfiguration.ReloadAsync();
+
+    private async void ConfigureManualCurrencies_Click(object sender, RoutedEventArgs e)
+    {
+        var viewModel = context.ServerConfiguration;
+        if (viewModel.ManualCurrency is not { } original)
+            return;
+
+        var panel = new ManualCurrencyPanel(exchangeRates, original);
+        try
+        {
+            var accepted = await PopupDialog.Show(panel, PopupDialog.TypeDialogEnum.Confirm, options =>
+            {
+                options.Title = "Валюты ручного ввода";
+                options.Background = (SolidColorBrush)Application.Current.FindResource("Main.Background.lvl3");
+                options.SuccessButton.SuccessConfirmButtonText = "Применить";
+                options.AllowMissClick = false;
+                return options;
+            }, panel.Validate);
+
+            if (accepted == true)
+                viewModel.SetManualCurrency(original, panel.CreateResult());
+        }
+        finally
+        {
+            panel.CancelCatalog();
+        }
+    }
 
     private async void UpdateServer_Click(object sender, RoutedEventArgs e) =>
         await context.ServerConfiguration.Updates.StartAsync();
@@ -283,44 +325,66 @@ public partial class SettingsContent : UserControl
 
     private async void UsersListView_MouseDoubleClick(object sender, MouseButtonEventArgs e)
     {
-        if (((ListView)sender).SelectedValue is User user)
-            await EditUserAsync(user.Clone<User>());
+        if (e.ChangedButton == MouseButton.Left && ((ListView)sender).SelectedValue is User user)
+            await EditUserAsync(user);
     }
 
     private async void NewUserButton_Click(object sender, RoutedEventArgs e) => await EditUserAsync(new User());
 
     private async Task EditUserAsync(User user)
     {
-        if (!context.UsersAvailable)
+        if (!context.UsersAvailable || editingUser)
             return;
 
         var connection = (settings.ServerUrl, settings.ProtectedApiKey);
-
+        bool IsCurrent() => IsVisible && context.UsersAvailable && connection == (settings.ServerUrl, settings.ProtectedApiKey);
         var isNew = user.Id == Guid.Empty;
-        var editor = new UserInfoPanel { IsEditContent = true, SizeImage = 100, DataContext = user };
-        var accepted = await PopupDialog.Show(editor, PopupDialog.TypeDialogEnum.Confirm, options =>
-        {
-            options.Background = (SolidColorBrush)Application.Current.FindResource("Main.Background.lvl3");
-            options.SuccessButton.SuccessConfirmButtonText = isNew ? "Создать" : "Сохранить";
-            options.AllowMissClick = false;
-            options.Title = isNew ? "Новый пользователь" : "Изменить пользователя";
-            return options;
-        });
-        if (accepted != true || !context.UsersAvailable || connection != (settings.ServerUrl, settings.ProtectedApiKey))
-            return;
-
-        user.Name = string.IsNullOrWhiteSpace(user.Name) ? "NONAME" : user.Name.Trim();
+        editingUser = true;
         try
         {
+            var canSetTelegramNotifications = false;
+            if (!isNew)
+            {
+                (user, canSetTelegramNotifications) = await server.GetUserForEditingAsync(user.Id);
+                if (!IsCurrent())
+                    return;
+            }
+
+            var initialNotifications = user.TelegramNotificationsEnabled;
+            var editor = new UserInfoPanel
+            {
+                IsEditContent = true,
+                CanSetTelegramNotifications = canSetTelegramNotifications,
+                SizeImage = 100,
+                DataContext = user
+            };
+            var accepted = await PopupDialog.Show(editor, PopupDialog.TypeDialogEnum.Confirm, options =>
+            {
+                options.Background = (SolidColorBrush)Application.Current.FindResource("Main.Background.lvl3");
+                options.SuccessButton.SuccessConfirmButtonText = isNew ? "Создать" : "Сохранить";
+                options.AllowMissClick = false;
+                options.Title = isNew ? "Новый пользователь" : "Изменить пользователя";
+                return options;
+            });
+            if (accepted != true || !IsCurrent())
+                return;
+
+            user.Name = string.IsNullOrWhiteSpace(user.Name) ? "NONAME" : user.Name.Trim();
             if (isNew)
                 await server.AddUserAsync(user);
             else
-                await server.UpdateUserAsync(user);
+                await server.UpdateUserAsync(user, canSetTelegramNotifications &&
+                    user.TelegramNotificationsEnabled != initialNotifications);
             await LoadUsersAsync();
         }
         catch (Exception error) when (CastarServerClient.IsConnectionError(error))
         {
-            await PopupDialog.Show(CastarServerClient.DescribeError(error), PopupDialog.TypeDialogEnum.Default);
+            if (IsCurrent())
+                await PopupDialog.Show(CastarServerClient.DescribeError(error), PopupDialog.TypeDialogEnum.Default);
+        }
+        finally
+        {
+            editingUser = false;
         }
     }
 
@@ -362,8 +426,37 @@ public partial class SettingsContent : UserControl
         private ObservableCollection<User> users = [];
 
         public ClientSettings Settings { get; } = settings;
-        public CurrencyOption[] CurrencyOptions { get; } = HistoricalExchangeRates.SupportedCurrencies
-            .Select(code => new CurrencyOption(code, code)).Prepend(new CurrencyOption("", "Исходная валюта")).ToArray();
+        public ObservableCollection<CurrencyOption> CurrencyOptions { get; } = [new("", "Исходная валюта")];
+        public NotificationOption<NotificationMode>[] NotificationModes { get; } =
+        [
+            new(NotificationMode.Windows, "Системные Windows"),
+            new(NotificationMode.Castar, "Castar")
+        ];
+        public NotificationOption<NotificationCorner>[] NotificationCorners { get; } =
+        [
+            new(NotificationCorner.TopLeft, "Сверху слева"),
+            new(NotificationCorner.TopRight, "Сверху справа"),
+            new(NotificationCorner.BottomLeft, "Снизу слева"),
+            new(NotificationCorner.BottomRight, "Снизу справа")
+        ];
+        public int[] NotificationCounts { get; } = [1, 2, 3, 4, 5];
+
+        public void RefreshCurrencyOptions()
+        {
+            var configured = ServerConfiguration.SavedManualCurrency?.Currencies ?? HistoricalExchangeRates.SupportedCurrencies;
+            var codes = configured.Append(Settings.DisplayCurrency).Where(HistoricalExchangeRates.IsCurrencyCode)
+                .Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal).ToArray();
+            foreach (var code in codes)
+            {
+                if (CurrencyOptions.Any(option => option.Code == code))
+                    continue;
+                var index = 1 + CurrencyOptions.Skip(1).TakeWhile(option => string.CompareOrdinal(option.Code, code) < 0).Count();
+                CurrencyOptions.Insert(index, new CurrencyOption(code, code));
+            }
+
+            foreach (var option in CurrencyOptions.Skip(1).Where(option => !codes.Contains(option.Code)).ToArray())
+                CurrencyOptions.Remove(option);
+        }
         public ServerSettingsViewModel ServerConfiguration { get; } = serverConfiguration;
         public string ServerAddress { get => address; set => SetField(ref address, value); }
         public string ConnectionStatus { get => connectionStatus; set => SetField(ref connectionStatus, value); }
@@ -375,4 +468,5 @@ public partial class SettingsContent : UserControl
     }
 
     private sealed record CurrencyOption(string Code, string Label);
+    private sealed record NotificationOption<T>(T Value, string Label);
 }

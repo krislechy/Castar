@@ -1,0 +1,14 @@
+<UserControl x:Class="Castar.Compontents.PurchaseEditor"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <StackPanel MinWidth="330">
+        <TextBlock x:Name="NameLabel" Text="Название" Style="{StaticResource FormFieldLabel}"/>
+        <TextBox x:Name="PurchaseName" MaxLength="400" AutomationProperties.LabeledBy="{Binding ElementName=NameLabel}"/>
+        <TextBlock x:Name="PlaceLabel" Text="Место покупки" Style="{StaticResource FormFieldLabel}"/>
+        <TextBox x:Name="RetailPlace" MaxLength="400" AutomationProperties.LabeledBy="{Binding ElementName=PlaceLabel}"/>
+        <TextBlock x:Name="AddressLabel" Text="Адрес" Style="{StaticResource FormFieldLabel}"/>
+        <TextBox x:Name="RetailPlaceAddress" MaxLength="400" AutomationProperties.LabeledBy="{Binding ElementName=AddressLabel}"/>
+        <TextBlock x:Name="DateLabel" Text="Дата и время" Style="{StaticResource FormFieldLabel}"/>
+        <TextBox x:Name="OperationDate" AutomationProperties.LabeledBy="{Binding ElementName=DateLabel}"/>
+    </StackPanel>
+</UserControl>

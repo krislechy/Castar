@@ -40,7 +40,16 @@ internal sealed class ServerSettings : IDisposable
             if (saved is null || saved.Revision <= 0 || provider is null || ValidateCredentials(saved) is not null)
                 throw new InvalidDataException($"Invalid server settings in {path}.");
 
-            Apply(saved with { ReceiptProvider = provider });
+            var policy = settings.ManualCurrencies;
+            if (saved.ManualCurrency is { } savedCurrency)
+            {
+                if (!ManualCurrencySettings.TryCreate(savedCurrency.DefaultCurrency, savedCurrency.Currencies,
+                    out var savedPolicy, out _))
+                    throw new InvalidDataException($"Invalid manual currency settings in {path}.");
+                policy = savedPolicy;
+            }
+
+            Apply(saved with { ReceiptProvider = provider, ManualCurrency = ToDto(policy) }, policy);
             return;
         }
 
@@ -51,7 +60,12 @@ internal sealed class ServerSettings : IDisposable
         if (current.ReceiptsEnabled && configuredProvider is null)
             throw new InvalidDataException("Castar__Receipts__Provider does not match any registered receipt provider.");
 
-        Apply(current with { ReceiptProvider = configuredProvider ?? SerbiaReceiptProvider.ProviderId });
+        var initialPolicy = settings.ManualCurrencies;
+        Apply(current with
+        {
+            ReceiptProvider = configuredProvider ?? SerbiaReceiptProvider.ProviderId,
+            ManualCurrency = ToDto(initialPolicy)
+        }, initialPolicy);
     }
 
     private FileStream? OpenSavedSettings()
@@ -85,11 +99,28 @@ internal sealed class ServerSettings : IDisposable
             if (ValidateCredentials(requested) is { } error)
                 return Invalid(error);
 
+            var policy = settings.ManualCurrencies;
+            var manualCurrency = current.ManualCurrency;
+            if (requested.ManualCurrency is { } requestedCurrency)
+            {
+                if (!ManualCurrencySettings.TryCreate(requestedCurrency.DefaultCurrency, requestedCurrency.Currencies,
+                    out var requestedPolicy, out var currencyError))
+                    return Invalid(currencyError!);
+
+                if (requestedPolicy.DefaultCurrency != policy.DefaultCurrency ||
+                    !requestedPolicy.Currencies.SequenceEqual(policy.Currencies, StringComparer.Ordinal))
+                {
+                    policy = requestedPolicy;
+                    manualCurrency = ToDto(policy);
+                }
+            }
+
             var next = requested with
             {
                 ReceiptProvider = provider,
                 TelegramToken = requested.TelegramToken ?? current.TelegramToken,
-                NalogCredentials = requested.NalogCredentials ?? current.NalogCredentials
+                NalogCredentials = requested.NalogCredentials ?? current.NalogCredentials,
+                ManualCurrency = manualCurrency
             };
             if (next.TelegramEnabled && !HasTelegramToken(next))
                 return Invalid("На сервере не задан токен Telegram.");
@@ -100,7 +131,7 @@ internal sealed class ServerSettings : IDisposable
 
             next = next with { Revision = checked(current.Revision + 1) };
             await SaveAsync(next, cancellationToken);
-            Apply(next);
+            Apply(next, policy);
             return Results.Ok(ToDto(next));
         }
         finally
@@ -147,8 +178,14 @@ internal sealed class ServerSettings : IDisposable
     private ServerSettingsDto ToDto(ServerSettingsWriteDto value) => new(
         value.TelegramEnabled, HasTelegramToken(value), value.ReceiptsEnabled, value.ReceiptProvider, providers, value.Revision)
     {
-        NalogConfigured = EffectiveNalogCredentials(value) is not null
+        NalogConfigured = EffectiveNalogCredentials(value) is not null,
+        ManualCurrency = value.ManualCurrency is { } currency
+            ? currency with { Currencies = currency.Currencies.ToArray() }
+            : null
     };
+
+    private static ManualCurrencySettingsDto ToDto(ManualCurrencySettings policy) =>
+        new(policy.DefaultCurrency, policy.Currencies.ToArray());
 
     private async Task SaveAsync(ServerSettingsWriteDto value, CancellationToken cancellationToken)
     {
@@ -193,8 +230,9 @@ internal sealed class ServerSettings : IDisposable
         });
     }
 
-    private void Apply(ServerSettingsWriteDto value)
+    private void Apply(ServerSettingsWriteDto value, ManualCurrencySettings policy)
     {
+        settings.ManualCurrencies = policy;
         var credentials = EffectiveNalogCredentials(value);
         settings.NalogFNS = new() { INN = credentials?.Inn, Password = credentials?.Password };
         settings.Receipts = new ReceiptSettings { IsEnabled = value.ReceiptsEnabled, Provider = value.ReceiptProvider };

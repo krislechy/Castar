@@ -6,6 +6,7 @@ namespace Castar.Domain.Models.DataBase
     public class User : BaseDbModel
     {
         public long TelegramId { get; set; }
+        public bool TelegramNotificationsEnabled { get; set; } = true;
         public string Name { get; set; } = string.Empty;
         public int Sex { get; set; }
         public byte[] ColorRaw { get; set; } = new byte[4];

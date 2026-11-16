@@ -12,6 +12,7 @@
         <converters:ImageBytesToBitmapConverter x:Key="ImageBytesToBitmapConverter"/>
         <converters:SexConverter x:Key="SexConverter"/>
         <converters:HEXConverter x:Key="HEXConverter"/>
+        <BooleanToVisibilityConverter x:Key="TelegramNotificationVisibility"/>
     </UserControl.Resources>
     <Grid>
         <Grid Tag="NotEditableContent">
@@ -215,8 +216,15 @@
                         <ColumnDefinition Width="auto" SharedSizeGroup="textblock"/>
                         <ColumnDefinition Width="*" SharedSizeGroup="textBox"/>
                     </Grid.ColumnDefinitions>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                    </Grid.RowDefinitions>
                     <TextBlock Grid.Column="0" VerticalAlignment="Center" Text="Telegram ID"/>
                     <TextBox Grid.Column="1" Text="{Binding TelegramId}" Margin="10,0,0,0" Width="130"/>
+                    <CheckBox Grid.Row="1" Grid.ColumnSpan="2" Margin="0,8,0,0"
+                              Content="Отправлять уведомления" IsChecked="{Binding TelegramNotificationsEnabled}"
+                              Visibility="{Binding CanSetTelegramNotifications, RelativeSource={RelativeSource AncestorType=local:UserInfoPanel}, Converter={StaticResource TelegramNotificationVisibility}}"/>
                 </Grid>
                 <Grid Grid.Column="0" Grid.Row="2" Grid.ColumnSpan="2" Margin="0,10,0,0">
                     <Grid.ColumnDefinitions>

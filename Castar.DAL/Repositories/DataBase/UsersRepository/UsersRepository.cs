@@ -23,6 +23,7 @@ namespace Castar.DAL.Repositories.DataBase
             current.Name = user.Name;
             current.Sex = user.Sex;
             current.TelegramId = user.TelegramId;
+            current.TelegramNotificationsEnabled = user.TelegramNotificationsEnabled;
             current.ColorRaw = user.ColorRaw;
             current.ImageRaw = user.ImageRaw;
             await Context.SaveChangesAsync(cancellationToken);

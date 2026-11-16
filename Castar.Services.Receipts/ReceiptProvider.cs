@@ -23,9 +23,37 @@ public abstract class ReceiptProvider : IReceiptProvider, IDisposable
 
     public abstract bool CanHandle(string query);
 
-    public abstract Task<Receipt> GetReceiptAsync(string query, CancellationToken cancellationToken);
+    public async Task<Receipt> GetReceiptAsync(string query, CancellationToken cancellationToken)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(query);
+        cancellationToken.ThrowIfCancellationRequested();
+        var normalized = query.Trim();
+        if (!CanHandle(normalized))
+            throw new ArgumentException("Код чека не поддерживается выбранным поставщиком.", nameof(query));
+
+        var details = await FetchReceiptAsync(normalized, cancellationToken);
+        var identity = GetReceiptIdentity(details.Identity);
+        if (string.IsNullOrWhiteSpace(identity))
+            throw new InvalidDataException("В ответе поставщика отсутствует номер чека.");
+        if (details.Currency is not { Length: 3 } || !details.Currency.All(character => character is >= 'A' and <= 'Z'))
+            throw new InvalidDataException("В ответе поставщика отсутствует корректная валюта чека.");
+
+        return new Receipt(identity, details.Name, details.RetailPlace,
+            details.RetailPlaceAddress, details.IssuedAt, details.Currency, details.Total, details.Items,
+            details.LegacyVerificationCode)
+        {
+            Source = query,
+            OperationDate = details.OperationDate ?? DateOnly.FromDateTime(details.IssuedAt.Date)
+        };
+    }
 
     public abstract string GetReceiptIdentity(ReceiptIdentitySource source);
+
+    protected abstract Task<ReceiptDetails> FetchReceiptAsync(string query, CancellationToken cancellationToken);
+
+    protected sealed record ReceiptDetails(ReceiptIdentitySource Identity, string Name, string? RetailPlace,
+        string? RetailPlaceAddress, DateTimeOffset IssuedAt, string Currency, decimal Total,
+        IReadOnlyList<ReceiptItem> Items, DateOnly? OperationDate = null, string? LegacyVerificationCode = null);
 
     protected static SocketsHttpHandler CreateHttpHandler() => new()
     {
@@ -49,12 +77,6 @@ public abstract class ReceiptProvider : IReceiptProvider, IDisposable
             throw new InvalidDataException(invalidFormatMessage);
         }
     }
-
-    protected Receipt CreateReceipt(ReceiptIdentitySource source, string name, string? retailPlace,
-        string? retailPlaceAddress, DateTimeOffset issuedAt, string currency, decimal total,
-        IReadOnlyList<ReceiptItem> items, string? legacyVerificationCode = null) =>
-        new(GetReceiptIdentity(source), name, retailPlace, retailPlaceAddress, issuedAt, currency, total, items,
-            legacyVerificationCode);
 
     protected static string NormalizeItemName(string? name) =>
         string.IsNullOrWhiteSpace(name) ? "Товар без названия" : name;

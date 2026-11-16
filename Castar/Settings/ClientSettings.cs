@@ -3,7 +3,6 @@ using System.Collections.Generic;
 using System.ComponentModel;
 using System.Diagnostics;
 using System.IO;
-using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Security.Cryptography;
 using System.Text;
@@ -13,6 +12,10 @@ using Castar.Currency;
 
 namespace Castar.Settings;
 
+public enum NotificationMode { Windows, Castar }
+
+public enum NotificationCorner { TopLeft, TopRight, BottomLeft, BottomRight }
+
 public sealed class ClientSettings : INotifyPropertyChanged
 {
     public const string DefaultServerUrl = "http://127.0.0.1:5080";
@@ -21,6 +24,9 @@ public sealed class ClientSettings : INotifyPropertyChanged
 
     private bool hideInTray;
     private bool autoRun;
+    private NotificationMode notificationMode;
+    private NotificationCorner notificationCorner = NotificationCorner.BottomRight;
+    private int maxVisibleNotifications = 3;
     private string displayCurrency = "";
     private string settingsPath = Path.Combine(DataDirectory, "Castar.Client.xml");
 
@@ -39,10 +45,28 @@ public sealed class ClientSettings : INotifyPropertyChanged
         set => Set(ref autoRun, value);
     }
 
+    public NotificationMode NotificationMode
+    {
+        get => notificationMode;
+        set => Set(ref notificationMode, value);
+    }
+
+    public NotificationCorner NotificationCorner
+    {
+        get => notificationCorner;
+        set => Set(ref notificationCorner, value);
+    }
+
+    public int MaxVisibleNotifications
+    {
+        get => maxVisibleNotifications;
+        set => Set(ref maxVisibleNotifications, Math.Clamp(value, 1, 5));
+    }
+
     public string DisplayCurrency
     {
         get => displayCurrency;
-        set => Set(ref displayCurrency, HistoricalExchangeRates.SupportedCurrencies.Contains(value) ? value : "");
+        set => Set(ref displayCurrency, HistoricalExchangeRates.IsCurrencyCode(value) ? value : "");
     }
 
     [XmlIgnore]

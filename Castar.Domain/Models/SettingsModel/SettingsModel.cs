@@ -17,6 +17,7 @@ namespace Castar.Domain.Models.SettingsModel
     {
         private ReceiptSettings receipts = new();
         private NalogFNS nalogFNS = new();
+        private ManualCurrencySettings manualCurrencies = ManualCurrencySettings.Default;
 
         public Systems Systems { get; set; } = new();
         public TelegramBot TelegramBot { get; set; } = new();
@@ -30,6 +31,14 @@ namespace Castar.Domain.Models.SettingsModel
             get => Volatile.Read(ref receipts);
             set => Volatile.Write(ref receipts, value);
         }
+
+        [XmlIgnore]
+        public ManualCurrencySettings ManualCurrencies
+        {
+            get => Volatile.Read(ref manualCurrencies);
+            set => Volatile.Write(ref manualCurrencies, value);
+        }
+
         public void SetHandlersEvents(Action handler)
         {
             //var properties = typeof(SettingsModel).GetProperties(System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance);
@@ -60,7 +69,9 @@ namespace Castar.Domain.Models.SettingsModel
             using var stream = new MemoryStream();
             serializer.Serialize(stream, this);
             stream.Position = 0;
-            return (SettingsModel)serializer.Deserialize(stream)!;
+            var copy = (SettingsModel)serializer.Deserialize(stream)!;
+            copy.ManualCurrencies = ManualCurrencies;
+            return copy;
         }
     }
 

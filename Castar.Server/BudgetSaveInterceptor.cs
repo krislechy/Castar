@@ -6,18 +6,18 @@ namespace Castar.Server;
 
 internal sealed class BudgetSaveInterceptor(BudgetEventPublisher publisher) : SaveChangesInterceptor
 {
-    private BudgetChanges pending;
+    private (BudgetChange Purchases, BudgetChange Incomes) pending;
 
     public override InterceptionResult<int> SavingChanges(DbContextEventData data, InterceptionResult<int> result)
     {
-        CaptureChanges(data.Context);
+        pending = result.HasResult ? default : CaptureChanges(data.Context);
         return result;
     }
 
     public override ValueTask<InterceptionResult<int>> SavingChangesAsync(
         DbContextEventData data, InterceptionResult<int> result, CancellationToken cancellationToken = default)
     {
-        CaptureChanges(data.Context);
+        pending = result.HasResult ? default : CaptureChanges(data.Context);
         return ValueTask.FromResult(result);
     }
 
@@ -34,30 +34,39 @@ internal sealed class BudgetSaveInterceptor(BudgetEventPublisher publisher) : Sa
         return ValueTask.FromResult(result);
     }
 
-    private void CaptureChanges(DbContext? context)
+    private static (BudgetChange Purchases, BudgetChange Incomes) CaptureChanges(DbContext? context)
     {
-        pending = BudgetChanges.None;
         // Repository writes commit within SaveChanges. An outer transaction can still roll back.
         if (context is null || context.Database.CurrentTransaction is not null)
-            return;
+            return default;
 
+        var purchases = default(BudgetChange);
+        var incomes = default(BudgetChange);
         foreach (var entry in context.ChangeTracker.Entries())
         {
-            pending |= (entry.Entity, entry.State) switch
+            switch (entry.Entity, entry.State)
             {
-                (Purchase, EntityState.Added) => BudgetChanges.PurchaseChanged | BudgetChanges.PurchaseCreated,
-                (Purchase or Item, EntityState.Added or EntityState.Modified or EntityState.Deleted) => BudgetChanges.PurchaseChanged,
-                (Income, EntityState.Added) => BudgetChanges.IncomeChanged | BudgetChanges.IncomeCreated,
-                (Income, EntityState.Modified or EntityState.Deleted) => BudgetChanges.IncomeChanged,
-                _ => BudgetChanges.None
-            };
+                case (Purchase purchase, EntityState.Added):
+                    purchases = purchases.AddCreation(purchase.Id, purchase.AddedOn);
+                    break;
+                case (Purchase or Item, EntityState.Added or EntityState.Modified or EntityState.Deleted):
+                    purchases = purchases with { Changed = true };
+                    break;
+                case (Income income, EntityState.Added):
+                    incomes = incomes.AddCreation(income.Id, income.AddedOn);
+                    break;
+                case (Income, EntityState.Modified or EntityState.Deleted):
+                    incomes = incomes with { Changed = true };
+                    break;
+            }
         }
+        return (purchases, incomes);
     }
 
     private void PublishChanges(int saved)
     {
         if (saved > 0)
-            publisher.Queue(pending);
-        pending = BudgetChanges.None;
+            publisher.Queue(pending.Purchases, pending.Incomes);
+        pending = default;
     }
 }

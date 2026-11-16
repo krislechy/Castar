@@ -1,0 +1,12 @@
+<UserControl x:Class="Castar.Compontents.PurchaseItemEditor"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <StackPanel MinWidth="330">
+        <TextBlock x:Name="NameLabel" Text="Название" Style="{StaticResource FormFieldLabel}"/>
+        <TextBox x:Name="ItemName" MaxLength="400" AutomationProperties.LabeledBy="{Binding ElementName=NameLabel}"/>
+        <TextBlock x:Name="QuantityLabel" Text="Количество" Style="{StaticResource FormFieldLabel}"/>
+        <TextBox x:Name="Quantity" AutomationProperties.LabeledBy="{Binding ElementName=QuantityLabel}"/>
+        <TextBlock x:Name="PriceLabel" Text="Цена за единицу" Style="{StaticResource FormFieldLabel}"/>
+        <TextBox x:Name="UnitPrice" AutomationProperties.LabeledBy="{Binding ElementName=PriceLabel}"/>
+    </StackPanel>
+</UserControl>

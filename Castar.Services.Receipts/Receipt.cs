@@ -12,6 +12,7 @@ public sealed record Receipt(
     string? LegacyVerificationCode = null)
 {
     public DateOnly OperationDate { get; init; } = DateOnly.FromDateTime(IssuedAt.Date);
+    public string? Source { get; internal init; }
 }
 
 public sealed record ReceiptItem(string Name, decimal Quantity, decimal UnitPrice, decimal Total);

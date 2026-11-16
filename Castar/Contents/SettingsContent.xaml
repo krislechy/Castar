@@ -3,6 +3,7 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:c="clr-namespace:Castar.Compontents"
              xmlns:converters="clr-namespace:Castar.Converters"
+             xmlns:settings="clr-namespace:Castar.Settings"
              Name="Настройки" Loaded="Settings_Loaded" Unloaded="Settings_Unloaded"
              IsVisibleChanged="Settings_IsVisibleChanged">
     <UserControl.Resources>
@@ -56,6 +57,12 @@
                                 <TextBlock Text="{Binding NalogInputError}" Style="{StaticResource ViewStatus}"
                                            AutomationProperties.LiveSetting="Polite"/>
                             </StackPanel>
+                            <StackPanel Visibility="{Binding SupportsManualCurrency, Converter={StaticResource ServerConnectionVisibility}}">
+                                <TextBlock Text="{Binding ManualCurrency.DefaultCurrency, StringFormat='Валюта ручного добавления — {0}'}"
+                                           Style="{StaticResource FormFieldLabel}"/>
+                                <Button Content="Настроить валюты" Style="{StaticResource FormAction}"
+                                        Click="ConfigureManualCurrencies_Click"/>
+                            </StackPanel>
                         </StackPanel>
                         <StackPanel Orientation="Horizontal">
                             <Button Content="Сохранить" Style="{StaticResource FormAction}"
@@ -82,10 +89,34 @@
                     <StackPanel>
                         <CheckBox IsChecked="{Binding Settings.IsHideInTray}" Content="При закрытии сворачивать в трей"/>
                         <CheckBox IsChecked="{Binding Settings.IsAutoRun}" Content="Запускать с Windows"/>
-                        <TextBlock Text="Валюта бюджета" Style="{StaticResource FormFieldLabel}"/>
+                        <TextBlock Text="Отображаемая валюта" Style="{StaticResource FormFieldLabel}"/>
                         <c:CastarComboBox ItemsSource="{Binding CurrencyOptions}" DisplayMemberPath="Label" SelectedValuePath="Code"
                                           SelectedValue="{Binding Settings.DisplayCurrency, Mode=TwoWay}"
-                                          AutomationProperties.Name="Валюта бюджета"/>
+                                          AutomationProperties.Name="Отображаемая валюта"/>
+                        <TextBlock Text="Уведомления" Style="{StaticResource FormFieldLabel}"/>
+                        <c:CastarComboBox ItemsSource="{Binding NotificationModes}" DisplayMemberPath="Label" SelectedValuePath="Value"
+                                          SelectedValue="{Binding Settings.NotificationMode, Mode=TwoWay}"
+                                          AutomationProperties.Name="Уведомления"/>
+                        <StackPanel>
+                            <StackPanel.Style>
+                                <Style TargetType="StackPanel">
+                                    <Setter Property="Visibility" Value="Collapsed"/>
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding Settings.NotificationMode}" Value="{x:Static settings:NotificationMode.Castar}">
+                                            <Setter Property="Visibility" Value="Visible"/>
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </StackPanel.Style>
+                            <TextBlock Text="Расположение" Style="{StaticResource FormFieldLabel}"/>
+                            <c:CastarComboBox ItemsSource="{Binding NotificationCorners}" DisplayMemberPath="Label" SelectedValuePath="Value"
+                                              SelectedValue="{Binding Settings.NotificationCorner, Mode=TwoWay}"
+                                              AutomationProperties.Name="Расположение уведомлений"/>
+                            <TextBlock Text="Количество уведомлений" Style="{StaticResource FormFieldLabel}"/>
+                            <c:CastarComboBox ItemsSource="{Binding NotificationCounts}"
+                                              SelectedItem="{Binding Settings.MaxVisibleNotifications, Mode=TwoWay}"
+                                              AutomationProperties.Name="Количество уведомлений"/>
+                        </StackPanel>
                     </StackPanel>
                 </c:IslandPanel>
                 <c:IslandPanel Title="Пользователи" ImageSvg="{DynamicResource Svg.Users}"

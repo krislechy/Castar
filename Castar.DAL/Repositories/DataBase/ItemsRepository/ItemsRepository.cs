@@ -30,6 +30,7 @@ namespace Castar.DAL.Repositories.DataBase
             Context.Entry(item).Property<int?>(CastarDbContext.LineNumber).CurrentValue =
                 purchase.Items.Max(x => Context.Entry(x).Property<int?>(CastarDbContext.LineNumber).CurrentValue) + 1 ?? 0;
             purchase.RecalculateManualTotals();
+            purchase.Revision = checked(purchase.Revision + 1);
             await Context.SaveChangesAsync(cancellationToken);
             return item;
         }
@@ -45,6 +46,7 @@ namespace Castar.DAL.Repositories.DataBase
             current.Quantity = item.Quantity;
             current.Price = item.Price;
             purchase.RecalculateManualTotals();
+            purchase.Revision = checked(purchase.Revision + 1);
             await Context.SaveChangesAsync(cancellationToken);
             item.Sum = current.Sum;
         }
@@ -65,6 +67,7 @@ namespace Castar.DAL.Repositories.DataBase
             purchase.Items.Remove(item);
             Context.Items.Remove(item);
             purchase.RecalculateManualTotals();
+            purchase.Revision = checked(purchase.Revision + 1);
             await Context.SaveChangesAsync(cancellationToken);
             return true;
         }

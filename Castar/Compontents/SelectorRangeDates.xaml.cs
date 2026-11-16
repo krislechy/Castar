@@ -29,7 +29,7 @@ namespace Castar.Compontents
         public RangeDate(DateTime startDate, DateTime endDate)
         {
             this.StartDate = startDate;
-            this.EndDate = new DateTime(endDate.Year, endDate.Month, endDate.Day,23,59,59);
+            this.EndDate = endDate.Date.AddTicks(TimeSpan.TicksPerDay - 1);
         }
     }
     public partial class SelectorRangeDates : UserControl
@@ -77,6 +77,18 @@ namespace Castar.Compontents
         {
             InitializeComponent();
         }
+
+        internal bool IncludeOperationDate(DateTime? operationDate)
+        {
+            if (operationDate is not { } date || date >= RangeDate.StartDate && date <= RangeDate.EndDate)
+                return false;
+
+            var start = new DateTime(date.Year, date.Month, 1);
+            var end = new DateTime(date.Year, date.Month, DateTime.DaysInMonth(date.Year, date.Month));
+            RangeDate = new RangeDate(start, end);
+            return true;
+        }
+
         private void ChangeRangeDate(TypeRange type, int offset)
         {
             var currentStartDate = RangeDate.StartDate;

@@ -1,3 +1,4 @@
+using Castar.Compontents;
 using Castar.Updates;
 using System;
 using System.ComponentModel;
@@ -31,10 +32,16 @@ namespace Castar.Contents
                 }
 
                 context.UpdateStatus = $"Доступна версия {update.Version}.";
-                var result = MessageBox.Show(Window.GetWindow(this),
+                var accepted = await PopupDialog.Show(
                     $"Установить версию {update.Version}? Castar перезапустится.",
-                    "Обновление", MessageBoxButton.YesNo, MessageBoxImage.Question);
-                if (result != MessageBoxResult.Yes)
+                    PopupDialog.TypeDialogEnum.Confirm, options =>
+                    {
+                        options.Title = "Обновление";
+                        options.SuccessButton.SuccessConfirmButtonText = "Установить";
+                        options.AllowMissClick = false;
+                        return options;
+                    });
+                if (accepted != true)
                     return;
 
                 showingProgress = true;

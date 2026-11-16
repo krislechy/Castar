@@ -1,11 +1,11 @@
 using Castar.Settings;
+using Castar.Api;
 using Castar.Commands;
 using Castar.Contents;
 using Castar.Externs;
 using Castar.TrayNotify.Windows;
 using System;
 using System.Collections.Generic;
-using System.Diagnostics;
 using System.Drawing;
 using System.Linq;
 using System.Runtime.InteropServices;
@@ -32,15 +32,28 @@ namespace Castar
         private readonly SettingsContent settingsContent;
         private readonly IncomesContent incomesContent;
         private readonly PurchasesContent purchasesContent;
+        private readonly Lazy<StatisticsContent>? statisticsContent;
         private readonly ClientSettings settings;
+        private (string Kind, Guid? Id, DateTime? AddedOn)? notificationTarget;
         public MainWindow(SettingsContent settingsContent, ClientSettings settings, IncomesContent incomesContent,
-            PurchasesContent purchasesContent)
+            PurchasesContent purchasesContent, Lazy<StatisticsContent>? statisticsContent = null)
         {
             this.settingsContent = settingsContent;
             this.settings = settings;
             this.incomesContent = incomesContent;
             this.purchasesContent = purchasesContent;
+            this.statisticsContent = statisticsContent;
             InitializeComponent();
+            StatisticsMenuButton.Visibility = statisticsContent is null ? Visibility.Collapsed : Visibility.Visible;
+            MainDialog.IsVisibleChanged += (_, _) =>
+            {
+                if (!MainDialog.IsVisible && IsVisible && notificationTarget is { } target)
+                {
+                    notificationTarget = null;
+                    NavigateToBudgetEvent(target.Kind, target.Id, target.AddedOn);
+                }
+            };
+            settings.ConnectionChanged += (_, _) => notificationTarget = null;
             if (settings.ApiKey.Length == 0)
                 MainContent.Content = settingsContent;
         }
@@ -116,34 +129,67 @@ namespace Castar
         #endregion
 
         #region MenuToggleButtons & Commands
+        internal void ShowBudgetNotification(string kind, Guid? entityId, DateTime? addedOn)
+        {
+            if (!IsVisible)
+                Show();
+            if (WindowState == WindowState.Minimized)
+                WindowState = WindowState.Normal;
+            Activate();
+
+            if (MainDialog.IsVisible)
+                notificationTarget = (kind, entityId, addedOn);
+            else
+                NavigateToBudgetEvent(kind, entityId, addedOn);
+        }
+
+        private void NavigateToBudgetEvent(string kind, Guid? entityId, DateTime? addedOn)
+        {
+            var section = kind switch
+            {
+                BudgetEvents.Purchase => "Purchases",
+                BudgetEvents.Income => "Incomes",
+                _ => null
+            };
+            if (section is null)
+                return;
+
+            var button = MenuToggleButtons.Children.OfType<ToggleButton>()
+                .First(toggle => Equals(toggle.CommandParameter, section));
+            button.IsChecked = true;
+            ResetMenuToggleButtons(button);
+            SelectSection(section);
+            if (entityId is { } id)
+            {
+                if (kind == BudgetEvents.Purchase)
+                    purchasesContent.RevealNotification(id, addedOn);
+                else
+                    incomesContent.RevealNotification(id, addedOn);
+            }
+        }
+
         private void MenuSelectorCommandBinding_Executed(object sender, ExecutedRoutedEventArgs e)
         {
-            var result= ResetMenuToggleButtons((ToggleButton)e.Source);
-            if (!result) return;
+            if (ResetMenuToggleButtons((ToggleButton)e.Source) && e.Parameter is string section)
+                SelectSection(section);
+        }
 
-            var content = e.Parameter;
-            if (content != null)
+        private void SelectSection(string section)
+        {
+            switch (section)
             {
-                switch(content)
-                {
-                    case ("Purchases"):
-                        {
-                            MainContent.Content = purchasesContent;
-                            break;
-                        }
-                    case ("Incomes"):
-                        {
-                            Trace.WriteLine("incomes");
-                            MainContent.Content = incomesContent;
-                            break;
-                        }
-                    case ("Settings"):
-                        {
-                            Trace.WriteLine("settings");
-                            MainContent.Content = settingsContent;
-                            break;
-                        }
-                }
+                case "Purchases":
+                    MainContent.Content = purchasesContent;
+                    break;
+                case "Incomes":
+                    MainContent.Content = incomesContent;
+                    break;
+                case "Statistics" when statisticsContent is not null:
+                    MainContent.Content = statisticsContent.Value;
+                    break;
+                case "Settings":
+                    MainContent.Content = settingsContent;
+                    break;
             }
         }
 

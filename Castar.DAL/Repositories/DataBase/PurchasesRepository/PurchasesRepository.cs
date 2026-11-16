@@ -1,5 +1,6 @@
 using System.Security.Cryptography;
 using System.Text;
+using System.Text.Json;
 using Castar.Domain.Models.DataBase;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
@@ -9,6 +10,8 @@ namespace Castar.DAL.Repositories.DataBase
     public sealed class PurchasesRepository(CastarDbContext db)
         : BaseRepository<Purchase>(db), IPurchasesRepository
     {
+        private static readonly Encoding StrictUtf8 = new UTF8Encoding(false, true);
+
         public async Task<IReadOnlyList<Purchase>> List(DateTime start, DateTime finish, bool includeDetails)
         {
             var purchases = Context.Purchases.AsNoTracking().Where(x => x.AddedOn >= start && x.AddedOn <= finish);
@@ -36,6 +39,11 @@ namespace Castar.DAL.Repositories.DataBase
             ArgumentException.ThrowIfNullOrWhiteSpace(provider);
             ArgumentException.ThrowIfNullOrWhiteSpace(receiptId);
 
+            if (purchase.RawData is { Length: > 100 } && purchase.ReceiptSource is not null)
+            {
+                // The legacy column cannot contain long QR codes. The full source and receipt key still persist.
+                purchase.RawData = null;
+            }
             if (purchase.RawData is { Length: > 0 } rawData)
             {
                 purchase.RawData = PadRawData(rawData);
@@ -46,6 +54,7 @@ namespace Castar.DAL.Repositories.DataBase
             var key = SHA256.HashData(Encoding.UTF8.GetBytes(string.Concat(provider, "\0", receiptId)));
             TrackNewPurchase(purchase);
             Context.Entry(purchase).Property<byte[]>(CastarDbContext.ReceiptKey).CurrentValue = key;
+            PreserveOriginalReceipt(purchase);
             try
             {
                 await Context.SaveChangesAsync(cancellationToken);
@@ -68,6 +77,9 @@ namespace Castar.DAL.Repositories.DataBase
                 ?? throw new InvalidOperationException("Покупка больше не существует.");
 
             ThrowIfFiscal(Context, current);
+            if (current.Revision != purchase.Revision)
+                throw new DbUpdateConcurrencyException("Покупка уже изменилась.");
+
             current.Currency = purchase.Currency ?? current.Currency;
             current.Name = purchase.Name;
             current.RetailPlace = purchase.RetailPlace;
@@ -106,7 +118,119 @@ namespace Castar.DAL.Repositories.DataBase
             }
 
             current.RecalculateManualTotals();
+            current.Revision = checked(current.Revision + 1);
             await Context.SaveChangesAsync(cancellationToken);
+            purchase.Revision = current.Revision;
+        }
+
+        public async Task<(bool Found, string? ReceiptSource, bool IsLegacy)> GetReceiptSourceAsync(
+            Guid purchaseId, CancellationToken cancellationToken = default)
+        {
+            var purchase = await Context.Purchases.AsNoTracking().Where(x => x.Id == purchaseId)
+                .Select(x => new { x.ReceiptSource, x.RawData }).SingleOrDefaultAsync(cancellationToken);
+            if (purchase is null)
+                return (false, null, false);
+            if (!string.IsNullOrWhiteSpace(purchase.ReceiptSource))
+                return (true, purchase.ReceiptSource, false);
+            var legacy = DecodeLegacySource(purchase.RawData);
+            return (true, legacy, legacy is not null);
+        }
+
+        public static bool HasReceiptSource(Purchase purchase) =>
+            !string.IsNullOrWhiteSpace(purchase.ReceiptSource) || DecodeLegacySource(purchase.RawData) is not null;
+
+        public async Task<PurchaseMutationResult> DeletePurchaseAsync(
+            Guid purchaseId, long expectedRevision, CancellationToken cancellationToken = default)
+        {
+            var purchase = await Context.Purchases.SingleOrDefaultAsync(x => x.Id == purchaseId, cancellationToken);
+            if (purchase is null)
+                return PurchaseMutationResult.NotFound;
+            if (purchase.Revision != expectedRevision)
+                return PurchaseMutationResult.Conflict;
+
+            // The database cascade removes the items in the same write as the purchase.
+            Context.Purchases.Remove(purchase);
+            await Context.SaveChangesAsync(cancellationToken);
+            return PurchaseMutationResult.Applied;
+        }
+
+        public async Task<PurchaseMutationResult> DeletePurchaseItemAsync(
+            Guid purchaseId, Guid itemId, long expectedRevision, CancellationToken cancellationToken = default)
+        {
+            var purchase = await WithItems(Context.Purchases)
+                .SingleOrDefaultAsync(x => x.Id == purchaseId, cancellationToken);
+            if (purchase?.Items.FirstOrDefault(item => item.Id == itemId) is not { } item)
+                return PurchaseMutationResult.NotFound;
+            if (purchase.Revision != expectedRevision)
+                return PurchaseMutationResult.Conflict;
+
+            if (IsFiscal(Context, purchase))
+                PreserveOriginalReceipt(purchase);
+            purchase.Items.Remove(item);
+            Context.Items.Remove(item);
+            purchase.TotalSum = purchase.Items.Sum(remaining => remaining.Sum);
+            purchase.Revision = checked(purchase.Revision + 1);
+            await Context.SaveChangesAsync(cancellationToken);
+            return PurchaseMutationResult.Applied;
+        }
+
+        public async Task<PurchaseMutationResult> EditPurchaseAsync(
+            Guid purchaseId, long expectedRevision, string name, string? retailPlace, string? retailPlaceAddress,
+            DateTime addedOn, CancellationToken cancellationToken = default)
+        {
+            var purchase = await WithItems(Context.Purchases)
+                .SingleOrDefaultAsync(x => x.Id == purchaseId, cancellationToken);
+            if (purchase is null)
+                return PurchaseMutationResult.NotFound;
+            if (purchase.Revision != expectedRevision)
+                return PurchaseMutationResult.Conflict;
+
+            if (purchase.Name == name && purchase.RetailPlace == retailPlace &&
+                purchase.RetailPlaceAddress == retailPlaceAddress && purchase.AddedOn == addedOn)
+                return PurchaseMutationResult.Applied;
+
+            if (IsFiscal(Context, purchase))
+                PreserveOriginalReceipt(purchase);
+            purchase.Name = name;
+            purchase.RetailPlace = retailPlace;
+            purchase.RetailPlaceAddress = retailPlaceAddress;
+            purchase.AddedOn = addedOn;
+            purchase.Revision = checked(purchase.Revision + 1);
+            await Context.SaveChangesAsync(cancellationToken);
+            return PurchaseMutationResult.Applied;
+        }
+
+        public async Task<PurchaseMutationResult> EditPurchaseItemAsync(
+            Guid purchaseId, Guid itemId, long expectedRevision, string name, double quantity, decimal price,
+            CancellationToken cancellationToken = default)
+        {
+            var purchase = await WithItems(Context.Purchases)
+                .SingleOrDefaultAsync(x => x.Id == purchaseId, cancellationToken);
+            if (purchase?.Items.FirstOrDefault(item => item.Id == itemId) is not { } item)
+                return PurchaseMutationResult.NotFound;
+            if (purchase.Revision != expectedRevision)
+                return PurchaseMutationResult.Conflict;
+
+            var (unitPrice, sum) = item.Quantity != quantity || item.Price != price
+                ? purchase.CalculateManualItemAmounts(quantity, price)
+                : (item.Price, item.Sum);
+            var amountChanged = item.Quantity != quantity || item.Price != unitPrice;
+            if (item.Name == name && !amountChanged)
+                return PurchaseMutationResult.Applied;
+
+            if (IsFiscal(Context, purchase))
+                PreserveOriginalReceipt(purchase);
+            item.Name = name;
+            if (amountChanged)
+            {
+                item.Quantity = quantity;
+                item.Price = unitPrice;
+                item.Sum = sum;
+                purchase.TotalSum = purchase.Items.Sum(line => line.Sum);
+            }
+            purchase.Revision = checked(purchase.Revision + 1);
+            await Context.SaveChangesAsync(cancellationToken);
+            return PurchaseMutationResult.Applied;
         }
 
         public async Task<bool> SearchByRawData(byte[]? query)
@@ -119,9 +243,11 @@ namespace Castar.DAL.Repositories.DataBase
         }
 
         private static IQueryable<Purchase> WithDetails(IQueryable<Purchase> purchases) =>
-            purchases.AsNoTrackingWithIdentityResolution().Include(x => x.User)
-                .Include(x => x.Items.OrderBy(i => EF.Property<int?>(i, CastarDbContext.LineNumber))
-                    .ThenBy(i => i.CreatedOn).ThenBy(i => i.Id));
+            WithItems(purchases.AsNoTrackingWithIdentityResolution().Include(x => x.User));
+
+        private static IQueryable<Purchase> WithItems(IQueryable<Purchase> purchases) =>
+            purchases.Include(x => x.Items.OrderBy(i => EF.Property<int?>(i, CastarDbContext.LineNumber))
+                .ThenBy(i => i.CreatedOn).ThenBy(i => i.Id));
 
         private void TrackNewPurchase(Purchase purchase)
         {
@@ -138,8 +264,44 @@ namespace Castar.DAL.Repositories.DataBase
 
         internal static void ThrowIfFiscal(CastarDbContext db, Purchase purchase)
         {
-            if (purchase.RawData is not null || db.Entry(purchase).Property<byte[]>(CastarDbContext.ReceiptKey).CurrentValue is not null)
+            if (IsFiscal(db, purchase))
                 throw new InvalidOperationException("Позиции фискального чека нельзя редактировать вручную.");
+        }
+
+        private static bool IsFiscal(CastarDbContext db, Purchase purchase) =>
+            purchase.RawData is not null || db.Entry(purchase).Property<byte[]>(CastarDbContext.ReceiptKey).CurrentValue is not null;
+
+        private static void PreserveOriginalReceipt(Purchase purchase)
+        {
+            purchase.OriginalReceiptSnapshot ??= JsonSerializer.Serialize(new
+            {
+                purchase.Name,
+                purchase.RetailPlace,
+                purchase.RetailPlaceAddress,
+                purchase.AddedOn,
+                purchase.ReceiptDate,
+                purchase.Currency,
+                purchase.TotalSum,
+                Items = purchase.Items.Select(item => new
+                {
+                    item.Id, item.Name, item.Category, item.Quantity, item.Price, item.Sum
+                })
+            });
+        }
+
+        private static string? DecodeLegacySource(byte[]? rawData)
+        {
+            if (rawData is not { Length: > 0 })
+                return null;
+            try
+            {
+                var decoded = StrictUtf8.GetString(rawData.AsSpan().TrimEnd((byte)0));
+                return string.IsNullOrWhiteSpace(decoded) ? null : decoded;
+            }
+            catch (DecoderFallbackException)
+            {
+                return null;
+            }
         }
 
         private static bool IsDuplicateReceipt(Exception? exception) =>

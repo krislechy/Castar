@@ -1,5 +1,6 @@
 using System.Text;
 using Castar.Domain.Models.DataBase;
+using Castar.Domain.Models.SettingsModel;
 using Telegram.Bot.Types;
 using BudgetUser = Castar.Domain.Models.DataBase.User;
 
@@ -10,11 +11,12 @@ public sealed partial class CommandHandler
     private async Task<string?> SaveIncomesAsync(
         Message message, BudgetUser user, string[] lines, bool edited, CancellationToken cancellationToken)
     {
-        var inputs = lines.Select(ParseIncome).ToArray();
         var existing = await incomesService.GetEntityByMessageId(user.TelegramId, message.MessageId, cancellationToken);
         if (!edited && existing.Count > 0)
             return null;
 
+        var policy = settings.ManualCurrencies;
+        var inputs = lines.Select(line => ParseIncome(line, policy)).ToArray();
         if (edited)
         {
             var retained = inputs.Where(input => input.Sum >= 0).ToArray();
@@ -39,6 +41,7 @@ public sealed partial class CommandHandler
                 if (edited && sum < 0)
                     continue;
 
+                currency ??= policy.DefaultCurrency;
                 incomes.Add(new Income { Source = source, Sum = sum, Currency = currency });
                 result.AppendLine($"{settings.TelegramBot.IncomeCreateEmoji} {user.Name} добавил(а) начисление: {FormatManualAmount(sum, currency)}, {source}");
                 continue;
@@ -68,9 +71,9 @@ public sealed partial class CommandHandler
     private string IncomeDeleted(BudgetUser user, Income income) =>
         $"{settings.TelegramBot.IncomeDeleteEmoji} {user.Name} удалил(а) начисление: {FormatManualAmount(income.Sum, income.Currency)}, {income.Source}";
 
-    private static (string Source, decimal Sum, string? Currency) ParseIncome(string line)
+    private static (string Source, decimal Sum, string? Currency) ParseIncome(string line, ManualCurrencySettings policy)
     {
-        if (ParseManualAmount(line) is { } amount)
+        if (ParseManualAmount(line, policy) is { } amount)
         {
             var parts = amount.Description.Split([' ', '\t'], StringSplitOptions.RemoveEmptyEntries);
             if (parts.Length == 2 && parts[0].Equals("/income", StringComparison.OrdinalIgnoreCase))

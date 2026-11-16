@@ -4,7 +4,6 @@ using Castar.Services.Receipts;
 using Telegram.Bot;
 using Telegram.Bot.Types;
 using Telegram.Bot.Types.Enums;
-using BudgetUser = Castar.Domain.Models.DataBase.User;
 
 namespace Castar.Services.TelegramBot.Commands;
 
@@ -23,7 +22,9 @@ public sealed partial class CommandHandler(
             || (message.Text is null && message.Photo is null && message.Document is null))
             return;
 
-        var lines = message.Text?.Split('\n', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries) ?? [];
+        var sourceLines = message.Text?.Split(["\r\n", "\n"], StringSplitOptions.None)
+            .Where(line => !string.IsNullOrWhiteSpace(line)).ToArray() ?? [];
+        var lines = sourceLines.Select(line => line.Trim()).ToArray();
         if (lines.Length == 1 && lines[0].Equals("/me", StringComparison.OrdinalIgnoreCase))
         {
             await ReplyAsync(bot, message, $"{sender.Username ?? sender.FirstName}: {sender.Id}", cancellationToken);
@@ -39,7 +40,7 @@ public sealed partial class CommandHandler(
 
         if (message.Photo is not null || message.Document is not null || lines.Any(IsReceiptContent))
         {
-            await ImportReceiptsAsync(bot, message, user, lines, cancellationToken);
+            await ImportReceiptsAsync(bot, message, user, sourceLines, cancellationToken);
             return;
         }
 
@@ -48,10 +49,10 @@ public sealed partial class CommandHandler(
             var firstWord = lines.FirstOrDefault()?.Split(' ', '\t')[0];
             var result = string.Equals(firstWord, "/income", StringComparison.OrdinalIgnoreCase)
                 ? await SaveIncomesAsync(message, user, lines, edited, cancellationToken)
-                : await SaveManualPurchaseAsync(message, user, lines, edited, cancellationToken);
+                : await SaveManualPurchaseAsync(bot, message, user, lines, edited, cancellationToken);
 
             if (!string.IsNullOrEmpty(result))
-                await NotifyUsersAsync(bot, user, result, cancellationToken);
+                await NotifyUsersAsync(bot, result, cancellationToken);
         }
         catch (FormatException ex)
         {
@@ -60,18 +61,33 @@ public sealed partial class CommandHandler(
     }
 
     private bool IsReceiptContent(string line) =>
-        providers.Any(provider => provider.CanHandle(line)) ||
-        line.StartsWith("https://", StringComparison.OrdinalIgnoreCase) ||
-        line.StartsWith("http://", StringComparison.OrdinalIgnoreCase);
+        providers.Any(provider => RecognizesReceipt(provider, line)) ||
+        (!line.Any(char.IsWhiteSpace) &&
+            (line.StartsWith("https://", StringComparison.OrdinalIgnoreCase) ||
+             line.StartsWith("http://", StringComparison.OrdinalIgnoreCase)));
 
-    private async Task NotifyUsersAsync(ITelegramBotClient bot, BudgetUser actor, string text, CancellationToken cancellationToken)
+    private static bool RecognizesReceipt(IReceiptProvider provider, string line)
+    {
+        try
+        {
+            return provider.CanHandle(line);
+        }
+        catch (NotImplementedException)
+        {
+            return false;
+        }
+    }
+
+    private async Task NotifyUsersAsync(ITelegramBotClient bot, string text, CancellationToken cancellationToken)
     {
         var users = await usersService.GetAllUsersWithTelegramId(cancellationToken);
-        foreach (var telegramId in users.Select(user => user.TelegramId).Append(actor.TelegramId).Distinct())
+        var recipients = users.GroupBy(user => user.TelegramId)
+            .Where(accounts => accounts.All(user => user.TelegramNotificationsEnabled));
+        foreach (var recipient in recipients)
         {
             try
             {
-                await SendTextAsync(bot, telegramId, text, cancellationToken);
+                await SendTextAsync(bot, recipient.Key, text, cancellationToken);
             }
             catch (Exception ex) when (!cancellationToken.IsCancellationRequested)
             {

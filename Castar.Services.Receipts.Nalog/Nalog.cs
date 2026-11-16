@@ -6,7 +6,7 @@ using System.Net.Http.Json;
 
 namespace Castar.Services.Receipts
 {
-    public sealed class Nalog : ReceiptProvider, IReceipt<Ticket>
+    public sealed class Nalog : ReceiptProvider
     {
         public const string ProviderId = "nalog";
         private const string ClientSecret = "IyvrAbKt9h/8p6a7QPh8gpkXYQ4=";
@@ -48,8 +48,6 @@ namespace Castar.Services.Receipts
         public override bool CanHandle(string query) =>
             !string.IsNullOrWhiteSpace(query) && query.Trim().StartsWith("t=", StringComparison.OrdinalIgnoreCase);
 
-        public Task<Ticket> GetReceipt(string query) => GetTicketAsync(query, CancellationToken.None);
-
         public override string GetReceiptIdentity(ReceiptIdentitySource source)
         {
             if (source is not TicketIdentity ticket)
@@ -67,7 +65,7 @@ namespace Castar.Services.Receipts
             return ticket.TicketId;
         }
 
-        public override async Task<Receipt> GetReceiptAsync(string query, CancellationToken cancellationToken)
+        protected override async Task<ReceiptDetails> FetchReceiptAsync(string query, CancellationToken cancellationToken)
         {
             var ticket = await GetTicketAsync(query, cancellationToken);
             var receipt = ticket.ticket?.document?.receipt;
@@ -87,13 +85,12 @@ namespace Castar.Services.Receipts
             }
 
             var issuedAt = DateTimeOffset.FromUnixTimeSeconds(receipt.dateTime);
-            var verificationCode = string.IsNullOrWhiteSpace(ticket.qr) ? query.Trim() : ticket.qr;
-            return CreateReceipt(
+            var verificationCode = string.IsNullOrWhiteSpace(ticket.qr) ? query : ticket.qr;
+            return new ReceiptDetails(
                 new TicketIdentity(receipt.fiscalDriveNumber, receipt.fiscalDocumentNumber, receipt.fiscalSign, ticket.id),
                 receipt.user, receipt.retailPlace, receipt.retailPlaceAddress,
-                issuedAt, "RUB", receipt.totalSumDecimal, items, verificationCode) with
-            { OperationDate = ReadOperationDate(verificationCode) ?? ReadOperationDate(query.Trim())
-                  ?? DateOnly.FromDateTime(issuedAt.Date) };
+                issuedAt, "RUB", receipt.totalSumDecimal, items,
+                ReadOperationDate(verificationCode) ?? ReadOperationDate(query), verificationCode);
         }
 
         private static DateOnly? ReadOperationDate(string verificationCode) =>
@@ -106,15 +103,12 @@ namespace Castar.Services.Receipts
 
         private async Task<Ticket> GetTicketAsync(string query, CancellationToken cancellationToken)
         {
-            if (!CanHandle(query))
-                throw new ArgumentException("Укажите содержимое QR-кода чека ФНС.", nameof(query));
-
             await _gate.WaitAsync(cancellationToken);
             try
             {
                 var credential = _getCredential();
                 if (credential is null || string.IsNullOrWhiteSpace(credential.UserName) || string.IsNullOrWhiteSpace(credential.Password))
-                    throw new InvalidOperationException("Укажите ИНН и пароль ФНС в настройках.");
+                    throw new InvalidDataException("Укажите ИНН и пароль ФНС в настройках.");
 
                 if (_sessionCredential is null || _sessionCredential.UserName != credential.UserName
                     || _sessionCredential.Password != credential.Password)
@@ -129,12 +123,12 @@ namespace Castar.Services.Receipts
 
                 try
                 {
-                    return await FetchTicketAsync(query.Trim(), cancellationToken);
+                    return await FetchTicketAsync(query, cancellationToken);
                 }
                 catch (HttpRequestException exception) when (IsUnauthorized(exception))
                 {
                     await RenewSessionAsync(credential, cancellationToken);
-                    return await FetchTicketAsync(query.Trim(), cancellationToken);
+                    return await FetchTicketAsync(query, cancellationToken);
                 }
             }
             finally

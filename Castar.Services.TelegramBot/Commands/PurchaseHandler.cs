@@ -1,5 +1,8 @@
 using System.Text;
+using Castar.DAL.Repositories.DataBase;
 using Castar.Domain.Models.DataBase;
+using Castar.Domain.Models.SettingsModel;
+using Telegram.Bot;
 using Telegram.Bot.Types;
 using BudgetUser = Castar.Domain.Models.DataBase.User;
 
@@ -10,18 +13,23 @@ public sealed partial class CommandHandler
     private const string PurchaseFormat = "Формат покупки: [наименование товара] [сумма] [валюта по желанию].";
 
     private async Task<string?> SaveManualPurchaseAsync(
-        Message message, BudgetUser user, string[] lines, bool edited, CancellationToken cancellationToken)
+        ITelegramBotClient bot, Message message, BudgetUser user, string[] lines, bool edited,
+        CancellationToken cancellationToken)
     {
         if (lines.Length == 0)
             throw new FormatException(PurchaseFormat);
 
-        var inputs = lines.Select(ParseItem).ToArray();
+        var existing = await purchasesService.GetManualPurchaseByMessageId(user.TelegramId, message.MessageId, cancellationToken);
+        if (existing is not null && !edited)
+            return null;
+
+        var policy = settings.ManualCurrencies;
+        var inputs = lines.Select(line => ParseItem(line, policy)).ToArray();
         var currencies = inputs.Select(item => item.Currency).OfType<string>().Distinct().Take(2).ToArray();
         if (currencies.Length > 1)
             throw new FormatException("Для позиций одной покупки укажите одну валюту.");
 
-        var existing = await purchasesService.GetManualPurchaseByMessageId(user.TelegramId, message.MessageId, cancellationToken);
-        var currency = currencies.FirstOrDefault() ?? existing?.Currency;
+        var currency = currencies.FirstOrDefault() ?? (existing is null ? policy.DefaultCurrency : existing.Currency);
         if (existing is null)
         {
             if (edited && inputs.Any(item => item.Sum < 0))
@@ -44,16 +52,21 @@ public sealed partial class CommandHandler
             return created.ToString();
         }
 
-        if (!edited)
-            return null;
-
         if (currency == existing.Currency && inputs.Select(item => (item.Name, item.Sum))
                 .SequenceEqual(existing.Items.Select(item => (item.Name, item.Price))))
             return null;
 
         if (existing.Items.Count == inputs.Length && inputs.Any(item => item.Sum < 0))
         {
-            await purchasesService.Delete(existing.Id, cancellationToken);
+            var deletion = await purchasesService.DeletePurchaseAsync(existing.Id, existing.Revision, cancellationToken);
+            if (deletion != PurchaseMutationResult.Applied)
+            {
+                await ReplyAsync(bot, message, deletion == PurchaseMutationResult.Conflict
+                    ? "Покупка изменилась. Проверьте её в клиенте и повторите удаление."
+                    : "Покупка уже удалена.", cancellationToken);
+                return null;
+            }
+
             return $"{settings.TelegramBot.PurchaseDeleteEmoji} {user.Name} удалил(а) покупку [{existing.Name}] — {FormatManualAmount(existing.TotalSum, existing.Currency)}";
         }
 
@@ -90,6 +103,6 @@ public sealed partial class CommandHandler
     private static Item NewManualItem(string name, decimal sum) =>
         new() { Name = name, Price = sum, Sum = sum, Quantity = 1 };
 
-    private static (string Name, decimal Sum, string? Currency) ParseItem(string line) =>
-        ParseManualAmount(line) ?? throw new FormatException(PurchaseFormat);
+    private static (string Name, decimal Sum, string? Currency) ParseItem(string line, ManualCurrencySettings policy) =>
+        ParseManualAmount(line, policy) ?? throw new FormatException(PurchaseFormat);
 }

@@ -33,7 +33,7 @@ public sealed class SerbiaReceiptProvider : ReceiptProvider
         return invoice.InvoiceNumber;
     }
 
-    public override async Task<Receipt> GetReceiptAsync(string query, CancellationToken cancellationToken)
+    protected override async Task<ReceiptDetails> FetchReceiptAsync(string query, CancellationToken cancellationToken)
     {
         var verificationUri = ParseVerificationUri(query)
             ?? throw new ArgumentException("Укажите ссылку проверки чека с QR-кода налоговой Сербии.", nameof(query));
@@ -67,10 +67,9 @@ public sealed class SerbiaReceiptProvider : ReceiptProvider
             : SerbiaReceiptJournal.ReadItems(verification.Journal, result.TotalAmount.Value);
         var address = string.Join(", ", new[] { invoice.Address, invoice.City }.Where(part => !string.IsNullOrWhiteSpace(part)));
         var issuedAt = result.SdcTime.Value;
-        return CreateReceipt(
-            new InvoiceIdentity(result.InvoiceNumber), invoice.BusinessName, invoice.LocationName, address,
-            issuedAt, "RSD", result.TotalAmount.Value, items) with
-        { OperationDate = GetOperationDate(issuedAt, LocalTimeZone, verification.Journal) };
+        return new ReceiptDetails(new InvoiceIdentity(result.InvoiceNumber), invoice.BusinessName, invoice.LocationName,
+            address, issuedAt, "RSD", result.TotalAmount.Value, items,
+            GetOperationDate(issuedAt, LocalTimeZone, verification.Journal));
     }
 
     private static DateOnly GetOperationDate(DateTimeOffset issuedAt, TimeZoneInfo? zone, string? journal)

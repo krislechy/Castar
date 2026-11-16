@@ -28,6 +28,15 @@ namespace Castar.Compontents
             InitializeComponent();
         }
 
+        public static readonly DependencyProperty CanSetTelegramNotificationsProperty =
+            DependencyProperty.Register(nameof(CanSetTelegramNotifications), typeof(bool), typeof(UserInfoPanel));
+
+        public bool CanSetTelegramNotifications
+        {
+            get => (bool)GetValue(CanSetTelegramNotificationsProperty);
+            set => SetValue(CanSetTelegramNotificationsProperty, value);
+        }
+
         public static DependencyProperty SizeImageProperty = DependencyProperty.Register(nameof(SizeImage), typeof(double), typeof(UserInfoPanel));
         public double SizeImage
         {
@@ -95,7 +104,7 @@ namespace Castar.Compontents
         {
             var folderDialog = new OpenFileDialog();
             folderDialog.Filter = "Изображение (*.png;*.jpg)|*.png;*.jpg";
-            var result = folderDialog.ShowDialog(Application.Current.MainWindow);
+            var result = folderDialog.ShowDialog(Window.GetWindow(this));
             if (result.HasValue && result.Value == true)
             {
                 try
@@ -103,17 +112,18 @@ namespace Castar.Compontents
                     var file = new FileInfo(folderDialog.FileName);
                     if (file.Length > 1024 * 1024)
                     {
-                        MessageBox.Show("Выберите изображение размером до 1 МБ.", "Castar", MessageBoxButton.OK);
+                        PopupDialog.SetContentWarning(this, "Выберите изображение размером до 1 МБ.");
                         return;
                     }
                     var user = (User)DataContext;
                     user.ImageRaw = File.ReadAllBytes(file.FullName);
                     DataContext = null;
                     DataContext = user;
+                    PopupDialog.SetContentWarning(this, null);
                 }
                 catch (Exception error) when (error is IOException or UnauthorizedAccessException)
                 {
-                    MessageBox.Show("Не удалось открыть изображение.", "Castar", MessageBoxButton.OK);
+                    PopupDialog.SetContentWarning(this, "Не удалось открыть изображение.");
                 }
             }
         }

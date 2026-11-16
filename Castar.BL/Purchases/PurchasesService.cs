@@ -43,6 +43,10 @@ namespace Castar.BL
         public Task Delete(Guid id, CancellationToken cancellationToken = default) =>
             purchaseRepository.Delete(id, cancellationToken);
 
+        public Task<PurchaseMutationResult> DeletePurchaseAsync(Guid purchaseId, long expectedRevision,
+            CancellationToken cancellationToken = default) =>
+            purchaseRepository.DeletePurchaseAsync(purchaseId, expectedRevision, cancellationToken);
+
         private async Task AssignOwnerAndDate(Purchase purchase, long telegramUserId, CancellationToken cancellationToken)
         {
             var owner = await GetUser(telegramUserId, cancellationToken);

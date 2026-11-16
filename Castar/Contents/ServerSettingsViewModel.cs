@@ -22,6 +22,7 @@ internal sealed class ServerSettingsViewModel(CastarServerClient server) : BaseS
     private bool telegramEnabled;
     private bool receiptsEnabled;
     private string? receiptProvider;
+    private ManualCurrencySettingsDto? manualCurrency;
     private string telegramToken = "";
     private string nalogInn = "";
     private string nalogPassword = "";
@@ -32,6 +33,17 @@ internal sealed class ServerSettingsViewModel(CastarServerClient server) : BaseS
     public bool CanReload => active && HasConnection && request is null;
     public bool CanEdit => CanReload && saved is not null;
     public bool SupportsCredentials => saved?.NalogConfigured is not null;
+    public bool SupportsManualCurrency => SavedManualCurrency is not null;
+    public ManualCurrencySettingsDto? SavedManualCurrency => saved?.ManualCurrency;
+    public ManualCurrencySettingsDto? ManualCurrency
+    {
+        get => manualCurrency;
+        private set
+        {
+            if (SetField(ref manualCurrency, value))
+                OnPropertyChanged(nameof(CanSave));
+        }
+    }
     public bool CanEditTelegram => CanEdit && (SupportsCredentials || saved?.TelegramConfigured == true || TelegramEnabled);
     public bool CanSave => CanEdit && !requiresReload && !recheckAfterSave && saved is { } current
         && ReceiptProviders.Any(provider => provider.Id == ReceiptProvider)
@@ -40,7 +52,8 @@ internal sealed class ServerSettingsViewModel(CastarServerClient server) : BaseS
         && (!HasNalogInput || HasNalogCredentials)
         && (!RequiresNalogCredentials || current.NalogConfigured == true || HasNalogCredentials)
         && (TelegramEnabled != current.TelegramEnabled || ReceiptsEnabled != current.ReceiptsEnabled
-            || ReceiptProvider != current.ReceiptProvider || HasTelegramToken || HasNalogCredentials);
+            || ReceiptProvider != current.ReceiptProvider || HasTelegramToken || HasNalogCredentials
+            || !SameCurrencySettings(ManualCurrency, current.ManualCurrency));
     public string TelegramStatus => saved?.TelegramConfigured switch
     {
         true when SupportsCredentials => "Токен Telegram задан.",
@@ -102,6 +115,17 @@ internal sealed class ServerSettingsViewModel(CastarServerClient server) : BaseS
     public void EnterNalogInn(string value) => SetCredential(ref nalogInn, value);
     public void EnterNalogPassword(string value) => SetCredential(ref nalogPassword, value);
 
+    public void SetManualCurrency(ManualCurrencySettingsDto original, ManualCurrencySettingsDto updated)
+    {
+        if (CanEdit && ReferenceEquals(ManualCurrency, original) && !SameCurrencySettings(original, updated))
+            ManualCurrency = updated;
+    }
+
+    private static bool SameCurrencySettings(ManualCurrencySettingsDto? first, ManualCurrencySettingsDto? second) =>
+        ReferenceEquals(first, second) || first is not null && second is not null
+        && first.DefaultCurrency == second.DefaultCurrency
+        && first.Currencies.ToHashSet(StringComparer.Ordinal).SetEquals(second.Currencies);
+
     public Task OpenAsync(string address, string? protectedKey)
     {
         active = true;
@@ -147,7 +171,8 @@ internal sealed class ServerSettingsViewModel(CastarServerClient server) : BaseS
         var update = new ServerSettingsWriteDto(TelegramEnabled, ReceiptsEnabled, ReceiptProvider, saved.Revision)
         {
             TelegramToken = HasTelegramToken ? telegramToken.Trim() : null,
-            NalogCredentials = HasNalogCredentials ? new NalogCredentialsWriteDto(nalogInn.Trim(), nalogPassword) : null
+            NalogCredentials = HasNalogCredentials ? new NalogCredentialsWriteDto(nalogInn.Trim(), nalogPassword) : null,
+            ManualCurrency = SameCurrencySettings(ManualCurrency, saved.ManualCurrency) ? null : ManualCurrency
         };
         return RunAsync(token => server.SaveServerSettingsAsync(update, token), "Сохранение…", isSave: true);
     }
@@ -207,6 +232,7 @@ internal sealed class ServerSettingsViewModel(CastarServerClient server) : BaseS
             ClearCredentials();
         requiresReload = false;
         recheckAfterSave = false;
+        ManualCurrency = value?.ManualCurrency;
         TelegramEnabled = value?.TelegramEnabled ?? false;
         ReceiptsEnabled = value?.ReceiptsEnabled ?? false;
         ReceiptProviders = value?.ReceiptProviders.Select(id => new ProviderOption(id, id switch
@@ -221,6 +247,8 @@ internal sealed class ServerSettingsViewModel(CastarServerClient server) : BaseS
         OnPropertyChanged(nameof(TelegramStatus));
         OnPropertyChanged(nameof(NalogStatus));
         OnPropertyChanged(nameof(SupportsCredentials));
+        OnPropertyChanged(nameof(SupportsManualCurrency));
+        OnPropertyChanged(nameof(SavedManualCurrency));
     }
 
     private void SetCredential(ref string field, string value)

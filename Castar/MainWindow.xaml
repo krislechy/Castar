@@ -78,6 +78,15 @@
             <!--#endregion-->
             <Grid Grid.Row="1">
                 <Grid>
+                    <Grid.Style>
+                        <Style TargetType="Grid">
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding IsVisible, ElementName=MainDialog}" Value="True">
+                                    <Setter Property="IsEnabled" Value="False"/>
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </Grid.Style>
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="50"/>
                         <ColumnDefinition Width="*"/>
@@ -91,6 +100,10 @@
                             <ToggleButton Style="{DynamicResource Menu.ToggleButton}" Content="{DynamicResource Svg.Menu.Incomes}"
                                           ToolTip="Доходы" AutomationProperties.Name="Доходы"
                                           Command="{x:Static menuCommands:MenuSelector.MenuSelect}" CommandParameter="Incomes"/>
+                            <ToggleButton x:Name="StatisticsMenuButton" Style="{DynamicResource Menu.ToggleButton}"
+                                          Content="{DynamicResource Svg.Menu.Statistics}" ToolTip="Статистика"
+                                          AutomationProperties.Name="Статистика"
+                                          Command="{x:Static menuCommands:MenuSelector.MenuSelect}" CommandParameter="Statistics"/>
                             <ToggleButton Style="{DynamicResource Menu.ToggleButton}" Content="{DynamicResource Svg.Menu.Settings}"
                                           ToolTip="Настройки" AutomationProperties.Name="Настройки"
                                           Command="{x:Static menuCommands:MenuSelector.MenuSelect}" CommandParameter="Settings"/>

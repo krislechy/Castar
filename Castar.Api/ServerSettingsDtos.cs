@@ -6,7 +6,12 @@ public sealed record ServerSettingsDto(bool TelegramEnabled, bool TelegramConfig
     string ReceiptProvider, string[] ReceiptProviders, long Revision)
 {
     public bool? NalogConfigured { get; init; }
+    public ManualCurrencySettingsDto? ManualCurrency { get; init; }
 }
+
+public sealed record ManualCurrencySettingsDto(
+    [property: JsonRequired] string DefaultCurrency,
+    [property: JsonRequired] string[] Currencies);
 
 public sealed record NalogCredentialsWriteDto(
     [property: JsonRequired] string Inn,
@@ -23,4 +28,7 @@ public sealed record ServerSettingsWriteDto(
 
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public NalogCredentialsWriteDto? NalogCredentials { get; init; }
+
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public ManualCurrencySettingsDto? ManualCurrency { get; init; }
 }

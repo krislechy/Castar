@@ -125,16 +125,26 @@ public sealed class CastarServerClient(ClientSettings settings) : IDisposable
     public async Task<User> AddUserAsync(User user) =>
         ToUser(await SendAsync<UserDto>(HttpMethod.Post, "api/users", UserWrite(user)));
 
-    public async Task<User> UpdateUserAsync(User user) =>
-        ToUser(await SendAsync<UserDto>(HttpMethod.Put, $"api/users/{user.Id:D}", UserWrite(user)));
+    internal async Task<(User User, bool CanSetTelegramNotifications)> GetUserForEditingAsync(Guid id)
+    {
+        var user = await SendAsync<UserDto>(HttpMethod.Get, $"api/users/{id:D}");
+        return (ToUser(user), user.TelegramNotificationsEnabled.HasValue);
+    }
+
+    public async Task<User> UpdateUserAsync(User user, bool updateTelegramNotifications = false)
+    {
+        var input = UserWrite(user);
+        if (updateTelegramNotifications)
+            input = input with { TelegramNotificationsEnabled = user.TelegramNotificationsEnabled };
+        return ToUser(await SendAsync<UserDto>(HttpMethod.Put, $"api/users/{user.Id:D}", input));
+    }
 
     public Task<bool> DeleteUserAsync(Guid id) => DeleteAsync($"api/users/{id:D}");
 
     public async Task<ObservableCollection<Income>> GetIncomesAsync(DateTime start, DateTime finish,
         CancellationToken cancellationToken = default)
     {
-        var incomes = SendAsync<IncomeDto[]>(HttpMethod.Get, $"api/incomes?{DateQuery(start, finish)}",
-            cancellationToken: cancellationToken);
+        var incomes = GetIncomeRowsAsync(start, finish, cancellationToken);
         var users = GetUsersAsync(cancellationToken);
         await Task.WhenAll(incomes, users);
         var usersById = (await users).ToDictionary(user => user.Id);
@@ -142,8 +152,42 @@ public sealed class CastarServerClient(ClientSettings settings) : IDisposable
             ToIncome(income, usersById.GetValueOrDefault(income.UserId))));
     }
 
+    internal Task<IncomeDto[]> GetIncomeRowsAsync(DateTime start, DateTime finish, CancellationToken cancellationToken) =>
+        SendAsync<IncomeDto[]>(HttpMethod.Get, $"api/incomes?{DateQuery(start, finish)}", cancellationToken: cancellationToken);
+
     public Task<PurchaseDto[]> GetPurchasesAsync(DateTime start, DateTime finish, CancellationToken cancellationToken = default) =>
         SendAsync<PurchaseDto[]>(HttpMethod.Get, $"api/purchases?{DateQuery(start, finish)}", cancellationToken: cancellationToken);
+
+    public Task<bool> EditPurchaseAsync(Guid purchaseId, long revision, PurchaseWriteDto purchase,
+        CancellationToken cancellationToken = default) =>
+        SendMutationAsync(HttpMethod.Put, FormattableString.Invariant($"api/purchases/{purchaseId:D}?revision={revision}"),
+            cancellationToken, purchase);
+
+    public Task<bool> EditPurchaseItemAsync(Guid purchaseId, Guid itemId, long revision, PurchaseItemWriteDto item,
+        CancellationToken cancellationToken = default) =>
+        SendMutationAsync(HttpMethod.Put, FormattableString.Invariant($"api/purchases/{purchaseId:D}/items/{itemId:D}?revision={revision}"),
+            cancellationToken, item);
+
+    public Task<bool> DeletePurchaseAsync(Guid id, long revision, CancellationToken cancellationToken = default) =>
+        DeleteAsync(FormattableString.Invariant($"api/purchases/{id:D}?revision={revision}"), cancellationToken);
+
+    public Task<bool> DeletePurchaseItemAsync(Guid purchaseId, Guid itemId, long revision,
+        CancellationToken cancellationToken = default) =>
+        DeleteAsync(FormattableString.Invariant($"api/purchases/{purchaseId:D}/items/{itemId:D}?revision={revision}"), cancellationToken);
+
+    public async Task<PurchaseReceiptSourceDto?> GetPurchaseReceiptSourceAsync(Guid purchaseId,
+        CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            return await SendAsync<PurchaseReceiptSourceDto>(HttpMethod.Get, $"api/purchases/{purchaseId:D}/receipt-source",
+                cancellationToken: cancellationToken);
+        }
+        catch (HttpRequestException error) when (error.StatusCode == HttpStatusCode.NotFound)
+        {
+            return null;
+        }
+    }
 
     public Task<ServerSettingsDto> GetServerSettingsAsync(CancellationToken cancellationToken = default) =>
         SendAsync<ServerSettingsDto>(HttpMethod.Get, "api/settings", cancellationToken: cancellationToken);
@@ -181,6 +225,13 @@ public sealed class CastarServerClient(ClientSettings settings) : IDisposable
         if (payload is not null)
             request.Content = JsonContent.Create(payload);
         using var response = await TransportFor(request).SendAsync(request, cancellationToken);
+        await EnsureSuccessAsync(response, readProblemDetails, cancellationToken);
+        return await ReadResponseAsync<T>(response, cancellationToken);
+    }
+
+    private static async Task EnsureSuccessAsync(HttpResponseMessage response, bool readProblemDetails,
+        CancellationToken cancellationToken)
+    {
         if (readProblemDetails && (response.StatusCode is HttpStatusCode.BadRequest or HttpStatusCode.Conflict) &&
             response.Content.Headers.ContentType?.MediaType == "application/problem+json")
         {
@@ -197,7 +248,6 @@ public sealed class CastarServerClient(ClientSettings settings) : IDisposable
                 throw new HttpRequestException(problem.Detail, null, response.StatusCode);
         }
         EnsureSuccess(response);
-        return await ReadResponseAsync<T>(response, cancellationToken);
     }
 
     private sealed record ServerSettingsProblem(string? Detail);
@@ -216,13 +266,19 @@ public sealed class CastarServerClient(ClientSettings settings) : IDisposable
         }
     }
 
-    private async Task<bool> DeleteAsync(string path)
+    private Task<bool> DeleteAsync(string path, CancellationToken cancellationToken = default) =>
+        SendMutationAsync(HttpMethod.Delete, path, cancellationToken);
+
+    private async Task<bool> SendMutationAsync(HttpMethod method, string path, CancellationToken cancellationToken,
+        object? payload = null)
     {
-        using var request = CreateRequest(HttpMethod.Delete, ParseServerUrl(settings.ServerUrl), settings.ApiKey, path);
-        using var response = await TransportFor(request).SendAsync(request);
+        using var request = CreateRequest(method, ParseServerUrl(settings.ServerUrl), settings.ApiKey, path);
+        if (payload is not null)
+            request.Content = JsonContent.Create(payload);
+        using var response = await TransportFor(request).SendAsync(request, cancellationToken);
         if (response.StatusCode == HttpStatusCode.NotFound)
             return false;
-        EnsureSuccess(response);
+        await EnsureSuccessAsync(response, readProblemDetails: payload is not null, cancellationToken);
         return true;
     }
 
@@ -266,7 +322,8 @@ public sealed class CastarServerClient(ClientSettings settings) : IDisposable
     private static User ToUser(UserDto dto) => new()
     {
         Id = dto.Id, TelegramId = dto.TelegramId, Name = dto.Name, Sex = dto.Sex,
-        ColorRaw = dto.ColorRaw, ImageRaw = dto.ImageRaw
+        ColorRaw = dto.ColorRaw, ImageRaw = dto.ImageRaw,
+        TelegramNotificationsEnabled = dto.TelegramNotificationsEnabled ?? true
     };
 
     private static Income ToIncome(IncomeDto dto, User? user) => new()

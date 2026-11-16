@@ -30,9 +30,9 @@ namespace Castar.Compontents
         {
         }
 
-        internal IncomePanel(Income? income)
+        internal IncomePanel(Income? income, IReadOnlyList<string>? enabledCurrencies = null)
         {
-            var currencies = HistoricalExchangeRates.SupportedCurrencies;
+            var currencies = enabledCurrencies ?? HistoricalExchangeRates.SupportedCurrencies;
             CurrencyOptions = income?.Currency is { } currency && !currencies.Contains(currency)
                 ? currencies.Append(currency).ToArray() : currencies;
             InitializeComponent();

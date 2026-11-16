@@ -13,7 +13,7 @@ namespace Castar.Services.TelegramBot.Commands;
 public sealed partial class CommandHandler
 {
     private async Task ImportReceiptsAsync(
-        ITelegramBotClient bot, Message message, BudgetUser user, string[] codes, CancellationToken cancellationToken)
+        ITelegramBotClient bot, Message message, BudgetUser user, string[] sources, CancellationToken cancellationToken)
     {
         var receiptSettings = settings.Receipts;
         if (!receiptSettings.IsEnabled)
@@ -47,21 +47,20 @@ public sealed partial class CommandHandler
                 return;
             }
 
-            codes = [code];
+            sources = [code];
         }
 
-        foreach (var code in codes.Distinct(StringComparer.Ordinal))
+        foreach (var source in sources.DistinctBy(source => source.Trim(), StringComparer.Ordinal))
         {
-            if (!provider.CanHandle(code))
-            {
-                await ReplyAsync(bot, message, "Код чека не поддерживается выбранным поставщиком.", cancellationToken);
-                continue;
-            }
-
             Receipt receipt;
             try
             {
-                receipt = await provider.GetReceiptAsync(code, cancellationToken);
+                receipt = await provider.GetReceiptAsync(source, cancellationToken);
+            }
+            catch (NotImplementedException)
+            {
+                await ReplyAsync(bot, message, "Этот поставщик пока не поддерживает импорт чеков.", cancellationToken);
+                continue;
             }
             catch (TicketNotReadyException)
             {
@@ -93,6 +92,7 @@ public sealed partial class CommandHandler
                 Currency = receipt.Currency,
                 TotalSum = receipt.Total,
                 RawData = receipt.LegacyVerificationCode is { } legacyCode ? Encoding.UTF8.GetBytes(legacyCode) : null,
+                ReceiptSource = receipt.Source ?? source,
                 Items = new(receipt.Items.Select(item => new Item
                 {
                     Name = item.Name,
@@ -115,7 +115,7 @@ public sealed partial class CommandHandler
             foreach (var item in receipt.Items)
                 result.AppendLine($"{settings.TelegramBot.ItemEmoji} {item.Name} × {item.Quantity} — {item.Total:F2} {receipt.Currency}");
 
-            await NotifyUsersAsync(bot, user, result.ToString(), cancellationToken);
+            await NotifyUsersAsync(bot, result.ToString(), cancellationToken);
         }
     }
 
@@ -148,7 +148,8 @@ public sealed partial class CommandHandler
             }
 
             stream.Position = 0;
-            if (decoder.Decode(stream, cancellationToken)?.Trim() is { Length: > 0 } code)
+            var code = decoder.Decode(stream, cancellationToken);
+            if (!string.IsNullOrWhiteSpace(code))
                 return code;
         }
 

@@ -1,3 +1,4 @@
+using Castar.Api;
 using Castar.Compontents;
 using Castar.Currency;
 using Castar.Domain.Models.DataBase;
@@ -9,6 +10,8 @@ using System;
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.Linq;
+using System.Net;
+using System.Net.Http;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
@@ -28,6 +31,7 @@ public partial class IncomesContent : UserControl
     private readonly DispatcherTimer polling;
     private CancellationTokenSource? activeRequest;
     private bool refreshPending;
+    private Guid? notificationTarget;
     private RangeDate Range => SelectorRangeDatesElement.RangeDate;
 
     public IncomesContent(CastarServerClient server, ClientSettings settings, HistoricalExchangeRates exchangeRates)
@@ -77,6 +81,7 @@ public partial class IncomesContent : UserControl
 
     private async void Server_ConnectionChanged(object? sender, EventArgs e)
     {
+        notificationTarget = null;
         CancelRefresh();
         context.Incomes = [];
         context.Status = "";
@@ -131,6 +136,8 @@ public partial class IncomesContent : UserControl
 
             var rows = incomes.Select(income => CreateRow(income, target, rates)).ToArray();
             UpdateRows(rows);
+            SelectNotificationTarget();
+            notificationTarget = null;
             var currencyStatus = rows.Any(row => !HistoricalExchangeRates.IsCurrencyCode(row.Income.Currency))
                 ? "У части доходов не указана валюта." : "";
             var rateStatus = rows.Any(row => row.AggregateAmount is null && HistoricalExchangeRates.IsCurrencyCode(row.Income.Currency))
@@ -158,19 +165,18 @@ public partial class IncomesContent : UserControl
     private static IncomeDisplayRow CreateRow(Income income, string target,
         IReadOnlyDictionary<(string Currency, DateOnly Date), decimal> rates)
     {
-        var original = HistoricalExchangeRates.Format(income.Sum, income.Currency);
         if (HistoricalExchangeRates.IsCurrencyCode(income.Currency))
         {
             if (target.Length == 0 || income.Currency == target)
-                return new(income, original, "", income.Sum, income.Currency);
+                return new(income, MoneyAmountDisplay.Create(income.Sum, income.Currency), income.Sum, income.Currency);
             if (rates.TryGetValue((income.Currency!, DateOnly.FromDateTime(income.AddedOn)), out var rate))
             {
                 var converted = HistoricalExchangeRates.ConvertAmount(income.Sum, rate);
-                return new(income, HistoricalExchangeRates.Format(converted, target), original, converted, target);
+                return new(income, MoneyAmountDisplay.Create(income.Sum, income.Currency, converted, target), converted, target);
             }
         }
 
-        return new(income, original, "", null, null);
+        return new(income, MoneyAmountDisplay.Create(income.Sum, income.Currency), null, null);
     }
 
     private void UpdateRows(IncomeDisplayRow[] rows)
@@ -192,6 +198,24 @@ public partial class IncomesContent : UserControl
         }
     }
 
+    internal void RevealNotification(Guid id, DateTime? addedOn)
+    {
+        notificationTarget = id;
+        if (!SelectorRangeDatesElement.IncludeOperationDate(addedOn) && !SelectNotificationTarget())
+            _ = RefreshAfterServerChangeAsync();
+    }
+
+    private bool SelectNotificationTarget()
+    {
+        if (notificationTarget is not { } id || context.Incomes.FirstOrDefault(row => row.Income.Id == id) is not { } selected)
+            return false;
+        notificationTarget = null;
+        IncomesListView.SelectedItems.Clear();
+        IncomesListView.SelectedItem = selected;
+        IncomesListView.ScrollIntoView(selected);
+        return true;
+    }
+
     private static bool SameRow(IncomeDisplayRow previous, IncomeDisplayRow next)
     {
         var first = previous.Income;
@@ -201,7 +225,7 @@ public partial class IncomesContent : UserControl
             && first.User.Name == second.User.Name && first.User.Sex == second.User.Sex
             && first.User.ColorRaw.AsSpan().SequenceEqual(second.User.ColorRaw)
             && first.User.ImageRaw.AsSpan().SequenceEqual(second.User.ImageRaw)
-            && previous.AmountText == next.AmountText && previous.OriginalText == next.OriginalText
+            && previous.Amount == next.Amount
             && previous.AggregateAmount == next.AggregateAmount && previous.AggregateCurrency == next.AggregateCurrency;
     }
 
@@ -225,7 +249,14 @@ public partial class IncomesContent : UserControl
         try
         {
             var isNew = income.Id == Guid.Empty;
-            var editor = new IncomePanel(income) { Users = await server.GetUsersAsync() };
+            var currencyTask = LoadManualCurrencyAsync();
+            var usersTask = server.GetUsersAsync();
+            await Task.WhenAll(currencyTask, usersTask);
+            var currency = await currencyTask;
+            if (isNew && currency is not null)
+                income.Currency = currency.DefaultCurrency;
+
+            var editor = new IncomePanel(income, currency?.Currencies) { Users = await usersTask };
             var accepted = await PopupDialog.Show(editor, PopupDialog.TypeDialogEnum.Confirm, options =>
             {
                 options.Background = (SolidColorBrush)Application.Current.FindResource("Main.Background.lvl3");
@@ -246,6 +277,18 @@ public partial class IncomesContent : UserControl
         catch (Exception error) when (CastarServerClient.IsConnectionError(error))
         {
             await PopupDialog.Show(CastarServerClient.DescribeError(error), PopupDialog.TypeDialogEnum.Default);
+        }
+    }
+
+    private async Task<ManualCurrencySettingsDto?> LoadManualCurrencyAsync()
+    {
+        try
+        {
+            return (await server.GetServerSettingsAsync()).ManualCurrency;
+        }
+        catch (HttpRequestException error) when (error.StatusCode == HttpStatusCode.NotFound)
+        {
+            return null;
         }
     }
 
@@ -318,7 +361,7 @@ public partial class IncomesContent : UserControl
 }
 
 internal sealed record IncomeDisplayRow(
-    Income Income, string AmountText, string OriginalText, decimal? AggregateAmount, string? AggregateCurrency)
+    Income Income, MoneyAmountDisplay Amount, decimal? AggregateAmount, string? AggregateCurrency)
 {
     internal static string FormatTotals(IEnumerable<IncomeDisplayRow> rows) => HistoricalExchangeRates.FormatTotals(rows
         .Where(row => row.AggregateAmount.HasValue).Select(row => (row.AggregateAmount!.Value, row.AggregateCurrency)));

@@ -15,7 +15,7 @@ partial class CastarDbContextModelSnapshot : ModelSnapshot
     // If you encounter a merge conflict in the line below, it means you need to
     // discard one of the migration branches and recreate its migrations on top of
     // the other branch. See https://aka.ms/efcore-docs-migrations-conflicts for more info.
-    public override string LastMigrationId => "20261115223016_OriginalCurrencyAndReceiptDate";
+    public override string LastMigrationId => "20261116001454_UserTelegramNotificationPreference";
 
     protected override void BuildModel(ModelBuilder modelBuilder)
     {
@@ -136,6 +136,9 @@ partial class CastarDbContextModelSnapshot : ModelSnapshot
                     .HasMaxLength(400)
                     .HasColumnType("TEXT");
 
+                b.Property<string>("OriginalReceiptSnapshot")
+                    .HasColumnType("TEXT");
+
                 b.Property<byte[]>("RawData")
                     .HasColumnType("BLOB");
 
@@ -146,6 +149,9 @@ partial class CastarDbContextModelSnapshot : ModelSnapshot
                     .HasMaxLength(32)
                     .HasColumnType("BLOB");
 
+                b.Property<string>("ReceiptSource")
+                    .HasColumnType("TEXT");
+
                 b.Property<string>("RetailPlace")
                     .HasMaxLength(400)
                     .HasColumnType("TEXT");
@@ -154,8 +160,13 @@ partial class CastarDbContextModelSnapshot : ModelSnapshot
                     .HasMaxLength(400)
                     .HasColumnType("TEXT");
 
-                b.Property<decimal>("TotalSum")
+                b.Property<long>("Revision")
                     .IsConcurrencyToken()
+                    .ValueGeneratedOnAdd()
+                    .HasColumnType("INTEGER")
+                    .HasDefaultValue(0L);
+
+                b.Property<decimal>("TotalSum")
                     .HasPrecision(24, 2)
                     .HasColumnType("TEXT");
 
@@ -210,6 +221,11 @@ partial class CastarDbContextModelSnapshot : ModelSnapshot
 
                 b.Property<long>("TelegramId")
                     .HasColumnType("INTEGER");
+
+                b.Property<bool>("TelegramNotificationsEnabled")
+                    .ValueGeneratedOnAdd()
+                    .HasColumnType("INTEGER")
+                    .HasDefaultValue(true);
 
                 b.HasKey("Id");
 

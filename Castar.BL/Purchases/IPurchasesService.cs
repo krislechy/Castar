@@ -1,4 +1,5 @@
 using System.Collections.ObjectModel;
+using Castar.DAL.Repositories.DataBase;
 using Castar.Domain.Models.DataBase;
 
 namespace Castar.BL
@@ -16,5 +17,6 @@ namespace Castar.BL
             long telegramUserId, long messageId, CancellationToken cancellationToken = default);
         Task Update(Purchase purchase, CancellationToken cancellationToken = default);
         Task Delete(Guid id, CancellationToken cancellationToken = default);
+        Task<PurchaseMutationResult> DeletePurchaseAsync(Guid purchaseId, long expectedRevision, CancellationToken cancellationToken = default);
     }
 }

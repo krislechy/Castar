@@ -21,6 +21,7 @@ namespace Castar.DAL
             var users = modelBuilder.Entity<User>();
             MapTable(users, "Users");
             users.Property(x => x.Name).HasMaxLength(200);
+            users.Property(x => x.TelegramNotificationsEnabled).HasDefaultValue(true).HasSentinel(true);
             users.Property(x => x.ColorRaw).HasColumnName("Color");
             users.Property(x => x.ImageRaw).HasColumnName("Image");
             users.Ignore(x => x.Color);
@@ -33,7 +34,7 @@ namespace Castar.DAL
             purchases.HasIndex(nameof(Purchase.UserId), MessageIdField).HasDatabaseName("IX_Purchases_UserId_MessageId");
             purchases.Property(x => x.Name).HasMaxLength(400);
             purchases.Property(x => x.TotalSum).HasPrecision(24, 2);
-            purchases.Property(x => x.TotalSum).IsConcurrencyToken();
+            purchases.Property(x => x.Revision).HasDefaultValue(0L).IsConcurrencyToken();
             purchases.Property(x => x.AddedOn).IsRequired();
             purchases.Property(x => x.RetailPlace).HasMaxLength(400);
             purchases.Property(x => x.RetailPlaceAddress).HasMaxLength(400);

@@ -6,6 +6,12 @@
              xmlns:local="clr-namespace:Castar.Compontents"
              mc:Ignorable="d" 
              Background="#88000000"
+             KeyboardNavigation.TabNavigation="Cycle"
+             KeyboardNavigation.ControlTabNavigation="Cycle"
+             KeyboardNavigation.DirectionalNavigation="Contained"
+             IsVisibleChanged="Dialog_IsVisibleChanged"
+             Unloaded="Dialog_Unloaded"
+             KeyDown="Dialog_KeyDown"
              MouseRightButtonDown="ButtonOutsideClickEvent"
              MouseLeftButtonDown="ButtonOutsideClickEvent"
              d:DesignHeight="450" d:DesignWidth="800">
@@ -88,7 +94,7 @@
                             <RowDefinition Height="auto"/>
                         </Grid.RowDefinitions>
                         <ScrollViewer Grid.Row="0" VerticalScrollBarVisibility="Auto" MaxHeight="500">
-                            <ContentPresenter Content="{Binding ObjectContent,RelativeSource={RelativeSource AncestorType=UserControl}}">
+                            <ContentPresenter x:Name="DialogContent" Content="{Binding ObjectContent,RelativeSource={RelativeSource AncestorType=UserControl}}">
                                 <ContentPresenter.Resources>
                                     <Style TargetType="TextBlock">
                                         <Setter Property="TextWrapping" Value="Wrap"/>
@@ -113,7 +119,7 @@
                                     <ColumnDefinition Width="*"/>
                                 </Grid.ColumnDefinitions>
                                 <ContentPresenter VerticalAlignment="Center" Grid.Column="0" Content="{DynamicResource Svg.Warning}" Margin="0,0,5,0"/>
-                                <TextBlock Grid.Column="1"
+                                <TextBlock Grid.Column="1" TextWrapping="Wrap" AutomationProperties.LiveSetting="Polite"
                                            Text="{Binding ValidateMessage,RelativeSource={RelativeSource AncestorType=UserControl}}"/>
                             </Grid>
                         </Border>
@@ -132,7 +138,7 @@
                                 </Style.Triggers>
                             </Style>
                         </Grid.Style>
-                        <Button x:Name="DefaultButton"
+                        <Button x:Name="DefaultButton" IsDefault="True"
                                 Content="{Binding DefaultButtonText,RelativeSource={RelativeSource AncestorType=UserControl}}" Click="DefaultEvent" Padding="15,0,15,0"/>
                     </Grid>
                     <Grid>

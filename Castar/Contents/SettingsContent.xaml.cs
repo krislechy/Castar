@@ -1,3 +1,4 @@
+using Castar.Api;
 using Castar.Compontents;
 using Castar.Currency;
 using Castar.Domain.Models.DataBase;
@@ -9,6 +10,8 @@ using System;
 using System.Collections.ObjectModel;
 using System.IO;
 using System.Linq;
+using System.Net;
+using System.Net.Http;
 using System.Security.Cryptography;
 using System.Threading;
 using System.Threading.Tasks;
@@ -16,7 +19,6 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
-using System.Windows.Threading;
 
 namespace Castar.Contents;
 
@@ -25,10 +27,11 @@ public partial class SettingsContent : UserControl
     private const string Connected = "Соединение установлено.";
     private readonly ClientSettings settings;
     private readonly CastarServerClient server;
+    private readonly BudgetEventConnection? events;
     private readonly HistoricalExchangeRates exchangeRates;
     private readonly SettingsContext context;
-    private readonly DispatcherTimer polling;
     private CancellationTokenSource? usersRequest;
+    private bool usersReloadPending;
     private bool showingServerSettings;
     private bool checkingConnection;
     private bool editingUser;
@@ -38,16 +41,18 @@ public partial class SettingsContent : UserControl
     private PasswordBox? telegramTokenInput;
 
     public SettingsContent(ClientSettings settings, CastarServerClient server, GitHubUpdateService updateService,
-        HistoricalExchangeRates exchangeRates)
+        HistoricalExchangeRates exchangeRates, BudgetEventConnection? events = null)
     {
         this.settings = settings;
         this.server = server;
+        this.events = events;
         this.updateService = updateService;
         this.exchangeRates = exchangeRates;
-        context = new SettingsContext(settings, new ServerSettingsViewModel(server))
+        context = new SettingsContext(settings, new ServerSettingsViewModel(server, events))
         {
             UpdateStatus = $"Текущая версия {updateService.InstalledVersion}"
         };
+        context.ServerConfiguration.Updates.SetConnection(settings.ServerUrl, settings.ProtectedApiKey);
         context.ServerConfiguration.CredentialsCleared += (_, _) => telegramTokenInput?.Clear();
         context.PropertyChanged += (_, change) =>
         {
@@ -65,26 +70,23 @@ public partial class SettingsContent : UserControl
                 context.RefreshCurrencyOptions();
         };
         context.RefreshCurrencyOptions();
-        polling = new DispatcherTimer { Interval = TimeSpan.FromSeconds(15) };
-        polling.Tick += async (_, _) =>
+        server.ConnectionChanged += Server_ConnectionChanged;
+        if (events is not null)
         {
-            if (IsVisible)
-                await LoadUsersAsync();
-        };
+            events.ConfigurationChanged += Configuration_Changed;
+            events.Synchronized += ConnectionSynchronized;
+            events.Disconnected += ConnectionLost;
+        }
         DataContext = context;
         InitializeComponent();
     }
 
-    private async void Settings_Loaded(object sender, RoutedEventArgs e)
-    {
-        polling.Start();
-        await OpenServerSettingsAsync();
-    }
+    private async void Settings_Loaded(object sender, RoutedEventArgs e) => await OpenServerSettingsAsync();
 
     private void Settings_Unloaded(object sender, RoutedEventArgs e)
     {
-        polling.Stop();
         CloseServerSettings();
+        BackToSectionMenu();
     }
 
     private async void Settings_IsVisibleChanged(object sender, DependencyPropertyChangedEventArgs e)
@@ -101,8 +103,7 @@ public partial class SettingsContent : UserControl
             return Task.CompletedTask;
 
         showingServerSettings = true;
-        server.ConnectionChanged += Server_ConnectionChanged;
-        return Task.WhenAll(LoadServerSettingsAsync(), LoadUsersAsync());
+        return Task.WhenAll(LoadServerSettingsAsync(), LoadUsersAsync(verifyConnection: events?.IsSynchronized != true));
     }
 
     private void CloseServerSettings()
@@ -111,16 +112,44 @@ public partial class SettingsContent : UserControl
             return;
 
         showingServerSettings = false;
-        server.ConnectionChanged -= Server_ConnectionChanged;
+        backupRequest?.Cancel();
         context.ServerConfiguration.Close();
         ResetUsers();
-        SetSavedConnectionStatus(CastarServerClient.ConnectionNotEstablished);
     }
 
     private async void Server_ConnectionChanged(object? sender, EventArgs e)
     {
+        backupRequest?.Cancel();
+        context.ServerConfiguration.Updates.SetConnection(settings.ServerUrl, settings.ProtectedApiKey);
+        SetSavedConnectionStatus(CastarServerClient.ConnectionNotEstablished);
         ResetUsers();
-        await Task.WhenAll(LoadServerSettingsAsync(), LoadUsersAsync());
+        if (showingServerSettings)
+            await Task.WhenAll(LoadServerSettingsAsync(), LoadUsersAsync());
+    }
+
+    private async void ConnectionSynchronized()
+    {
+        SetSavedConnectionStatus(Connected);
+        await Task.WhenAll(context.ServerConfiguration.MarkChangedAsync(), LoadUsersAsync(verifyConnection: false));
+    }
+
+    private void ConnectionLost()
+    {
+        SetSavedConnectionStatus(CastarServerClient.ConnectionNotEstablished);
+        ResetUsers();
+    }
+
+    private async void Configuration_Changed(ServerSynchronizationDto change)
+    {
+        switch (change.Kind)
+        {
+            case ServerSynchronization.Users:
+                await LoadUsersAsync(verifyConnection: false);
+                break;
+            case ServerSynchronization.Settings:
+                await context.ServerConfiguration.MarkChangedAsync(change.Revision);
+                break;
+        }
     }
 
     private Task LoadServerSettingsAsync() =>
@@ -257,10 +286,16 @@ public partial class SettingsContent : UserControl
             context.ConnectionStatus = status;
     }
 
-    private async Task LoadUsersAsync()
+    private async Task LoadUsersAsync(bool verifyConnection = true)
     {
-        if (!showingServerSettings || usersRequest is not null)
+        if (!showingServerSettings)
             return;
+        if (usersRequest is not null)
+        {
+            if (!verifyConnection)
+                usersReloadPending = true;
+            return;
+        }
 
         var key = settings.ApiKey;
         if (key.Length == 0)
@@ -272,15 +307,17 @@ public partial class SettingsContent : UserControl
         using var current = new CancellationTokenSource();
         usersRequest = current;
         Uri? address = null;
-        var verifiedConnection = false;
+        var verifiedConnection = !verifyConnection;
         try
         {
-            address = CastarServerClient.ParseServerUrl(settings.ServerUrl);
-            await server.TestConnectionAsync(address, key, current.Token);
-            if (usersRequest != current)
-                return;
-
-            verifiedConnection = true;
+            if (verifyConnection)
+            {
+                address = CastarServerClient.ParseServerUrl(settings.ServerUrl);
+                await server.TestConnectionAsync(address, key, current.Token);
+                if (usersRequest != current)
+                    return;
+                verifiedConnection = true;
+            }
             SetSavedConnectionStatus(Connected);
             var users = await server.GetUsersAsync(current.Token);
             if (usersRequest != current)
@@ -289,6 +326,7 @@ public partial class SettingsContent : UserControl
             if (context.Users.Count != users.Count || !context.Users.Zip(users).All(pair =>
                 pair.First.Id == pair.Second.Id && pair.First.Name == pair.Second.Name
                 && pair.First.TelegramId == pair.Second.TelegramId && pair.First.Sex == pair.Second.Sex
+                && pair.First.TelegramNotificationsEnabled == pair.Second.TelegramNotificationsEnabled
                 && pair.First.ColorRaw.AsSpan().SequenceEqual(pair.Second.ColorRaw)
                 && pair.First.ImageRaw.AsSpan().SequenceEqual(pair.Second.ImageRaw)))
             {
@@ -300,7 +338,7 @@ public partial class SettingsContent : UserControl
         {
             if (usersRequest == current)
             {
-                if (!verifiedConnection)
+                if (!verifiedConnection || error is HttpRequestException { StatusCode: HttpStatusCode.Unauthorized })
                     SetSavedConnectionStatus(CastarServerClient.DescribeConnectionFailure(error, address));
                 ResetUsers();
             }
@@ -308,7 +346,14 @@ public partial class SettingsContent : UserControl
         finally
         {
             if (usersRequest == current)
+            {
                 usersRequest = null;
+                if (usersReloadPending)
+                {
+                    usersReloadPending = false;
+                    _ = LoadUsersAsync(verifyConnection: false);
+                }
+            }
         }
     }
 
@@ -316,6 +361,7 @@ public partial class SettingsContent : UserControl
     {
         var previous = usersRequest;
         usersRequest = null;
+        usersReloadPending = false;
         previous?.Cancel();
         context.UsersAvailable = false;
         if (context.Users.Count > 0)
@@ -374,7 +420,8 @@ public partial class SettingsContent : UserControl
             else
                 await server.UpdateUserAsync(user, canSetTelegramNotifications &&
                     user.TelegramNotificationsEnabled != initialNotifications);
-            await LoadUsersAsync();
+            if (events is not { IsSynchronized: true, SupportsConfigurationEvents: true })
+                await LoadUsersAsync(verifyConnection: false);
         }
         catch (Exception error) when (CastarServerClient.IsConnectionError(error))
         {
@@ -406,7 +453,8 @@ public partial class SettingsContent : UserControl
         try
         {
             await server.DeleteUserAsync(user.Id);
-            await LoadUsersAsync();
+            if (events is not { IsSynchronized: true, SupportsConfigurationEvents: true })
+                await LoadUsersAsync(verifyConnection: false);
         }
         catch (Exception error) when (CastarServerClient.IsConnectionError(error))
         {

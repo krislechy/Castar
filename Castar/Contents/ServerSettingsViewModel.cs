@@ -11,7 +11,7 @@ using System.Threading.Tasks;
 
 namespace Castar.Contents;
 
-internal sealed class ServerSettingsViewModel(CastarServerClient server) : BaseSettingsModel
+internal sealed class ServerSettingsViewModel(CastarServerClient server, BudgetEventConnection? events = null) : BaseSettingsModel
 {
     private (string Address, string Key)? connection;
     private CancellationTokenSource? request;
@@ -20,23 +20,41 @@ internal sealed class ServerSettingsViewModel(CastarServerClient server) : BaseS
     private bool requiresReload;
     private bool saving;
     private bool recheckAfterSave;
+    private bool pendingRefresh;
+    private long? pendingRevision;
     private bool telegramEnabled;
     private bool receiptsEnabled;
     private string? receiptProvider;
     private ManualCurrencySettingsDto? manualCurrency;
+    private TelegramPreferencesDto? telegramPreferences;
     private string telegramToken = "";
     private ReceiptAuthenticationProfileDto[] authenticationProfiles = [];
     private Dictionary<string, string>? receiptCredentials;
     private bool useAnonymous;
     private string status = "";
+    private string backupActionLabel = "Создать резервную копию";
+    private string backupStatus = "";
+
+    public string BackupActionLabel { get => backupActionLabel; set => SetField(ref backupActionLabel, value); }
+    public string BackupStatus { get => backupStatus; set => SetField(ref backupStatus, value); }
 
     public bool HasConnection => connection is not null;
-    public ServerUpdateViewModel Updates { get; } = new(server);
+    public ServerUpdateViewModel Updates { get; } = new(server, events);
     public bool CanReload => active && HasConnection && request is null;
     public bool CanEdit => CanReload && saved is not null;
     public bool SupportsCredentials => saved?.ReceiptAuthenticationProfiles is not null || saved?.NalogConfigured is not null;
     public bool SupportsManualCurrency => SavedManualCurrency is not null;
     public ManualCurrencySettingsDto? SavedManualCurrency => saved?.ManualCurrency;
+    public bool SupportsTelegramPreferences => saved?.TelegramPreferences is not null;
+    public TelegramPreferencesDto? TelegramPreferences
+    {
+        get => telegramPreferences;
+        private set
+        {
+            if (SetField(ref telegramPreferences, value))
+                OnPropertyChanged(nameof(CanSave));
+        }
+    }
     public ManualCurrencySettingsDto? ManualCurrency
     {
         get => manualCurrency;
@@ -55,7 +73,8 @@ internal sealed class ServerSettingsViewModel(CastarServerClient server) : BaseS
             || profile.CredentialsConfigured || receiptCredentials is not null || !profile.Fields.Any(input => input.Required))
         && (TelegramEnabled != current.TelegramEnabled || ReceiptsEnabled != current.ReceiptsEnabled
             || ReceiptProvider != current.ReceiptProvider || HasTelegramToken || AuthenticationChanged
-            || !SameCurrencySettings(ManualCurrency, current.ManualCurrency));
+            || !SameCurrencySettings(ManualCurrency, current.ManualCurrency)
+            || TelegramPreferences != current.TelegramPreferences);
     public string TelegramStatus => saved?.TelegramConfigured switch
     {
         true when SupportsCredentials => "Токен Telegram задан.",
@@ -86,6 +105,11 @@ internal sealed class ServerSettingsViewModel(CastarServerClient server) : BaseS
     private bool HasTelegramToken => SupportsCredentials && !string.IsNullOrWhiteSpace(telegramToken);
     private bool AuthenticationChanged => receiptCredentials is not null
         || AuthenticationProfile is { } profile && UseAnonymous != profile.UseAnonymous;
+    private bool HasDraft => saved is { } current
+        && (TelegramEnabled != current.TelegramEnabled || ReceiptsEnabled != current.ReceiptsEnabled
+            || ReceiptProvider != current.ReceiptProvider || telegramToken.Length != 0 || AuthenticationChanged
+            || !SameCurrencySettings(ManualCurrency, current.ManualCurrency)
+            || TelegramPreferences != current.TelegramPreferences);
 
     public bool TelegramEnabled
     {
@@ -145,6 +169,12 @@ internal sealed class ServerSettingsViewModel(CastarServerClient server) : BaseS
             ManualCurrency = updated;
     }
 
+    public void SetTelegramPreferences(TelegramPreferencesDto original, TelegramPreferencesDto updated)
+    {
+        if (CanEdit && ReferenceEquals(TelegramPreferences, original))
+            TelegramPreferences = updated;
+    }
+
     private static bool SameCurrencySettings(ManualCurrencySettingsDto? first, ManualCurrencySettingsDto? second) =>
         ReferenceEquals(first, second) || first is not null && second is not null
         && first.DefaultCurrency == second.DefaultCurrency
@@ -159,13 +189,15 @@ internal sealed class ServerSettingsViewModel(CastarServerClient server) : BaseS
             CancelRequest();
             ClearCredentials();
             connection = next;
+            pendingRefresh = false;
+            pendingRevision = null;
             OnPropertyChanged(nameof(HasConnection));
             ApplySettings(null);
             Status = "";
         }
 
         NotifyActions();
-        var settings = saved is null || recheckAfterSave ? ReloadAsync() : Task.CompletedTask;
+        var settings = saved is null || recheckAfterSave ? ReloadAsync() : RefreshAfterNotificationAsync();
         return Task.WhenAll(settings, Updates.OpenAsync(address, protectedKey));
     }
 
@@ -187,6 +219,29 @@ internal sealed class ServerSettingsViewModel(CastarServerClient server) : BaseS
         ? RunAsync(server.GetServerSettingsAsync, "Загрузка…")
         : Task.CompletedTask;
 
+    public Task MarkChangedAsync(long? revision = null)
+    {
+        if (revision is { } version && saved?.Revision >= version)
+            return Task.CompletedTask;
+
+        pendingRefresh = true;
+        pendingRevision = revision is null ? null : Math.Max(pendingRevision ?? revision.Value, revision.Value);
+        return RefreshAfterNotificationAsync();
+    }
+
+    private Task RefreshAfterNotificationAsync()
+    {
+        if (!pendingRefresh || !CanReload)
+            return Task.CompletedTask;
+        if (!HasDraft)
+            return ReloadAsync();
+
+        requiresReload = true;
+        Status = "Настройки изменились на сервере. Обновите их перед сохранением.";
+        NotifyActions();
+        return Task.CompletedTask;
+    }
+
     public Task SaveAsync()
     {
         if (!CanSave || saved is null || ReceiptProvider is null)
@@ -200,7 +255,8 @@ internal sealed class ServerSettingsViewModel(CastarServerClient server) : BaseS
                 ? new NalogCredentialsWriteDto(credentials["inn"].Trim(), credentials["password"]) : null,
             ReceiptAuthentication = !legacy && AuthenticationChanged
                 ? new ReceiptAuthenticationWriteDto(UseAnonymous, receiptCredentials) : null,
-            ManualCurrency = SameCurrencySettings(ManualCurrency, saved.ManualCurrency) ? null : ManualCurrency
+            ManualCurrency = SameCurrencySettings(ManualCurrency, saved.ManualCurrency) ? null : ManualCurrency,
+            TelegramPreferences = TelegramPreferences == saved.TelegramPreferences ? null : TelegramPreferences
         };
         return RunAsync(token => server.SaveServerSettingsAsync(update, token), "Сохранение…", isSave: true);
     }
@@ -210,6 +266,8 @@ internal sealed class ServerSettingsViewModel(CastarServerClient server) : BaseS
         using var current = new CancellationTokenSource();
         request = current;
         saving = isSave;
+        pendingRefresh = false;
+        pendingRevision = null;
         Status = progress;
         NotifyActions();
         try
@@ -218,6 +276,11 @@ internal sealed class ServerSettingsViewModel(CastarServerClient server) : BaseS
             if (request == current)
             {
                 ApplySettings(result);
+                if (pendingRevision is { } version && result.Revision >= version)
+                {
+                    pendingRefresh = false;
+                    pendingRevision = null;
+                }
                 if (isSave)
                     ClearCredentials();
                 Status = "";
@@ -241,6 +304,7 @@ internal sealed class ServerSettingsViewModel(CastarServerClient server) : BaseS
                 request = null;
                 saving = false;
                 NotifyActions();
+                _ = RefreshAfterNotificationAsync();
             }
         }
     }
@@ -261,6 +325,7 @@ internal sealed class ServerSettingsViewModel(CastarServerClient server) : BaseS
         requiresReload = false;
         recheckAfterSave = false;
         ManualCurrency = value?.ManualCurrency;
+        TelegramPreferences = value?.TelegramPreferences;
         TelegramEnabled = value?.TelegramEnabled ?? false;
         ReceiptsEnabled = value?.ReceiptsEnabled ?? false;
         ReceiptProviders = value?.ReceiptProviders.Select(id => new ProviderOption(id, id switch
@@ -278,6 +343,7 @@ internal sealed class ServerSettingsViewModel(CastarServerClient server) : BaseS
         OnPropertyChanged(nameof(SupportsCredentials));
         OnPropertyChanged(nameof(SupportsManualCurrency));
         OnPropertyChanged(nameof(SavedManualCurrency));
+        OnPropertyChanged(nameof(SupportsTelegramPreferences));
     }
 
     private static ReceiptAuthenticationProfileDto[] LegacyProfiles(ServerSettingsDto? value) =>

@@ -87,7 +87,7 @@ public sealed partial class CommandHandler
                 Name = receipt.Name,
                 RetailPlace = receipt.RetailPlace,
                 RetailPlaceAddress = receipt.RetailPlaceAddress,
-                AddedOn = receipt.IssuedAt.LocalDateTime,
+                AddedOn = receipt.IssuedAt.UtcDateTime,
                 ReceiptDate = receipt.OperationDate,
                 Currency = receipt.Currency,
                 TotalSum = receipt.Total,

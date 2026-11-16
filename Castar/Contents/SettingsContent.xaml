@@ -2,6 +2,7 @@
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:c="clr-namespace:Castar.Compontents"
+             xmlns:local="clr-namespace:Castar.Contents"
              xmlns:converters="clr-namespace:Castar.Converters"
              xmlns:settings="clr-namespace:Castar.Settings"
              Name="Настройки" Loaded="Settings_Loaded" Unloaded="Settings_Unloaded"
@@ -9,21 +10,46 @@
     <UserControl.Resources>
         <BooleanToVisibilityConverter x:Key="ServerConnectionVisibility"/>
         <converters:SexConverter x:Key="UserSex"/>
+        <Style x:Key="SettingsSectionButton" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
+            <Setter Property="HorizontalContentAlignment" Value="Left"/>
+            <Setter Property="Padding" Value="12,8"/>
+            <Setter Property="Margin" Value="6,3"/>
+        </Style>
+        <Style x:Key="SettingsCard" TargetType="c:IslandPanel">
+            <Setter Property="Margin" Value="6"/>
+            <Setter Property="HorizontalAlignment" Value="Left"/>
+        </Style>
     </UserControl.Resources>
     <Grid>
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto"/>
             <RowDefinition/>
         </Grid.RowDefinitions>
-        <c:IslandPanel IsMainTitle="True" Title="Настройки"/>
-        <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">
-            <WrapPanel>
-                <WrapPanel.Resources>
-                    <Style x:Key="SettingsCard" TargetType="c:IslandPanel">
-                        <Setter Property="Margin" Value="6"/>
-                    </Style>
-                </WrapPanel.Resources>
-                <c:IslandPanel Title="Подключение" Style="{StaticResource SettingsCard}" ImageSvg="{DynamicResource Svg.DataBase}">
+        <DockPanel>
+            <Button x:Name="BackToSections" Content="Назад" Click="BackToSections_Click"
+                    Visibility="Collapsed" DockPanel.Dock="Left" VerticalAlignment="Center"
+                    Style="{StaticResource SettingsSectionButton}"/>
+            <c:IslandPanel x:Name="SettingsTitle" IsMainTitle="True" Title="Настройки"/>
+        </DockPanel>
+        <ScrollViewer x:Name="SettingsScroll" Grid.Row="1" VerticalScrollBarVisibility="Auto">
+            <Grid>
+                <StackPanel x:Name="SectionMenu" HorizontalAlignment="Left" Width="342">
+                    <Button Content="{Binding Title, ElementName=ConnectionSection}" Tag="{Binding ElementName=ConnectionSection}"
+                            Style="{StaticResource SettingsSectionButton}" Click="OpenSettingsSection_Click"/>
+                    <Button Content="{Binding Title, ElementName=ServerSection}" Tag="{Binding ElementName=ServerSection}"
+                            Visibility="{Binding ServerConfiguration.HasConnection, Converter={StaticResource ServerConnectionVisibility}}"
+                            Style="{StaticResource SettingsSectionButton}" Click="OpenSettingsSection_Click"/>
+                    <Button Content="{Binding Title, ElementName=ApplicationSection}" Tag="{Binding ElementName=ApplicationSection}"
+                            Style="{StaticResource SettingsSectionButton}" Click="OpenSettingsSection_Click"/>
+                    <Button Content="{Binding Title, ElementName=UsersSection}" Tag="{Binding ElementName=UsersSection}"
+                            Visibility="{Binding UsersAvailable, Converter={StaticResource ServerConnectionVisibility}}"
+                            Style="{StaticResource SettingsSectionButton}" Click="OpenSettingsSection_Click"/>
+                    <Button Content="{Binding Title, ElementName=UpdatesSection}" Tag="{Binding ElementName=UpdatesSection}"
+                            Style="{StaticResource SettingsSectionButton}" Click="OpenSettingsSection_Click"/>
+                </StackPanel>
+                <Grid Visibility="Collapsed">
+                <c:IslandPanel x:Name="ConnectionSection" Title="Подключение" Style="{StaticResource SettingsCard}"
+                               ImageSvg="{DynamicResource Svg.DataBase}">
                     <StackPanel Width="330">
                         <TextBlock Text="Адрес сервера" Style="{StaticResource FormFieldLabel}"/>
                         <TextBox AutomationProperties.Name="Адрес сервера"
@@ -36,7 +62,10 @@
                                    AutomationProperties.LiveSetting="Polite"/>
                     </StackPanel>
                 </c:IslandPanel>
-                <c:IslandPanel Title="Сервер" Style="{StaticResource SettingsCard}" ImageSvg="{DynamicResource Svg.DataBase}"
+                </Grid>
+                <Grid Visibility="Collapsed">
+                <c:IslandPanel x:Name="ServerSection" Title="Сервер" Style="{StaticResource SettingsCard}" ImageSvg="{DynamicResource Svg.DataBase}"
+                               IsVisibleChanged="SettingsSection_IsVisibleChanged"
                                DataContext="{Binding ServerConfiguration}"
                                Visibility="{Binding HasConnection, Converter={StaticResource ServerConnectionVisibility}}">
                     <StackPanel Width="330">
@@ -49,6 +78,9 @@
                                 <PasswordBox AutomationProperties.Name="Токен Telegram" PasswordChanged="TelegramToken_PasswordChanged"/>
                             </StackPanel>
                             <CheckBox Content="Обработка чеков" IsChecked="{Binding ReceiptsEnabled}"/>
+                            <Button Content="Настройки Telegram" Click="ConfigureTelegramPreferences_Click"
+                                    Style="{StaticResource FormAction}" IsEnabled="{Binding CanEdit}"
+                                    Visibility="{Binding SupportsTelegramPreferences, Converter={StaticResource ServerConnectionVisibility}}"/>
                             <TextBlock Text="Поставщик чеков" Style="{StaticResource FormFieldLabel}"/>
                             <c:CastarComboBox ItemsSource="{Binding ReceiptProviders}" DisplayMemberPath="Label"
                                               SelectedValuePath="Id" SelectedValue="{Binding ReceiptProvider}"
@@ -75,6 +107,10 @@
                                     AutomationProperties.Name="Обновить настройки сервера"/>
                         </StackPanel>
                         <TextBlock Text="{Binding Status}" Style="{StaticResource ViewStatus}"/>
+                        <Button Content="{Binding BackupActionLabel}" Style="{StaticResource FormAction}"
+                                Click="CreateDatabaseBackup_Click"/>
+                        <TextBlock Text="{Binding BackupStatus}" Style="{StaticResource ViewStatus}"
+                                   AutomationProperties.LiveSetting="Polite"/>
                         <StackPanel DataContext="{Binding Updates}">
                             <Button Content="Обновить сервер" Style="{StaticResource FormAction}"
                                     IsEnabled="{Binding CanStart}" Click="UpdateServer_Click"/>
@@ -87,7 +123,9 @@
                         </StackPanel>
                     </StackPanel>
                 </c:IslandPanel>
-                <c:IslandPanel Title="Приложение" Style="{StaticResource SettingsCard}" ImageSvg="{DynamicResource Svg.Tools}">
+                </Grid>
+                <Grid Visibility="Collapsed">
+                <c:IslandPanel x:Name="ApplicationSection" Title="Приложение" Style="{StaticResource SettingsCard}" ImageSvg="{DynamicResource Svg.Tools}">
                     <StackPanel>
                         <CheckBox IsChecked="{Binding Settings.IsHideInTray}" Content="При закрытии сворачивать в трей"/>
                         <CheckBox IsChecked="{Binding Settings.IsAutoRun}" Content="Запускать с Windows"/>
@@ -95,6 +133,10 @@
                         <c:CastarComboBox ItemsSource="{Binding CurrencyOptions}" DisplayMemberPath="Label" SelectedValuePath="Code"
                                           SelectedValue="{Binding Settings.DisplayCurrency, Mode=TwoWay}"
                                           AutomationProperties.Name="Отображаемая валюта"/>
+                        <TextBlock Text="Часовой пояс" Style="{StaticResource FormFieldLabel}"/>
+                        <c:CastarComboBox ItemsSource="{Binding Settings.DisplayTimeZones}" DisplayMemberPath="Label"
+                                          SelectedValuePath="Id" SelectedValue="{Binding Settings.DisplayTimeZoneId, Mode=TwoWay}"
+                                          AutomationProperties.Name="Часовой пояс"/>
                         <TextBlock Text="Уведомления" Style="{StaticResource FormFieldLabel}"/>
                         <c:CastarComboBox ItemsSource="{Binding NotificationModes}" DisplayMemberPath="Label" SelectedValuePath="Value"
                                           SelectedValue="{Binding Settings.NotificationMode, Mode=TwoWay}"
@@ -121,7 +163,10 @@
                         </StackPanel>
                     </StackPanel>
                 </c:IslandPanel>
-                <c:IslandPanel Title="Пользователи" Style="{StaticResource SettingsCard}" ImageSvg="{DynamicResource Svg.Users}"
+                </Grid>
+                <Grid Visibility="Collapsed">
+                <c:IslandPanel x:Name="UsersSection" Title="Пользователи" Style="{StaticResource SettingsCard}" ImageSvg="{DynamicResource Svg.Users}"
+                               IsVisibleChanged="SettingsSection_IsVisibleChanged"
                                Visibility="{Binding UsersAvailable, Converter={StaticResource ServerConnectionVisibility}}">
                     <StackPanel Width="330">
                         <UniformGrid Columns="3" Margin="7,0,7,0">
@@ -146,7 +191,7 @@
                                                 <ColumnDefinition Width="Auto"/>
                                                 <ColumnDefinition/>
                                             </Grid.ColumnDefinitions>
-                                            <c:UserAvatar Width="24" Height="24" Margin="0,0,3,0"
+                                            <c:UserAvatar Width="24" Height="24" Margin="0,0,3,0" VerticalAlignment="Center"
                                                           UserName="{Binding Name}"
                                                           Photo="{Binding ImageRaw, Converter={StaticResource UserAvatarImageConverter}}"/>
                                             <TextBlock Grid.Column="1" Text="{Binding Name}" Style="{StaticResource BudgetTableCell}"/>
@@ -162,7 +207,9 @@
                                 Style="{StaticResource FormAction}" Click="NewUserButton_Click"/>
                     </StackPanel>
                 </c:IslandPanel>
-                <c:IslandPanel Title="Обновления" Style="{StaticResource SettingsCard}" ImageSvg="{DynamicResource Svg.Tools}">
+                </Grid>
+                <Grid Visibility="Collapsed">
+                <c:IslandPanel x:Name="UpdatesSection" Title="Обновления" Style="{StaticResource SettingsCard}" ImageSvg="{DynamicResource Svg.Tools}">
                     <StackPanel>
                         <TextBlock Text="{Binding UpdateStatus}" Style="{StaticResource ViewStatus}"/>
                         <ProgressBar Minimum="0" Maximum="100" Value="{Binding UpdateDownloadPercent, Mode=OneWay}"
@@ -182,7 +229,8 @@
                                 Style="{StaticResource FormAction}" Click="CheckForUpdates_Click"/>
                     </StackPanel>
                 </c:IslandPanel>
-            </WrapPanel>
+                </Grid>
+            </Grid>
         </ScrollViewer>
     </Grid>
 </UserControl>

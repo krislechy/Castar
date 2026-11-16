@@ -15,7 +15,7 @@ partial class CastarDbContextModelSnapshot : ModelSnapshot
     // If you encounter a merge conflict in the line below, it means you need to
     // discard one of the migration branches and recreate its migrations on top of
     // the other branch. See https://aka.ms/efcore-docs-migrations-conflicts for more info.
-    public override string LastMigrationId => "20261116085106_HistoricalExchangeRateCache";
+    public override string LastMigrationId => "20261116153242_BudgetRateDate";
 
     protected override void BuildModel(ModelBuilder modelBuilder)
     {
@@ -69,6 +69,9 @@ partial class CastarDbContextModelSnapshot : ModelSnapshot
                     .HasColumnType("INTEGER");
 
                 b.Property<DateTime?>("ModifiedOn")
+                    .HasColumnType("TEXT");
+
+                b.Property<DateOnly?>("RateDate")
                     .HasColumnType("TEXT");
 
                 b.Property<string>("Source")
@@ -166,6 +169,9 @@ partial class CastarDbContextModelSnapshot : ModelSnapshot
                 b.Property<string>("OriginalReceiptSnapshot")
                     .HasColumnType("TEXT");
 
+                b.Property<DateOnly?>("RateDate")
+                    .HasColumnType("TEXT");
+
                 b.Property<byte[]>("RawData")
                     .HasColumnType("BLOB");
 
@@ -193,6 +199,9 @@ partial class CastarDbContextModelSnapshot : ModelSnapshot
                     .HasColumnType("INTEGER")
                     .HasDefaultValue(0L);
 
+                b.Property<Guid?>("TelegramOriginUserId")
+                    .HasColumnType("TEXT");
+
                 b.Property<decimal>("TotalSum")
                     .HasPrecision(24, 2)
                     .HasColumnType("TEXT");
@@ -211,8 +220,10 @@ partial class CastarDbContextModelSnapshot : ModelSnapshot
                     .HasDatabaseName("UX_Purchases_ReceiptKey")
                     .HasFilter("[ReceiptKey] IS NOT NULL");
 
-                b.HasIndex("UserId", "_messageId")
-                    .HasDatabaseName("IX_Purchases_UserId_MessageId");
+                b.HasIndex("UserId");
+
+                b.HasIndex("TelegramOriginUserId", "_messageId")
+                    .HasDatabaseName("IX_Purchases_TelegramOriginUserId_MessageId");
 
                 b.ToTable("Purchases");
             });

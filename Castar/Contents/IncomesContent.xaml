@@ -12,6 +12,9 @@
              Name="Доходы" Loaded="Incomes_Loaded" Unloaded="Incomes_Unloaded"
              d:DesignHeight="450" d:DesignWidth="800">
     <UserControl.Resources>
+        <ContextMenu x:Key="IncomeRowMenu">
+            <MenuItem Header="Удалить" Icon="{StaticResource Svg.Remove}" Click="DeleteIncomeButton_Click"/>
+        </ContextMenu>
         <converters:TotalSumGroupConverter x:Key="TotalSumGroupConverter"/>
         <CollectionViewSource x:Key='IncomesSRC' Source="{Binding Incomes,Mode=OneWay}"
                                 VirtualizingPanel.IsVirtualizingWhenGrouping="True"
@@ -33,24 +36,21 @@
             <RowDefinition Height="auto"/>
             <RowDefinition/>
         </Grid.RowDefinitions>
-        <c:IslandPanel Grid.Row="0" 
-                       IsMainTitle="True" 
-                       Title="{Binding Name,RelativeSource={RelativeSource Mode=FindAncestor,AncestorType=UserControl,AncestorLevel=1}}"/>
+        <Border Style="{StaticResource BudgetHeaderSurface}">
+          <WrapPanel x:Name="PeriodBar" Style="{StaticResource BudgetPeriodBar}">
+              <TextBlock Text="Доходы" Style="{StaticResource BudgetHeaderTitle}"/>
+              <Button Content="Добавить доход" Margin="0,0,12,0" VerticalAlignment="Center" Click="AddNewIncomeButton_Click"/>
+              <c:SelectorRangeDates x:Name="SelectorRangeDatesElement" VerticalAlignment="Center"
+                                    DateRangeChanged="SelectorRangeDates_DateRangeChanged"/>
+              <TextBlock Text="{Binding TotalSum}" Margin="12,0,0,0" VerticalAlignment="Center"
+                         FontWeight="SemiBold" Foreground="{DynamicResource Highlight}"/>
+          </WrapPanel>
+        </Border>
         <Grid Grid.Row="1">
             <Grid.RowDefinitions>
                 <RowDefinition Height="auto"/>
-                <RowDefinition Height="auto"/>
                 <RowDefinition/>
             </Grid.RowDefinitions>
-            <DockPanel x:Name="PeriodBar" Style="{StaticResource BudgetPeriodBar}">
-                <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Margin="12,0,0,0">
-                    <Button Content="Добавить доход" VerticalAlignment="Center" Click="AddNewIncomeButton_Click"/>
-                    <TextBlock Text="{Binding TotalSum}" Margin="12,0,0,0" VerticalAlignment="Center"
-                               FontWeight="SemiBold" Foreground="{DynamicResource Highlight}"/>
-                </StackPanel>
-                <c:SelectorRangeDates x:Name="SelectorRangeDatesElement" HorizontalAlignment="Left"
-                                      VerticalAlignment="Center" DateRangeChanged="SelectorRangeDates_DateRangeChanged"/>
-            </DockPanel>
             <!--<lvc:CartesianChart x:Name="IncomeChart" Grid.Row="1"
                                 XAxes="{Binding XAxis}"
                                 Series="{Binding SeriesIncomes,Mode=OneWay,UpdateSourceTrigger=PropertyChanged}"
@@ -107,15 +107,14 @@
                     </DataTemplate>
                 </lvc:CartesianChart.TooltipTemplate>
             </lvc:CartesianChart>-->
-            <TextBlock Grid.Row="1" Text="{Binding Status}" Style="{StaticResource ViewStatus}"
+            <TextBlock Text="{Binding Status}" Style="{StaticResource ViewStatus}"
                        Margin="{StaticResource BudgetStatusMargin}"/>
-            <Grid x:Name="BudgetContent" Grid.Row="2" Margin="{StaticResource BudgetContentMargin}">
+            <Grid x:Name="BudgetContent" Grid.Row="1" Margin="{StaticResource BudgetContentMargin}">
                 <ListView x:Name="IncomesListView" Style="{StaticResource BudgetList}"
                           ItemsSource="{Binding Source={StaticResource IncomesSRC},UpdateSourceTrigger=PropertyChanged,Mode=OneWay}">
                     <ListView.ContextMenu>
                         <ContextMenu>
-                            <MenuItem Header="Удалить" Icon="{StaticResource Svg.Remove}"
-                                      Click="DeleteIncomeButton_Click"/>
+                            <MenuItem Header="Добавить доход" Click="AddNewIncomeButton_Click"/>
                         </ContextMenu>
                     </ListView.ContextMenu>
                     <ListView.GroupStyle>
@@ -149,6 +148,7 @@
                     </ListView.GroupStyle>
                     <ListView.ItemContainerStyle>
                         <Style TargetType="{x:Type ListViewItem}" BasedOn="{StaticResource BudgetListItem}">
+                            <Setter Property="ContextMenu" Value="{StaticResource IncomeRowMenu}"/>
                             <EventSetter Event="MouseDoubleClick" Handler="IncomesListView_MouseDoubleClick"/>
                         </Style>
                     </ListView.ItemContainerStyle>
@@ -164,7 +164,7 @@
                                 <c:UserInfoPanel DataContext="{Binding Income.User}" IsShortView="True" SizeImage="30"/>
                                 <c:MoneyAmount Grid.Column="2" Display="{Binding Amount}" FontWeight="DemiBold"
                                                FontSize="16" VerticalAlignment="Center" Margin="0,0,30,0"/>
-                                <TextBlock Grid.Column="3" Text="{Binding Income.AddedOn}" VerticalAlignment="Center" Margin="0,0,30,0"/>
+                                <TextBlock Grid.Column="3" Text="{Binding DisplayDate}" VerticalAlignment="Center" Margin="0,0,30,0"/>
                             </Grid>
                         </DataTemplate>
                     </ListView.ItemTemplate>

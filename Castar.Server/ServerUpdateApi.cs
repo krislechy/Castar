@@ -8,6 +8,7 @@ namespace Castar.Server;
 internal static class ServerUpdateApi
 {
     private const string ControlSocket = "/var/jb/var/run/castar/control.sock";
+    internal const string IosStatusDirectory = "/var/jb/var/run/castar";
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
 
     internal static void MapServerUpdate(this WebApplication app)
@@ -38,7 +39,7 @@ internal static class ServerUpdateApi
         });
     }
 
-    private static async Task<ServerUpdateStatusDto?> ReadStatus(string? desktopControl, CancellationToken token)
+    internal static async Task<ServerUpdateStatusDto?> ReadStatus(string? desktopControl, CancellationToken token)
     {
         var reply = OperatingSystem.IsIOS() ? await RunCommand("update-status\n", token) :
             ReadDesktopStatus(desktopControl);

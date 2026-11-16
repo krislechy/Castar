@@ -5,9 +5,18 @@
         <TextBlock x:Name="LegacyStatus" Text="Запрос из старой записи." Style="{StaticResource ViewStatus}"/>
         <TextBox x:Name="SourceText" IsReadOnly="True" TextWrapping="Wrap" AcceptsReturn="True"
                  MinHeight="70" MaxHeight="230" VerticalScrollBarVisibility="Auto"
-                 AutomationProperties.Name="Исходный запрос"/>
-        <Button x:Name="CopyButton" Content="Копировать" Style="{StaticResource FormAction}"
-                HorizontalAlignment="Left" Click="Copy_Click"/>
+                 AutomationProperties.Name="Исходные данные"/>
+        <StackPanel Orientation="Horizontal">
+            <Button x:Name="CopyButton" Content="Копировать" Style="{StaticResource FormAction}" Click="Copy_Click"/>
+            <Button x:Name="QrButton" Content="Показать как QR-код" Padding="10,5" Margin="8,8,0,0" Click="ShowQr_Click"/>
+        </StackPanel>
+        <Border x:Name="QrPanel" Background="White" Padding="8" Margin="0,8,0,0"
+                HorizontalAlignment="Center" Visibility="Collapsed">
+            <Image x:Name="QrImage" Width="230" Height="230" RenderOptions.BitmapScalingMode="NearestNeighbor"
+                   AutomationProperties.Name="QR-код исходных данных"/>
+        </Border>
+        <TextBlock x:Name="QrError" Text="Не удалось сформировать QR-код."
+                   Visibility="Collapsed" Style="{StaticResource ViewStatus}" AutomationProperties.LiveSetting="Polite"/>
         <TextBlock x:Name="CopyError" Text="Не удалось скопировать запрос."
                    Visibility="Collapsed" Style="{StaticResource ViewStatus}"
                    AutomationProperties.LiveSetting="Polite"/>

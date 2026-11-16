@@ -51,7 +51,7 @@ namespace Castar.BL
         {
             var owner = await GetUser(telegramUserId, cancellationToken);
             purchase.UserId = owner.Id;
-            purchase.AddedOn ??= DateTime.Now;
+            purchase.AddedOn ??= DateTime.UtcNow;
         }
 
         private async Task<User> GetUser(long telegramUserId, CancellationToken cancellationToken) =>

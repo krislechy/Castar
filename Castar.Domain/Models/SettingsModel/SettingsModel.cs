@@ -129,6 +129,24 @@ namespace Castar.Domain.Models.SettingsModel
     [XmlSerializerAssembly("Castar.Domain.XmlSerializers")]
     public sealed class TelegramBot : BaseSettingsModel
     {
+        private long testChatId;
+
+        [XmlIgnore]
+        public long? TestChatId
+        {
+            get
+            {
+                var value = Interlocked.Read(ref testChatId);
+                return value == 0 ? null : value;
+            }
+            set
+            {
+                var next = value.GetValueOrDefault();
+                if (Interlocked.Exchange(ref testChatId, next) != next)
+                    OnPropertyChanged(nameof(TestChatId));
+            }
+        }
+
         [XmlIgnore]
         private string? telegramBotApi_KEY;
         [Encryption]

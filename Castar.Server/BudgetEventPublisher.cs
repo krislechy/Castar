@@ -1,6 +1,7 @@
 using System.Threading.Channels;
 using Castar.Api;
 using Castar.DAL;
+using Castar.Domain.Models.DataBase;
 using Microsoft.AspNetCore.SignalR;
 using Microsoft.EntityFrameworkCore;
 
@@ -25,6 +26,8 @@ internal sealed class BudgetEventPublisher(
     private readonly Lock gate = new();
     private BudgetChange pendingPurchases;
     private BudgetChange pendingIncomes;
+    private bool pendingUsers;
+    private long? pendingSettingsRevision;
 
     public void Queue(BudgetChange purchases, BudgetChange incomes)
     {
@@ -39,23 +42,54 @@ internal sealed class BudgetEventPublisher(
         }
     }
 
+    public void QueueSynchronization(string kind, long? revision = null)
+    {
+        lock (gate)
+        {
+            switch (kind)
+            {
+                case ServerSynchronization.Users:
+                    pendingUsers = true;
+                    break;
+                case ServerSynchronization.Settings when revision is { } version:
+                    pendingSettingsRevision = Math.Max(pendingSettingsRevision ?? version, version);
+                    break;
+                default:
+                    throw new ArgumentException("Unsupported synchronization event.", nameof(kind));
+            }
+            wake.Writer.TryWrite(true);
+        }
+    }
+
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         await foreach (var _ in wake.Reader.ReadAllAsync(stoppingToken))
         {
             BudgetChange purchases, incomes;
+            bool users;
+            long? settingsRevision;
             lock (gate)
             {
                 purchases = pendingPurchases;
                 incomes = pendingIncomes;
+                users = pendingUsers;
+                settingsRevision = pendingSettingsRevision;
                 pendingPurchases = default;
                 pendingIncomes = default;
+                pendingUsers = false;
+                pendingSettingsRevision = null;
             }
 
             if (purchases.Changed)
                 await SendAsync(BudgetEvents.Purchase, purchases, stoppingToken);
             if (incomes.Changed)
                 await SendAsync(BudgetEvents.Income, incomes, stoppingToken);
+            if (users)
+                await SendToActiveKeysAsync(ServerSynchronization.Changed,
+                    new ServerSynchronizationDto(ServerSynchronization.Users), stoppingToken);
+            if (settingsRevision is { } revision)
+                await SendToActiveKeysAsync(ServerSynchronization.Changed,
+                    new ServerSynchronizationDto(ServerSynchronization.Settings, revision), stoppingToken);
         }
     }
 
@@ -64,7 +98,19 @@ internal sealed class BudgetEventPublisher(
         var preview = change.CreatedCount > 0 && change.EntityId is { } id
             ? await ReadPreviewAsync(kind, id, stoppingToken)
             : null;
+        var notification = new BudgetEventDto(kind, change.CreatedCount > 0)
+        {
+            CreatedCount = change.CreatedCount,
+            EntityId = change.EntityId,
+            AddedOn = change.AddedOn is { } date ? BudgetTime.InZone(date, BudgetTime.Belgrade) : null,
+            AddedOnUtc = change.AddedOn is { } instant ? new DateTimeOffset(BudgetTime.AsUtc(instant)) : null,
+            Preview = preview
+        };
+        await SendToActiveKeysAsync(BudgetEvents.Method, notification, stoppingToken);
+    }
 
+    private async Task SendToActiveKeysAsync<T>(string method, T message, CancellationToken stoppingToken)
+    {
         // An already connected client loses future events when its key is revoked.
         var groups = keys.GetActiveKeyIds().Select(id => id.ToString("N")).ToArray();
         if (groups.Length == 0)
@@ -74,14 +120,7 @@ internal sealed class BudgetEventPublisher(
         timeout.CancelAfter(TimeSpan.FromSeconds(5));
         try
         {
-            var notification = new BudgetEventDto(kind, change.CreatedCount > 0)
-            {
-                CreatedCount = change.CreatedCount,
-                EntityId = change.EntityId,
-                AddedOn = change.AddedOn,
-                Preview = preview
-            };
-            await hub.Clients.Groups(groups).SendAsync(BudgetEvents.Method, notification, timeout.Token);
+            await hub.Clients.Groups(groups).SendAsync(method, message, timeout.Token);
         }
         catch (OperationCanceledException) when (timeout.IsCancellationRequested)
         {

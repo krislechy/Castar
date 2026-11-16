@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.ComponentModel;
 using System.Diagnostics;
 using System.IO;
+using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Security.Cryptography;
 using System.Text;
@@ -16,6 +17,8 @@ public enum NotificationMode { Windows, Castar }
 
 public enum NotificationCorner { TopLeft, TopRight, BottomLeft, BottomRight }
 
+public sealed record DisplayTimeZoneOption(string Id, string Label);
+
 public sealed class ClientSettings : INotifyPropertyChanged
 {
     public const string DefaultServerUrl = "http://127.0.0.1:5080";
@@ -28,6 +31,7 @@ public sealed class ClientSettings : INotifyPropertyChanged
     private NotificationCorner notificationCorner = NotificationCorner.BottomRight;
     private int maxVisibleNotifications = 3;
     private string displayCurrency = "";
+    private string displayTimeZoneId = "";
     private string settingsPath = Path.Combine(DataDirectory, "Castar.Client.xml");
 
     public string ServerUrl { get; set; } = DefaultServerUrl;
@@ -68,6 +72,21 @@ public sealed class ClientSettings : INotifyPropertyChanged
         get => displayCurrency;
         set => Set(ref displayCurrency, HistoricalExchangeRates.IsCurrencyCode(value) ? value : "");
     }
+
+    public string DisplayTimeZoneId
+    {
+        get => displayTimeZoneId;
+        set => Set(ref displayTimeZoneId, !string.IsNullOrEmpty(value) &&
+            TimeZoneInfo.TryFindSystemTimeZoneById(value, out _) ? value : "");
+    }
+
+    [XmlIgnore]
+    internal TimeZoneInfo DisplayTimeZone => TimeZoneInfo.TryFindSystemTimeZoneById(displayTimeZoneId, out var zone)
+        ? zone : TimeZoneInfo.Local;
+
+    [XmlIgnore]
+    public IReadOnlyList<DisplayTimeZoneOption> DisplayTimeZones { get; } =
+        [new("", "Системный"), .. TimeZoneInfo.GetSystemTimeZones().Select(item => new DisplayTimeZoneOption(item.Id, item.DisplayName))];
 
     [XmlIgnore]
     internal string ApiKey

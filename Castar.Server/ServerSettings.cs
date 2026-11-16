@@ -14,16 +14,24 @@ internal sealed class ServerSettings : IDisposable
     private readonly SettingsModel settings;
     private readonly string path;
     private readonly string? defaultTelegramToken;
+    private readonly TelegramPreferencesDto defaultTelegramPreferences;
     private readonly NalogCredentialsWriteDto? defaultNalogCredentials;
     private readonly Dictionary<string, IReceiptProvider> providers;
     private readonly SemaphoreSlim writes = new(1);
     private StoredSettings current;
+    private readonly BudgetEventPublisher? events;
 
-    public ServerSettings(IConfiguration configuration, SettingsModel settings, IEnumerable<IReceiptProvider> providers)
+    public ServerSettings(IConfiguration configuration, SettingsModel settings, IEnumerable<IReceiptProvider> providers,
+        BudgetEventPublisher? events = null)
     {
         this.settings = settings;
+        this.events = events;
         path = CastarData.GetSqlitePath(configuration) + ".settings.json";
         defaultTelegramToken = settings.TelegramBot.TelegramBotApi_KEY;
+        var telegram = settings.TelegramBot;
+        defaultTelegramPreferences = new(telegram.IncomeCreateEmoji ?? "", telegram.IncomeUpdateEmoji ?? "",
+            telegram.IncomeDeleteEmoji ?? "", telegram.PurchaseCreateEmoji ?? "", telegram.PurchaseUpdateEmoji ?? "",
+            telegram.PurchaseDeleteEmoji ?? "", telegram.ItemEmoji ?? "", telegram.TestChatId);
         if (!string.IsNullOrWhiteSpace(settings.NalogFNS.INN) && !string.IsNullOrWhiteSpace(settings.NalogFNS.Password))
             defaultNalogCredentials = new(settings.NalogFNS.INN, settings.NalogFNS.Password);
         this.providers = providers.OrderBy(provider => provider.Id, StringComparer.Ordinal)
@@ -41,7 +49,7 @@ internal sealed class ServerSettings : IDisposable
             var provider = FindProvider(saved?.ReceiptProvider);
             if (saved is null || saved.Revision <= 0 || provider is null ||
                 ValidateCredentials(saved.TelegramToken, saved.NalogCredentials) is not null ||
-                !HasValidSavedAuthentication(saved))
+                !HasValidSavedAuthentication(saved) || saved.TelegramPreferences is { } savedTelegram && !savedTelegram.IsValid())
                 throw new InvalidDataException($"Invalid server settings in {path}.");
 
             var policy = settings.ManualCurrencies;
@@ -102,6 +110,8 @@ internal sealed class ServerSettings : IDisposable
                 return Invalid("Выберите доступного поставщика чеков.");
             if (ValidateCredentials(requested.TelegramToken, requested.NalogCredentials) is { } error)
                 return Invalid(error);
+            if (requested.TelegramPreferences is { } telegram && !telegram.IsValid())
+                return Invalid("Укажите по одному значку в поле и допустимый ID тестового чата.");
 
             var policy = settings.ManualCurrencies;
             var manualCurrency = current.ManualCurrency;
@@ -126,7 +136,9 @@ internal sealed class ServerSettings : IDisposable
                 ReceiptProvider = provider.Id,
                 TelegramToken = requested.TelegramToken ?? current.TelegramToken,
                 NalogCredentials = requested.NalogCredentials ?? current.NalogCredentials,
-                ManualCurrency = manualCurrency
+                ManualCurrency = manualCurrency,
+                TelegramPreferences = requested.TelegramPreferences is { } preferences && preferences != EffectiveTelegramPreferences(current)
+                    ? preferences : current.TelegramPreferences
             };
             if (requested.ReceiptAuthentication is { } authentication)
             {
@@ -159,6 +171,7 @@ internal sealed class ServerSettings : IDisposable
             next = next with { Revision = checked(current.Revision + 1) };
             await SaveAsync(next, cancellationToken);
             Apply(next, policy);
+            events?.QueueSynchronization(ServerSynchronization.Settings, next.Revision);
             return Results.Ok(ToDto(next));
         }
         finally
@@ -256,6 +269,9 @@ internal sealed class ServerSettings : IDisposable
     private bool HasTelegramToken(StoredSettings value) =>
         !string.IsNullOrWhiteSpace(value.TelegramToken ?? defaultTelegramToken);
 
+    private TelegramPreferencesDto EffectiveTelegramPreferences(StoredSettings value) =>
+        value.TelegramPreferences ?? defaultTelegramPreferences;
+
     private NalogCredentialsWriteDto? EffectiveNalogCredentials(StoredSettings value) =>
         value.NalogCredentials ?? defaultNalogCredentials;
 
@@ -264,6 +280,7 @@ internal sealed class ServerSettings : IDisposable
         providers.Values.Select(provider => provider.Id).ToArray(), value.Revision)
     {
         NalogConfigured = EffectiveNalogCredentials(value) is not null,
+        TelegramPreferences = EffectiveTelegramPreferences(value),
         ManualCurrency = value.ManualCurrency is { } currency
             ? currency with { Currencies = currency.Currencies.ToArray() }
             : null,
@@ -340,7 +357,17 @@ internal sealed class ServerSettings : IDisposable
         settings.Receipts = new ReceiptSettings { IsEnabled = value.ReceiptsEnabled, Provider = value.ReceiptProvider };
         if (!value.TelegramEnabled)
             settings.Systems.IsEnableTelegramBot = false;
-        settings.TelegramBot.TelegramBotApi_KEY = value.TelegramToken ?? defaultTelegramToken;
+        var telegram = settings.TelegramBot;
+        var preferences = EffectiveTelegramPreferences(value);
+        telegram.IncomeCreateEmoji = preferences.IncomeCreateEmoji;
+        telegram.IncomeUpdateEmoji = preferences.IncomeUpdateEmoji;
+        telegram.IncomeDeleteEmoji = preferences.IncomeDeleteEmoji;
+        telegram.PurchaseCreateEmoji = preferences.PurchaseCreateEmoji;
+        telegram.PurchaseUpdateEmoji = preferences.PurchaseUpdateEmoji;
+        telegram.PurchaseDeleteEmoji = preferences.PurchaseDeleteEmoji;
+        telegram.ItemEmoji = preferences.ItemEmoji;
+        telegram.TestChatId = preferences.TestChatId;
+        telegram.TelegramBotApi_KEY = value.TelegramToken ?? defaultTelegramToken;
         if (value.TelegramEnabled)
             settings.Systems.IsEnableTelegramBot = true;
         Volatile.Write(ref current, value);
@@ -356,6 +383,9 @@ internal sealed class ServerSettings : IDisposable
     {
         [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
         public string? TelegramToken { get; init; }
+
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        public TelegramPreferencesDto? TelegramPreferences { get; init; }
 
         [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
         public NalogCredentialsWriteDto? NalogCredentials { get; init; }

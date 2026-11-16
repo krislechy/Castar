@@ -30,6 +30,7 @@ public partial class IncomesContent : UserControl
     private bool listeningForChanges;
     private CancellationTokenSource? activeRequest;
     private bool refreshPending;
+    private bool dataStale = true;
     private Guid? notificationTarget;
     private RangeDate Range => SelectorRangeDatesElement.RangeDate;
 
@@ -62,7 +63,8 @@ public partial class IncomesContent : UserControl
         if (!IsVisible || listeningForChanges)
             return;
         listeningForChanges = true;
-        await RefreshAsync();
+        if (dataStale)
+            await RefreshAsync();
     }
 
     private void StopListening()
@@ -76,6 +78,7 @@ public partial class IncomesContent : UserControl
     {
         notificationTarget = null;
         CancelRefresh();
+        dataStale = true;
         context.Incomes = [];
         context.Status = "";
         if (listeningForChanges)
@@ -84,7 +87,11 @@ public partial class IncomesContent : UserControl
 
     private async void Settings_PropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
-        if (e.PropertyName == nameof(ClientSettings.DisplayCurrency) && listeningForChanges)
+        if (e.PropertyName is not (nameof(ClientSettings.DisplayCurrency) or nameof(ClientSettings.DisplayTimeZoneId)))
+            return;
+
+        dataStale = true;
+        if (listeningForChanges)
             await RefreshAsync();
     }
 
@@ -98,6 +105,7 @@ public partial class IncomesContent : UserControl
 
     internal Task RefreshAfterServerChangeAsync()
     {
+        dataStale = true;
         if (!listeningForChanges)
             return Task.CompletedTask;
         if (activeRequest is null)
@@ -112,6 +120,13 @@ public partial class IncomesContent : UserControl
     private async Task RefreshAsync(DateTime start, DateTime finish)
     {
         CancelRefresh();
+        dataStale = true;
+        if (start > finish)
+        {
+            context.Status = "Дата начала позже даты окончания.";
+            context.IsLoading = false;
+            return;
+        }
         using var request = new CancellationTokenSource();
         activeRequest = request;
         context.IsLoading = true;
@@ -123,11 +138,12 @@ public partial class IncomesContent : UserControl
 
             var target = settings.DisplayCurrency;
             var rates = await exchangeRates.GetAsync(incomes.Select(income =>
-                (income.Currency, DateOnly.FromDateTime(income.AddedOn))), target, request.Token);
+                (income.Currency, income.RateDate ?? BudgetTime.BelgradeDate(income.AddedOn))), target, request.Token);
             if (request != activeRequest || refreshPending)
                 return;
 
             var rows = incomes.Select(income => CreateRow(income, target, rates)).ToArray();
+            dataStale = false;
             UpdateRows(rows);
             SelectNotificationTarget();
             notificationTarget = null;
@@ -155,21 +171,22 @@ public partial class IncomesContent : UserControl
         }
     }
 
-    private static IncomeDisplayRow CreateRow(Income income, string target,
+    private IncomeDisplayRow CreateRow(Income income, string target,
         IReadOnlyDictionary<(string Currency, DateOnly Date), decimal> rates)
     {
+        var displayDate = BudgetTime.InZone(income.AddedOn, settings.DisplayTimeZone);
         if (HistoricalExchangeRates.IsCurrencyCode(income.Currency))
         {
             if (target.Length == 0 || income.Currency == target)
-                return new(income, MoneyAmountDisplay.Create(income.Sum, income.Currency), income.Sum, income.Currency);
-            if (rates.TryGetValue((income.Currency!, DateOnly.FromDateTime(income.AddedOn)), out var rate))
+                return new(income, MoneyAmountDisplay.Create(income.Sum, income.Currency), income.Sum, income.Currency, displayDate);
+            if (rates.TryGetValue((income.Currency!, income.RateDate ?? BudgetTime.BelgradeDate(income.AddedOn)), out var rate))
             {
                 var converted = HistoricalExchangeRates.ConvertAmount(income.Sum, rate);
-                return new(income, MoneyAmountDisplay.Create(income.Sum, income.Currency, converted, target), converted, target);
+                return new(income, MoneyAmountDisplay.Create(income.Sum, income.Currency, converted, target), converted, target, displayDate);
             }
         }
 
-        return new(income, MoneyAmountDisplay.Create(income.Sum, income.Currency), null, null);
+        return new(income, MoneyAmountDisplay.Create(income.Sum, income.Currency), null, null, displayDate);
     }
 
     private void UpdateRows(IncomeDisplayRow[] rows)
@@ -218,12 +235,13 @@ public partial class IncomesContent : UserControl
             && first.User.Name == second.User.Name && first.User.Sex == second.User.Sex
             && first.User.ColorRaw.AsSpan().SequenceEqual(second.User.ColorRaw)
             && first.User.ImageRaw.AsSpan().SequenceEqual(second.User.ImageRaw)
-            && previous.Amount == next.Amount
+            && previous.Amount == next.Amount && previous.DisplayDate == next.DisplayDate
             && previous.AggregateAmount == next.AggregateAmount && previous.AggregateCurrency == next.AggregateCurrency;
     }
 
     private async void SelectorRangeDates_DateRangeChanged(object sender, EventArgs e)
     {
+        dataStale = true;
         if (listeningForChanges && e is RangeDate range)
             await RefreshAsync(range.StartDate, range.EndDate);
     }
@@ -231,16 +249,21 @@ public partial class IncomesContent : UserControl
     private async void IncomesListView_MouseDoubleClick(object sender, MouseButtonEventArgs e)
     {
         if (sender is ListViewItem { IsSelected: true, DataContext: IncomeDisplayRow row })
-            await EditIncomeAsync(row.Income.Clone<Income>());
+        {
+            var draft = row.Income.Clone<Income>();
+            draft.AddedOn = row.DisplayDate;
+            await EditIncomeAsync(draft, row.Income.AddedOn);
+        }
     }
 
     private async void AddNewIncomeButton_Click(object sender, RoutedEventArgs e) =>
-        await EditIncomeAsync(new Income { AddedOn = DateTime.Now });
+        await EditIncomeAsync(new Income { AddedOn = BudgetTime.InZone(DateTime.UtcNow, settings.DisplayTimeZone) });
 
-    private async Task EditIncomeAsync(Income income)
+    private async Task EditIncomeAsync(Income income, DateTime? instant = null)
     {
         try
         {
+            var initialDate = income.AddedOn;
             var isNew = income.Id == Guid.Empty;
             var currencyTask = LoadManualCurrencyAsync();
             var usersTask = server.GetUsersAsync();
@@ -264,7 +287,7 @@ public partial class IncomesContent : UserControl
             if (isNew)
                 await server.AddIncomeAsync(income);
             else
-                await server.UpdateIncomeAsync(income);
+                await server.UpdateIncomeAsync(income, income.AddedOn == initialDate ? instant : null);
             await RefreshAsync();
         }
         catch (Exception error) when (CastarServerClient.IsConnectionError(error))
@@ -295,35 +318,33 @@ public partial class IncomesContent : UserControl
             return new ValidatePopupDialog(false, "Укажите ненулевую сумму.");
         if (income.Id == Guid.Empty && !HistoricalExchangeRates.IsCurrencyCode(income.Currency))
             return new ValidatePopupDialog(false, "Выберите валюту.");
-        if (income.AddedOn == default)
-            return new ValidatePopupDialog(false, "Укажите дату.");
+        if (!editor.ValidateDate() || income.AddedOn == default)
+            return new ValidatePopupDialog(false, "Введите дату и время в формате ДД.ММ.ГГГГ ЧЧ:ММ.");
         return new ValidatePopupDialog(true, null);
     }
 
     private async void DeleteIncomeButton_Click(object sender, RoutedEventArgs e)
     {
-        var menu = (ContextMenu)((MenuItem)sender).Parent;
-        var rows = ((ListView)menu.PlacementTarget).SelectedItems.Cast<IncomeDisplayRow>().ToArray();
-        if (rows.Length == 0)
+        if (sender is not MenuItem
+            { Parent: ContextMenu { PlacementTarget: ListViewItem { DataContext: IncomeDisplayRow row } } })
             return;
 
-        var description = string.Join("\n", rows.Select(row =>
-            $"{row.Income.Source} — {HistoricalExchangeRates.Format(row.Income.Sum, row.Income.Currency)}"));
-        var question = rows.Length == 1 ? "Удалить доход?" : "Удалить выбранные доходы?";
-        var accepted = await PopupDialog.Show($"{question}\n{description}", PopupDialog.TypeDialogEnum.Confirm,
+        var income = row.Income;
+        var connection = (settings.ServerUrl, settings.ProtectedApiKey);
+        var description = $"{income.Source} — {HistoricalExchangeRates.Format(income.Sum, income.Currency)}";
+        var accepted = await PopupDialog.Show($"Удалить доход?\n{description}", PopupDialog.TypeDialogEnum.Confirm,
             options =>
             {
                 options.SuccessButton.SuccessConfirmButtonText = "Удалить";
                 options.SuccessButton.SuccessConfirmButtonForeground = Brushes.OrangeRed;
                 return options;
             });
-        if (accepted != true)
+        if (accepted != true || connection != (settings.ServerUrl, settings.ProtectedApiKey))
             return;
 
         try
         {
-            foreach (var row in rows)
-                await server.DeleteIncomeAsync(row.Income.Id);
+            await server.DeleteIncomeAsync(income.Id);
         }
         catch (Exception error) when (CastarServerClient.IsConnectionError(error))
         {
@@ -354,7 +375,7 @@ public partial class IncomesContent : UserControl
 }
 
 internal sealed record IncomeDisplayRow(
-    Income Income, MoneyAmountDisplay Amount, decimal? AggregateAmount, string? AggregateCurrency)
+    Income Income, MoneyAmountDisplay Amount, decimal? AggregateAmount, string? AggregateCurrency, DateTime DisplayDate = default)
 {
     internal static string FormatTotals(IEnumerable<IncomeDisplayRow> rows) => HistoricalExchangeRates.FormatTotals(rows
         .Where(row => row.AggregateAmount.HasValue).Select(row => (row.AggregateAmount!.Value, row.AggregateCurrency)));

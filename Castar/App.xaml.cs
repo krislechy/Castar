@@ -28,6 +28,7 @@ public partial class App : Application
     protected override void OnStartup(StartupEventArgs e)
     {
         base.OnStartup(e);
+        TabNavigationBlock.Install();
         InitializeCultures();
         AppDomain.CurrentDomain.UnhandledException += CurrentDomain_UnhandledException;
 
@@ -129,7 +130,11 @@ public partial class App : Application
             if (change.Created)
             {
                 if (settings.NotificationMode == NotificationMode.Castar)
-                    notifications.Publish(change);
+                    notifications.Publish(change with
+                    {
+                        AddedOn = serviceProvider.GetRequiredService<CastarServerClient>()
+                            .DisplayOperationDate(change.AddedOn, change.AddedOnUtc)
+                    });
                 else
                     tray.Notify(BudgetNotificationText.Format(change.Kind, Math.Max(1, change.CreatedCount), change.Preview));
             }
@@ -140,6 +145,14 @@ public partial class App : Application
             _ = purchases.RefreshAfterServerChangeAsync();
             _ = incomes.RefreshAfterServerChangeAsync();
             RefreshOpenStatistics();
+        };
+        budgetEvents.ConfigurationChanged += change =>
+        {
+            if (change.Kind == ServerSynchronization.Users)
+            {
+                _ = purchases.RefreshAfterServerChangeAsync();
+                _ = incomes.RefreshAfterServerChangeAsync();
+            }
         };
         budgetEvents.Start(new DispatcherSynchronizationContext(Dispatcher, DispatcherPriority.Background));
     }

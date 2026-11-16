@@ -14,7 +14,7 @@ namespace Castar.Services.TelegramBot;
 
 public sealed class CastarTelegramBotClient : ICastarTelegramBotClient
 {
-    private static readonly UpdateType[] AllowedUpdates = [UpdateType.Message, UpdateType.EditedMessage];
+    private static readonly UpdateType[] AllowedUpdates = [UpdateType.Message, UpdateType.EditedMessage, UpdateType.CallbackQuery];
 
     private readonly SettingsModel settings;
     private readonly IServiceScopeFactory scopeFactory;
@@ -36,7 +36,8 @@ public sealed class CastarTelegramBotClient : ICastarTelegramBotClient
 
     private void OnSettingsChanged(object? sender, PropertyChangedEventArgs e)
     {
-        if (e.PropertyName is nameof(Systems.IsEnableTelegramBot) or nameof(TelegramSettings.TelegramBotApi_KEY))
+        if (e.PropertyName is nameof(Systems.IsEnableTelegramBot) or nameof(TelegramSettings.TelegramBotApi_KEY)
+            or nameof(TelegramSettings.TestChatId))
             QueueConfiguration();
     }
 
@@ -100,6 +101,7 @@ public sealed class CastarTelegramBotClient : ICastarTelegramBotClient
         {
             using var httpClient = new HttpClient { Timeout = TimeSpan.FromSeconds(45) };
             var bot = new TelegramBotClient(configuration.Token!, httpClient, cancellationToken);
+            var testPurchases = new TestPurchaseSessions();
             int? offset = null;
             PublishStatus(configuration, "Подключение...");
             while (!cancellationToken.IsCancellationRequested)
@@ -128,7 +130,7 @@ public sealed class CastarTelegramBotClient : ICastarTelegramBotClient
                 foreach (var update in updates)
                 {
                     cancellationToken.ThrowIfCancellationRequested();
-                    await HandleUpdateAsync(bot, update, cancellationToken);
+                    await HandleUpdateAsync(bot, update, testPurchases, cancellationToken);
                     offset = update.Id + 1;
                 }
             }
@@ -147,17 +149,21 @@ public sealed class CastarTelegramBotClient : ICastarTelegramBotClient
         }
     }
 
-    private async Task HandleUpdateAsync(ITelegramBotClient client, Update update, CancellationToken cancellationToken)
+    private async Task HandleUpdateAsync(ITelegramBotClient client, Update update, TestPurchaseSessions testPurchases,
+        CancellationToken cancellationToken)
     {
         var message = update.Message ?? update.EditedMessage;
-        if (message is null)
+        if (message is null && update.CallbackQuery is null)
             return;
 
         try
         {
             await using var scope = scopeFactory.CreateAsyncScope();
             var handler = scope.ServiceProvider.GetRequiredService<CommandHandler>();
-            await handler.HandleAsync(client, message, update.EditedMessage is not null, cancellationToken);
+            if (await handler.HandleTestPurchaseAsync(client, update, testPurchases, cancellationToken))
+                return;
+            if (message is not null)
+                await handler.HandleAsync(client, message, update.EditedMessage is not null, cancellationToken);
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
@@ -166,13 +172,16 @@ public sealed class CastarTelegramBotClient : ICastarTelegramBotClient
         catch (Exception ex)
         {
             LogError(ex);
-            if (message.Chat.Type == ChatType.Private)
+            if (message?.Chat.Type == ChatType.Private || update.CallbackQuery is not null)
             {
                 try
                 {
-                    await client.SendMessage(message.Chat.Id,
-                        "Не удалось обработать сообщение. Проверьте подключение и настройки приложения.",
-                        cancellationToken: cancellationToken);
+                    if (update.CallbackQuery is { } callback)
+                        await client.AnswerCallbackQuery(callback.Id, "Не удалось обработать действие.", cancellationToken: cancellationToken);
+                    else if (message is not null)
+                        await client.SendMessage(message.Chat.Id,
+                            "Не удалось обработать сообщение. Проверьте подключение и настройки приложения.",
+                            cancellationToken: cancellationToken);
                 }
                 catch (Exception sendError) when (!cancellationToken.IsCancellationRequested)
                 {

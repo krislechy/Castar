@@ -19,6 +19,7 @@ public static class CastarEndpoints
         var api = endpoints.MapGroup("/api");
         api.AddEndpointFilter(HandleDatabaseConflicts);
         api.MapExchangeRates();
+        api.MapPost("/backup", DatabaseBackup.DownloadAsync);
         api.MapGet("/settings", (ServerSettings settings) => Results.Ok(settings.Read()));
         api.MapPut("/settings", UpdateServerSettingsAsync);
         api.MapGet("/users", GetUsers);
@@ -35,9 +36,11 @@ public static class CastarEndpoints
         api.MapDelete("/incomes/{id:guid}", DeleteIncome);
 
         api.MapGet("/purchases", GetPurchases);
+        api.MapPost("/purchases", CreatePurchase);
         api.MapGet("/purchases/{purchaseId:guid}/receipt-source", GetPurchaseReceiptSource);
         api.MapPut("/purchases/{purchaseId:guid}", EditPurchase);
         api.MapPut("/purchases/{purchaseId:guid}/items/{itemId:guid}", EditPurchaseItem);
+        api.MapPost("/purchases/{purchaseId:guid}/items", AddPurchaseItem);
         api.MapDelete("/purchases/{purchaseId:guid}", DeletePurchase);
         api.MapDelete("/purchases/{purchaseId:guid}/items/{itemId:guid}", DeletePurchaseItem);
         return api;
@@ -72,6 +75,10 @@ public static class CastarEndpoints
         {
             return Results.Problem(statusCode: StatusCodes.Status409Conflict,
                 title: "Запись уже изменилась", detail: "Обновите данные и повторите действие.");
+        }
+        catch (OverflowException) when (context.HttpContext.Request.Path.StartsWithSegments("/api/purchases"))
+        {
+            return InvalidInput("Итог покупки выходит за допустимый диапазон.");
         }
         catch (Exception error) when (IsForeignKeyConflict(error) || IsForeignKeyConflict(error.InnerException))
         {
@@ -131,7 +138,8 @@ public static class CastarEndpoints
         return "application/octet-stream";
     }
 
-    private static async Task<IResult> CreateUser(UserWriteDto input, IUsersService users, CancellationToken cancellationToken)
+    private static async Task<IResult> CreateUser(UserWriteDto input, IUsersService users, BudgetEventPublisher events,
+        CancellationToken cancellationToken)
     {
         if (Validate(input) is { } invalid)
             return invalid;
@@ -141,11 +149,12 @@ public static class CastarEndpoints
         var user = new User();
         Apply(user, input);
         await users.Add(user);
+        events.QueueSynchronization(ServerSynchronization.Users);
         return Results.Created($"/api/users/{user.Id}", ToDto(user));
     }
 
     private static async Task<IResult> UpdateUser(Guid id, UserWriteDto input, IUsersRepository repository,
-        IUsersService users, CancellationToken cancellationToken)
+        IUsersService users, BudgetEventPublisher events, CancellationToken cancellationToken)
     {
         if (Validate(input) is { } invalid)
             return invalid;
@@ -158,18 +167,25 @@ public static class CastarEndpoints
 
         Apply(user, input);
         await users.Update(user);
+        events.QueueSynchronization(ServerSynchronization.Users);
         return Results.Ok(ToDto(user));
     }
 
-    private static async Task<IResult> DeleteUser(Guid id, IUsersService users) =>
-        await users.Delete(id) ? Results.NoContent() : Results.NotFound();
-
-    private static async Task<IResult> GetIncomes(DateTime start, DateTime finish, IIncomesService incomes)
+    private static async Task<IResult> DeleteUser(Guid id, IUsersService users, BudgetEventPublisher events)
     {
-        if (finish < start)
-            return InvalidInput("Дата окончания должна быть не раньше даты начала.");
+        if (!await users.Delete(id))
+            return Results.NotFound();
+        events.QueueSynchronization(ServerSynchronization.Users);
+        return Results.NoContent();
+    }
 
-        var entries = await incomes.GetEntitiesWithAllIncludes(start, finish);
+    private static async Task<IResult> GetIncomes(DateTime start, DateTime finish,
+        DateTimeOffset? startUtc, DateTimeOffset? finishUtc, IIncomesService incomes)
+    {
+        if (!TryReadRange(start, finish, startUtc, finishUtc, out var first, out var last))
+            return InvalidInput("Укажите допустимый период.");
+
+        var entries = await incomes.GetEntitiesWithAllIncludes(first, last);
         return Results.Ok(entries.Select(ToDto).ToArray());
     }
 
@@ -197,13 +213,15 @@ public static class CastarEndpoints
             return InvalidManualCurrency(policy);
         if (Validate(input, usesLegacyPrecision: false) is { } invalid)
             return invalid;
+        if (!TryReadTime(input.AddedOn, input.AddedOnUtc, out var date))
+            return InvalidInput("Укажите допустимую дату начисления.");
 
         var owner = await users.Find(input.UserId, cancellationToken);
         if (owner is null)
             return InvalidInput("Выберите существующего пользователя.");
 
         var income = new Income();
-        Apply(income, input with { Currency = currency }, owner);
+        Apply(income, input with { Currency = currency }, owner, date);
         await incomes.Add(income, owner.TelegramId, owner);
         return Results.Created($"/api/incomes/{income.Id}", ToDto(income));
     }
@@ -225,12 +243,14 @@ public static class CastarEndpoints
         }
         if (Validate(input, usesLegacyPrecision: (input.Currency ?? income.Currency) is null) is { } invalid)
             return invalid;
+        if (!TryReadTime(input.AddedOn, input.AddedOnUtc, out var date, income.AddedOn))
+            return InvalidInput("Укажите допустимую дату начисления.");
 
         var owner = await users.Find(input.UserId, cancellationToken);
         if (owner is null)
             return InvalidInput("Выберите существующего пользователя.");
 
-        Apply(income, input, owner);
+        Apply(income, input, owner, date);
         await incomes.Update(income);
         return Results.Ok(ToDto(income));
     }
@@ -238,12 +258,13 @@ public static class CastarEndpoints
     private static async Task<IResult> DeleteIncome(Guid id, IIncomesService incomes) =>
         await incomes.Delete(id) ? Results.NoContent() : Results.NotFound();
 
-    private static async Task<IResult> GetPurchases(DateTime start, DateTime finish, IPurchasesService purchases)
+    private static async Task<IResult> GetPurchases(DateTime start, DateTime finish,
+        DateTimeOffset? startUtc, DateTimeOffset? finishUtc, IPurchasesService purchases)
     {
-        if (finish < start)
-            return InvalidInput("Дата окончания должна быть не раньше даты начала.");
+        if (!TryReadRange(start, finish, startUtc, finishUtc, out var first, out var last))
+            return InvalidInput("Укажите допустимый период.");
 
-        var entries = await purchases.GetEntitiesWithAllIncludes(start, finish);
+        var entries = await purchases.GetEntitiesWithAllIncludes(first, last);
         return Results.Ok(entries.Select(ToDto).ToArray());
     }
 
@@ -269,16 +290,17 @@ public static class CastarEndpoints
     {
         if (revision < 0)
             return InvalidInput("Укажите версию покупки.");
-        if (string.IsNullOrWhiteSpace(input.Name) || input.Name.Length > 400)
-            return InvalidInput("Укажите название покупки длиной до 400 символов.");
-        if (input.RetailPlace is { Length: > 400 } || input.RetailPlaceAddress is { Length: > 400 })
-            return InvalidInput("Название магазина и адрес могут содержать до 400 символов каждое.");
-        if (input.AddedOn == default)
+        if (ValidatePurchase(input) is { } invalid)
+            return invalid;
+        if (!TryReadTime(input.AddedOn, input.AddedOnUtc, out var date))
             return InvalidInput("Укажите дату покупки.");
 
         var policy = settings.ManualCurrencies;
         var result = await purchases.EditPurchaseAsync(purchaseId, revision, input.Name, input.RetailPlace,
-            input.RetailPlaceAddress, DateTime.SpecifyKind(input.AddedOn, DateTimeKind.Unspecified), input.Currency, policy, token);
+            input.RetailPlaceAddress, date, input.Currency, policy, token, input.UserId,
+            legacyDate: input.AddedOnUtc is null ? input.AddedOn : null);
+        if (result == PurchaseMutationResult.InvalidOwner)
+            return InvalidInput("Выберите существующего пользователя.");
         return result == PurchaseMutationResult.InvalidCurrency ? InvalidManualCurrency(policy) : PurchaseMutation(result);
     }
 
@@ -287,16 +309,100 @@ public static class CastarEndpoints
     {
         if (revision < 0)
             return InvalidInput("Укажите версию покупки.");
+        if (ValidatePurchaseItem(input) is { } invalid)
+            return invalid;
+
+        return PurchaseMutation(await purchases.EditPurchaseItemAsync(purchaseId, itemId, revision, input.Name,
+            input.Quantity, input.Price, token));
+    }
+
+    private static async Task<IResult> CreatePurchase(PurchaseCreateDto input, IPurchasesRepository purchases,
+        IUsersRepository users, SettingsModel settings, CancellationToken token)
+    {
+        if (input.Id == Guid.Empty || input.Purchase is null || input.Items is not { Length: > 0 and <= 250 })
+            return InvalidInput("Добавьте от 1 до 250 товаров.");
+        var header = input.Purchase;
+        if (ValidatePurchase(header) is { } invalid)
+            return invalid;
+        if (!TryReadTime(header.AddedOn, header.AddedOnUtc, out var date))
+            return InvalidInput("Укажите дату покупки.");
+        var policy = settings.ManualCurrencies;
+        var currency = header.Currency is null ? policy.DefaultCurrency : ManualCurrencySettings.NormalizeCode(header.Currency);
+        if (!policy.Allows(currency))
+            return InvalidManualCurrency(policy);
+        if (header.UserId is not { } ownerId || await users.Find(ownerId, token) is null)
+            return InvalidInput("Выберите существующего пользователя.");
+
+        var purchase = new Purchase
+        {
+            Id = input.Id, UserId = ownerId, AddedOn = date, Currency = currency, Name = header.Name,
+            RetailPlace = header.RetailPlace, RetailPlaceAddress = header.RetailPlaceAddress
+        };
+        foreach (var item in input.Items)
+        {
+            if (item is null)
+                return InvalidInput("Заполните данные товара.");
+            if (ValidatePurchaseItem(item) is { } invalidItem)
+                return invalidItem;
+            purchase.Items.Add(new Item { Name = item.Name, Quantity = item.Quantity, Price = item.Price });
+        }
+        if (await purchases.FindWithItemsAsync(input.Id, token) is { } existing)
+            return ConfirmPurchaseCreation(existing, purchase);
+        try
+        {
+            await purchases.Add(purchase, token);
+        }
+        catch (DbUpdateException error) when (error.InnerException is SqliteException { SqliteExtendedErrorCode: 1555 })
+        {
+            return ConfirmPurchaseCreation(await purchases.FindWithItemsAsync(input.Id, token), purchase);
+        }
+        return Results.NoContent();
+    }
+
+    private static IResult ConfirmPurchaseCreation(Purchase? existing, Purchase requested)
+    {
+        if (existing is { Revision: 0, MessageId: 0, RawData: null, OriginalReceiptSnapshot: null } &&
+            existing.UserId == requested.UserId && existing.AddedOn == requested.AddedOn &&
+            existing.Name == requested.Name && existing.Currency == requested.Currency &&
+            existing.RetailPlace == requested.RetailPlace && existing.RetailPlaceAddress == requested.RetailPlaceAddress &&
+            existing.Items.Select(item => (item.Name, item.Quantity, item.Price))
+                .SequenceEqual(requested.Items.Select(item => (item.Name, item.Quantity, item.Price))))
+            return Results.NoContent();
+
+        return PurchaseMutation(PurchaseMutationResult.Conflict);
+    }
+
+    private static async Task<IResult> AddPurchaseItem(Guid purchaseId, long revision, PurchaseItemWriteDto input,
+        IPurchasesRepository purchases, CancellationToken token)
+    {
+        if (revision < 0)
+            return InvalidInput("Укажите версию покупки.");
+        if (ValidatePurchaseItem(input) is { } invalid)
+            return invalid;
+        return PurchaseMutation(await purchases.AddPurchaseItemAsync(purchaseId, revision, input.Name,
+            input.Quantity, input.Price, token));
+    }
+
+    private static IResult? ValidatePurchase(PurchaseWriteDto input)
+    {
         if (string.IsNullOrWhiteSpace(input.Name) || input.Name.Length > 400)
-            return InvalidInput("Укажите название позиции длиной до 400 символов.");
+            return InvalidInput("Укажите название покупки длиной до 400 символов.");
+        if (input.RetailPlace is { Length: > 400 } || input.RetailPlaceAddress is { Length: > 400 })
+            return InvalidInput("Название магазина и адрес могут содержать до 400 символов каждое.");
+        return null;
+    }
+
+    private static IResult? ValidatePurchaseItem(PurchaseItemWriteDto input)
+    {
+        if (string.IsNullOrWhiteSpace(input.Name) || input.Name.Length > 400)
+            return InvalidInput("Укажите название товара длиной до 400 символов.");
         if (!double.IsFinite(input.Quantity) || Math.Abs(input.Quantity) >= 1_000_000 || (decimal)input.Quantity == 0)
             return InvalidInput("Укажите ненулевое количество меньше 1 000 000 по модулю.");
         const decimal priceLimit = 10000000000000000000000m;
         if (input.Price <= -priceLimit || input.Price >= priceLimit)
-            return InvalidInput("Укажите допустимую цену позиции.");
+            return InvalidInput("Укажите допустимую цену товара.");
 
-        return PurchaseMutation(await purchases.EditPurchaseItemAsync(purchaseId, itemId, revision, input.Name,
-            input.Quantity, input.Price, token));
+        return null;
     }
 
     private static IResult PurchaseMutation(PurchaseMutationResult result) => result switch
@@ -359,13 +465,40 @@ public static class CastarEndpoints
             user.TelegramNotificationsEnabled = notificationsEnabled;
     }
 
-    private static void Apply(Income income, IncomeWriteDto input, User owner)
+    private static void Apply(Income income, IncomeWriteDto input, User owner, DateTime date)
     {
         income.User = owner;
         income.Source = input.Source;
         income.Sum = input.Sum;
         income.Currency = input.Currency?.ToUpperInvariant() ?? income.Currency;
-        income.AddedOn = DateTime.SpecifyKind(input.AddedOn, DateTimeKind.Unspecified);
+        income.AddedOn = date;
+    }
+
+    private static bool TryReadRange(DateTime start, DateTime finish, DateTimeOffset? startUtc, DateTimeOffset? finishUtc,
+        out DateTime first, out DateTime last)
+    {
+        var validStart = TryReadTime(start, startUtc, out first, allowExtremes: true);
+        var validFinish = TryReadTime(finish, finishUtc, out last, allowExtremes: true);
+        return startUtc.HasValue == finishUtc.HasValue && validStart && validFinish && first <= last;
+    }
+
+    private static bool TryReadTime(DateTime legacy, DateTimeOffset? utc, out DateTime time,
+        DateTime? current = null, bool allowExtremes = false)
+    {
+        time = default;
+        if (utc is { } instant)
+        {
+            time = instant.UtcDateTime;
+            return allowExtremes || time != default;
+        }
+
+        legacy = DateTime.SpecifyKind(legacy, DateTimeKind.Unspecified);
+        if ((!allowExtremes && legacy == default) || BudgetTime.Belgrade.IsInvalidTime(legacy))
+            return false;
+        time = current is { } existing && BudgetTime.InZone(existing, BudgetTime.Belgrade) == legacy
+            ? BudgetTime.AsUtc(existing)
+            : BudgetTime.FromLocal(legacy, BudgetTime.Belgrade);
+        return true;
     }
 
     private static UserDto ToDto(User user) =>
@@ -376,17 +509,33 @@ public static class CastarEndpoints
 
     private static IncomeDto ToDto(Income income) =>
         new(income.Id, income.UserId, ToDto(income.User) with { ImageRaw = null }, income.MessageId,
-            income.Sum, income.Source, income.AddedOn) { Currency = income.Currency };
+            income.Sum, income.Source, BudgetTime.InZone(income.AddedOn, BudgetTime.Belgrade))
+        {
+            Currency = income.Currency, AddedOnUtc = BudgetTime.AsUtc(income.AddedOn), RateDate = income.RateDate
+        };
 
-    private static PurchaseDto ToDto(Purchase purchase) =>
-        new(purchase.Id, purchase.UserId, purchase.Name, purchase.TotalSum, purchase.Currency, purchase.MessageId,
-            purchase.AddedOn, purchase.RetailPlace, purchase.RetailPlaceAddress,
-            purchase.Items.Select(item => new PurchaseItemDto(
-                item.Id, item.Name, item.Category, item.Quantity, item.Price, item.Sum)).ToArray())
+    private static PurchaseDto ToDto(Purchase purchase)
+    {
+        var snapshot = FiscalReceiptSnapshot.Read(purchase.OriginalReceiptSnapshot);
+        var originalLines = snapshot?.Items.ToHashSet();
+        var items = purchase.Items.Select(item => new PurchaseItemDto(
+            item.Id, item.Name, item.Category, item.Quantity, item.Price, item.Sum)
+        {
+            IsEdited = originalLines is not null && !originalLines.Contains(FiscalReceiptLine.Capture(item))
+        }).ToArray();
+        return new(purchase.Id, purchase.UserId, purchase.Name, purchase.TotalSum, purchase.Currency, purchase.MessageId,
+            purchase.AddedOn is { } date ? BudgetTime.InZone(date, BudgetTime.Belgrade) : null,
+            purchase.RetailPlace, purchase.RetailPlaceAddress, items)
         {
             ReceiptDate = purchase.ReceiptDate,
+            AddedOnUtc = purchase.AddedOn is { } dateUtc ? BudgetTime.AsUtc(dateUtc) : null,
+            RateDate = purchase.RateDate,
             Revision = purchase.Revision,
             HasReceiptSource = PurchasesRepository.HasReceiptSource(purchase),
-            SupportsCurrencyEdit = true
+            SupportsCurrencyEdit = true,
+            Owner = new PurchaseOwnerDto(purchase.User.Name, purchase.User.ImageRaw is { Length: > 0 }),
+            IsEdited = snapshot is not null &&
+                (snapshot.HeaderChanged(purchase) || snapshot.Items.Length != items.Length || items.Any(item => item.IsEdited))
         };
+    }
 }

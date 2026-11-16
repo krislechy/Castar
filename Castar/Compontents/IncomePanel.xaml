@@ -34,15 +34,16 @@
             <TextBox Text="{Binding Source,UpdateSourceTrigger=PropertyChanged}"
                      AutomationProperties.LabeledBy="{Binding ElementName=IncomeSourceLabel}"/>
             <TextBlock x:Name="IncomeSumLabel" Text="Сумма" Style="{StaticResource FormFieldLabel}"/>
-            <TextBox x:Name="IncomeAmount" Text="{Binding Sum,ValidatesOnExceptions=True}"
-                     AutomationProperties.LabeledBy="{Binding ElementName=IncomeSumLabel}"/>
+            <local:DecimalInput x:Name="IncomeAmount" FractionDigits="-1" Text="{Binding Sum,ValidatesOnExceptions=True}"
+                                AutomationProperties.LabeledBy="{Binding ElementName=IncomeSumLabel}"/>
             <TextBlock x:Name="IncomeCurrencyLabel" Text="Валюта" Style="{StaticResource FormFieldLabel}"/>
             <local:CastarComboBox ItemsSource="{Binding CurrencyOptions,RelativeSource={RelativeSource AncestorType=UserControl}}"
                                   SelectedItem="{Binding Currency,Mode=TwoWay,UpdateSourceTrigger=PropertyChanged}"
                                   AutomationProperties.LabeledBy="{Binding ElementName=IncomeCurrencyLabel}"/>
             <TextBlock x:Name="IncomeDateLabel" Text="Дата" Style="{StaticResource FormFieldLabel}"/>
-            <DatePickerTextBox Text="{Binding AddedOn,Mode=TwoWay,UpdateSourceTrigger=PropertyChanged}"
-                               AutomationProperties.LabeledBy="{Binding ElementName=IncomeDateLabel}"/>
+            <local:CastarDatePicker x:Name="IncomeDate" AutomationProperties.LabeledBy="{Binding ElementName=IncomeDateLabel}"/>
+            <TextBlock x:Name="IncomeTimeLabel" Text="Время" Style="{StaticResource FormFieldLabel}"/>
+            <TextBox x:Name="IncomeTime" AutomationProperties.LabeledBy="{Binding ElementName=IncomeTimeLabel}"/>
         </StackPanel>
     </Grid>
 </UserControl>

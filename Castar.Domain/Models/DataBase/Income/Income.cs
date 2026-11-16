@@ -16,5 +16,6 @@ namespace Castar.Domain.Models.DataBase
         public string? Currency { get; set; }
         public string Source { get; set; } = string.Empty;
         public DateTime AddedOn { get; set; }
+        public DateOnly? RateDate { get; set; }
     }
 }

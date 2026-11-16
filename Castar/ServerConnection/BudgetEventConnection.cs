@@ -22,7 +22,13 @@ public sealed class BudgetEventConnection(ClientSettings settings) : IDisposable
     private bool disposed;
 
     public event Action<BudgetEventDto>? Changed;
+    public event Action<ServerSynchronizationDto>? ConfigurationChanged;
+    public event Action<ServerUpdateStatusDto?>? UpdateStatusChanged;
+    public event Action? UpdateEventsUnavailable;
     public event Action? Synchronized;
+    public event Action? Disconnected;
+    public bool IsSynchronized { get; private set; }
+    public bool SupportsConfigurationEvents { get; private set; }
 
     public void Start(SynchronizationContext? callbackContext = null)
     {
@@ -50,6 +56,8 @@ public sealed class BudgetEventConnection(ClientSettings settings) : IDisposable
 
     private void Reconnect()
     {
+        IsSynchronized = false;
+        SupportsConfigurationEvents = false;
         session?.Cancel();
         session = null;
         var configuration = (settings.ServerUrl, settings.ProtectedApiKey);
@@ -81,6 +89,7 @@ public sealed class BudgetEventConnection(ClientSettings settings) : IDisposable
         {
             while (!token.IsCancellationRequested)
             {
+                var connected = false;
                 try
                 {
                     await using var connection = new HubConnectionBuilder()
@@ -94,6 +103,23 @@ public sealed class BudgetEventConnection(ClientSettings settings) : IDisposable
                         .Build();
                     var closed = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
                     var ready = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+                    var updateGate = new object();
+                    var updateSequence = -1L;
+                    void ReceiveUpdate(ServerUpdateSnapshotDto snapshot)
+                    {
+                        Notify(() =>
+                        {
+                            lock (updateGate)
+                            {
+                                if (snapshot.Sequence <= updateSequence)
+                                    return;
+                                updateSequence = snapshot.Sequence;
+                                SupportsConfigurationEvents = true;
+                                UpdateStatusChanged?.Invoke(snapshot.Status);
+                            }
+                        });
+                    }
+
                     connection.Closed += _ =>
                     {
                         closed.TrySetResult();
@@ -101,6 +127,14 @@ public sealed class BudgetEventConnection(ClientSettings settings) : IDisposable
                     };
                     using var subscription = connection.On<BudgetEventDto>(BudgetEvents.Method,
                         change => Notify(() => Changed?.Invoke(change)));
+                    using var configurationSubscription = connection.On<ServerSynchronizationDto>(ServerSynchronization.Changed,
+                        change => Notify(() =>
+                        {
+                            SupportsConfigurationEvents = true;
+                            ConfigurationChanged?.Invoke(change);
+                        }));
+                    using var updateSubscription = connection.On<ServerUpdateSnapshotDto>(ServerSynchronization.UpdateChanged,
+                        ReceiveUpdate);
                     using var confirmation = connection.On(BudgetEvents.Ready, () => { ready.TrySetResult(); });
                     using (var startup = CancellationTokenSource.CreateLinkedTokenSource(token))
                     {
@@ -109,8 +143,32 @@ public sealed class BudgetEventConnection(ClientSettings settings) : IDisposable
                         if (await Task.WhenAny(ready.Task, closed.Task).WaitAsync(startup.Token) != ready.Task)
                             throw new InvalidOperationException("The event connection closed before subscription completed.");
                     }
-                    Notify(() => Synchronized?.Invoke());
+                    connected = true;
+                    Notify(() =>
+                    {
+                        IsSynchronized = true;
+                        Synchronized?.Invoke();
+                    });
                     delay = TimeSpan.FromSeconds(1);
+                    using (var updates = CancellationTokenSource.CreateLinkedTokenSource(token))
+                    {
+                        updates.CancelAfter(TimeSpan.FromSeconds(5));
+                        try
+                        {
+                            var snapshot = await connection.InvokeAsync<ServerUpdateSnapshotDto>(
+                                ServerSynchronization.SubscribeUpdates, updates.Token);
+                            ReceiveUpdate(snapshot);
+                        }
+                        catch (HubException)
+                        {
+                            // Older servers still support budget changes through the same connection.
+                            Notify(() => UpdateEventsUnavailable?.Invoke());
+                        }
+                        catch (OperationCanceledException) when (!token.IsCancellationRequested)
+                        {
+                            Notify(() => UpdateEventsUnavailable?.Invoke());
+                        }
+                    }
                     await closed.Task.WaitAsync(token);
                 }
                 catch (Exception error) when (error is HttpRequestException or IOException or
@@ -122,6 +180,17 @@ public sealed class BudgetEventConnection(ClientSettings settings) : IDisposable
                 catch (OperationCanceledException) when (!token.IsCancellationRequested)
                 {
                     // The connection attempt timed out. A later attempt gets a new transport.
+                }
+                finally
+                {
+                    if (connected)
+                    {
+                        Notify(() =>
+                        {
+                            IsSynchronized = false;
+                            Disconnected?.Invoke();
+                        });
+                    }
                 }
 
                 await Task.Delay(delay, token);

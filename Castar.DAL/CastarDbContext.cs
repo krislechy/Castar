@@ -32,7 +32,8 @@ namespace Castar.DAL
             MapTable(purchases, "Purchases");
             purchases.Ignore(x => x.MessageId);
             purchases.Property<long?>(MessageIdField).HasColumnName("MessageId");
-            purchases.HasIndex(nameof(Purchase.UserId), MessageIdField).HasDatabaseName("IX_Purchases_UserId_MessageId");
+            purchases.HasIndex(nameof(Purchase.TelegramOriginUserId), MessageIdField)
+                .HasDatabaseName("IX_Purchases_TelegramOriginUserId_MessageId");
             purchases.Property(x => x.Name).HasMaxLength(400);
             purchases.Property(x => x.TotalSum).HasPrecision(24, 2);
             purchases.Property(x => x.Revision).HasDefaultValue(0L).IsConcurrencyToken();
@@ -90,13 +91,27 @@ namespace Castar.DAL
 
         private void StampChanges()
         {
-            var now = DateTime.Now;
+            var now = DateTime.UtcNow;
             foreach (var entry in ChangeTracker.Entries<BaseDbModel>())
             {
                 if (entry.State == EntityState.Added)
                     entry.Property(x => x.CreatedOn).CurrentValue = now;
                 else if (entry.State == EntityState.Modified)
                     entry.Property(x => x.ModifiedOn).CurrentValue = now;
+            }
+            foreach (var entry in ChangeTracker.Entries<Purchase>())
+            {
+                var purchase = entry.Entity;
+                if (entry.State == EntityState.Added && purchase.RateDate is null ||
+                    entry.Property(x => x.AddedOn).IsModified)
+                    purchase.RateDate = purchase.ReceiptDate ??
+                        (purchase.AddedOn is { } date ? BudgetTime.BelgradeDate(date) : null);
+            }
+            foreach (var entry in ChangeTracker.Entries<Income>())
+            {
+                if (entry.State == EntityState.Added && entry.Entity.RateDate is null ||
+                    entry.Property(x => x.AddedOn).IsModified)
+                    entry.Entity.RateDate = BudgetTime.BelgradeDate(entry.Entity.AddedOn);
             }
         }
 

@@ -22,14 +22,14 @@
         <Button Content="{DynamicResource Svg.LeftArrow}" Grid.Column="1" Click="OffsetMonthButton_Click"
                             Width="{Binding ActualHeight,RelativeSource={RelativeSource Mode=Self}}"
                             CommandParameter="-1" ToolTip="Предыдущий месяц" AutomationProperties.Name="Предыдущий месяц"/>
-        <DatePicker Grid.Column="2" SelectedDate="{Binding RangeDate.StartDate,RelativeSource={RelativeSource AncestorType=UserControl},Mode=OneWay}" 
-                    SelectedDateChanged="DatePicker_SelectedStartDateChanged"/>
+        <local:CastarDatePicker Grid.Column="2" SelectedDate="{Binding RangeDate.StartDate.Date,RelativeSource={RelativeSource AncestorType=UserControl},Mode=OneWay}"
+                               SelectedDateChanged="DatePicker_SelectedStartDateChanged" AutomationProperties.Name="Начало периода"/>
         <TextBlock Grid.Column="3" Text="—" Margin="10,-5,10,0" 
                                VerticalAlignment="Center" 
                                FontSize="20" 
                                Foreground="{StaticResource Foreground.White}"/>
-        <DatePicker Grid.Column="4" SelectedDate="{Binding RangeDate.EndDate,RelativeSource={RelativeSource AncestorType=UserControl},Mode=OneWay}"
-                    SelectedDateChanged="DatePicker_SelectedEndDateChanged"/>
+        <local:CastarDatePicker Grid.Column="4" SelectedDate="{Binding RangeDate.EndDate.Date,RelativeSource={RelativeSource AncestorType=UserControl},Mode=OneWay}"
+                               SelectedDateChanged="DatePicker_SelectedEndDateChanged" AutomationProperties.Name="Конец периода"/>
         <Button Content="{DynamicResource Svg.RightArrow}" Grid.Column="5" Click="OffsetMonthButton_Click" 
                             Width="{Binding ActualHeight,RelativeSource={RelativeSource Mode=Self}}"
                             CommandParameter="1" ToolTip="Следующий месяц" AutomationProperties.Name="Следующий месяц"/>

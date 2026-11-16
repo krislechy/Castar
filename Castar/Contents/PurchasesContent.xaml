@@ -20,36 +20,38 @@
             </Style.Triggers>
         </Style>
         <ContextMenu x:Key="PurchaseRowMenu" Opened="PurchaseActionMenu_Opened">
-            <MenuItem Header="Показать исходный запрос" Click="ShowReceiptSource_Click"
+            <MenuItem Header="Показать исходные данные" Click="ShowReceiptSource_Click"
                       Visibility="{Binding HasReceiptSource, Converter={StaticResource PurchaseActionVisibility}}"/>
             <MenuItem Header="Удалить покупку" Icon="{StaticResource Svg.Remove}" Click="DeletePurchase_Click"
                       Visibility="{Binding CanDelete, Converter={StaticResource PurchaseActionVisibility}}"/>
         </ContextMenu>
         <ContextMenu x:Key="PurchaseItemRowMenu" Opened="PurchaseActionMenu_Opened">
-            <MenuItem Header="Удалить позицию" Icon="{StaticResource Svg.Remove}" Click="DeletePurchaseItem_Click"/>
+            <MenuItem Header="Удалить товар" Icon="{StaticResource Svg.Remove}" Click="DeletePurchaseItem_Click"/>
         </ContextMenu>
     </UserControl.Resources>
     <Grid>
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto"/>
             <RowDefinition Height="Auto"/>
-            <RowDefinition Height="Auto"/>
             <RowDefinition/>
         </Grid.RowDefinitions>
-        <c:IslandPanel IsMainTitle="True" Title="Расходы"/>
-        <DockPanel x:Name="PeriodBar" Grid.Row="1" Style="{StaticResource BudgetPeriodBar}">
-            <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Margin="12,0,0,0">
+        <Border Style="{StaticResource BudgetHeaderSurface}">
+          <WrapPanel x:Name="PeriodBar" Style="{StaticResource BudgetPeriodBar}">
+            <TextBlock Text="Расходы" Style="{StaticResource BudgetHeaderTitle}"/>
+            <Button Content="Добавить" Click="AddPurchase_Click" Margin="0,0,12,0" VerticalAlignment="Center"/>
+            <c:SelectorRangeDates x:Name="Dates" VerticalAlignment="Center"
+                                  DateRangeChanged="Dates_DateRangeChanged"/>
+            <StackPanel Orientation="Horizontal" Margin="12,0,0,0">
                 <TextBlock x:Name="ExpenseTotal" VerticalAlignment="Center" FontWeight="SemiBold"
                            Foreground="{DynamicResource Highlight}" AutomationProperties.Name="Сумма расходов за период"/>
                 <ContentControl x:Name="ExpenseTotalWarning" Style="{StaticResource ExpenseAmountWarning}"/>
             </StackPanel>
-            <c:SelectorRangeDates x:Name="Dates" HorizontalAlignment="Left" VerticalAlignment="Center"
-                                  DateRangeChanged="Dates_DateRangeChanged"/>
-        </DockPanel>
-        <TextBlock x:Name="StatusText" Grid.Row="2" Margin="{StaticResource BudgetStatusMargin}"
+          </WrapPanel>
+        </Border>
+        <TextBlock x:Name="StatusText" Grid.Row="1" Margin="{StaticResource BudgetStatusMargin}"
                    Foreground="{DynamicResource Warning.Svg.Brush}" TextWrapping="Wrap"
                    Visibility="Collapsed" AutomationProperties.LiveSetting="Polite"/>
-        <Grid x:Name="BudgetContent" Grid.Row="3" Margin="{StaticResource BudgetContentMargin}">
+        <Grid x:Name="BudgetContent" Grid.Row="2" Margin="{StaticResource BudgetContentMargin}">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="4*"/>
                 <ColumnDefinition Width="8"/>
@@ -59,6 +61,11 @@
                       SelectionMode="Single" SelectionChanged="PurchasesList_SelectionChanged"
                       ScrollViewer.HorizontalScrollBarVisibility="Disabled"
                       AutomationProperties.Name="Покупки за период">
+                <ListView.ContextMenu>
+                    <ContextMenu>
+                        <MenuItem Header="Добавить покупку" Click="AddPurchase_Click"/>
+                    </ContextMenu>
+                </ListView.ContextMenu>
                 <ListView.ItemContainerStyle>
                     <Style TargetType="ListViewItem" BasedOn="{StaticResource BudgetListItem}">
                         <EventSetter Event="ContextMenuOpening" Handler="PurchaseActionMenu_Opening"/>
@@ -70,17 +77,24 @@
                     <DataTemplate>
                         <Grid Margin="4,0">
                             <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto"/>
                                 <ColumnDefinition/>
                                 <ColumnDefinition Width="Auto"/>
                             </Grid.ColumnDefinitions>
-                            <StackPanel>
-                                <TextBlock Text="{Binding Name}" ToolTip="{Binding Name}"
-                                           TextTrimming="CharacterEllipsis" FontWeight="SemiBold"
-                                           Foreground="{DynamicResource Foreground.White}"/>
+                            <c:UserAvatar Width="30" Height="30" Margin="0,0,8,0" VerticalAlignment="Center"
+                                          Photo="{Binding OwnerAvatar, Converter={StaticResource UserAvatarImageConverter}}"
+                                          UserName="{Binding OwnerName}" ToolTip="{Binding OwnerName}"/>
+                            <StackPanel Grid.Column="1">
+                                <DockPanel>
+                                    <TextBlock Style="{StaticResource BudgetEditedMarker}"/>
+                                    <TextBlock Text="{Binding Name}" ToolTip="{Binding Name}"
+                                               TextTrimming="CharacterEllipsis" FontWeight="SemiBold"
+                                               Foreground="{DynamicResource Foreground.White}"/>
+                                </DockPanel>
                                 <TextBlock Text="{Binding AddedOn, StringFormat={}{0:dd.MM.yyyy HH:mm}}"
                                            Margin="0,3,0,0"/>
                             </StackPanel>
-                            <StackPanel Grid.Column="1" Orientation="Horizontal" Margin="16,0,0,0" VerticalAlignment="Center">
+                            <StackPanel Grid.Column="2" Orientation="Horizontal" Margin="16,0,0,0" VerticalAlignment="Center">
                                 <c:MoneyAmount Display="{Binding Amount}" FontWeight="SemiBold"/>
                                 <ContentControl Style="{StaticResource ExpenseAmountWarning}" ToolTip="{Binding AmountWarning}"/>
                             </StackPanel>
@@ -92,7 +106,7 @@
                        Margin="20" TextWrapping="Wrap" TextAlignment="Center"
                        HorizontalAlignment="Center" VerticalAlignment="Center" IsHitTestVisible="False"
                        Foreground="{DynamicResource Foreground.Gray}" Visibility="Collapsed"/>
-            <c:IslandPanel x:Name="DetailsPanel" Grid.Column="2" Margin="0" Title="Позиции"
+            <c:IslandPanel x:Name="DetailsPanel" Grid.Column="2" Margin="0" Title="Товары"
                            IsEnabled="{Binding HasItems, ElementName=PurchasesList}">
                 <Grid>
                     <TextBlock Text="Выберите покупку"
@@ -129,9 +143,9 @@
                             <RowDefinition/>
                         </Grid.RowDefinitions>
                         <StackPanel Margin="8,0,8,8">
-                            <TextBlock Text="{Binding RetailPlace, TargetNullValue=''}" TextWrapping="Wrap"
+                            <TextBlock Text="{Binding RetailPlace, TargetNullValue=''}" Style="{StaticResource BudgetOptionalText}"
                                        Foreground="{DynamicResource Foreground.White}" FontWeight="SemiBold"/>
-                            <TextBlock Text="{Binding RetailPlaceAddress, TargetNullValue=''}" TextWrapping="Wrap"/>
+                            <TextBlock Text="{Binding RetailPlaceAddress, TargetNullValue=''}" Style="{StaticResource BudgetOptionalText}"/>
                             <c:MoneyAmount Display="{Binding Amount}" AmountAlignment="Left" Margin="0,3,0,0"
                                            FontWeight="SemiBold" AutomationProperties.Name="Итог чека"/>
                         </StackPanel>
@@ -149,7 +163,12 @@
                         </Grid>
                         <ListView Grid.Row="2" Style="{StaticResource BudgetList}" ItemsSource="{Binding Items}"
                                   ScrollViewer.HorizontalScrollBarVisibility="Disabled"
-                                  AutomationProperties.Name="Позиции выбранной покупки">
+                                  AutomationProperties.Name="Товары выбранной покупки">
+                            <ListView.ContextMenu>
+                                <ContextMenu>
+                                    <MenuItem Header="Добавить товар" Click="AddPurchaseItem_Click"/>
+                                </ContextMenu>
+                            </ListView.ContextMenu>
                             <ListView.ItemContainerStyle>
                                 <Style TargetType="ListViewItem" BasedOn="{StaticResource BudgetListItem}">
                                     <EventSetter Event="ContextMenuOpening" Handler="PurchaseActionMenu_Opening"/>
@@ -166,8 +185,11 @@
                                             <ColumnDefinition Width="Auto" SharedSizeGroup="ItemPrice"/>
                                             <ColumnDefinition Width="Auto" SharedSizeGroup="ItemTotal"/>
                                         </Grid.ColumnDefinitions>
-                                        <TextBlock Text="{Binding Name}" ToolTip="{Binding Name}"
-                                                   TextTrimming="CharacterEllipsis"/>
+                                        <DockPanel>
+                                            <TextBlock Style="{StaticResource BudgetEditedMarker}"/>
+                                            <TextBlock Text="{Binding Name}" ToolTip="{Binding Name}"
+                                                       TextTrimming="CharacterEllipsis"/>
+                                        </DockPanel>
                                         <TextBlock Grid.Column="1" Text="{Binding Quantity, StringFormat={}{0:0.###}}"
                                                    Margin="12,0,0,0" TextAlignment="Right"/>
                                         <c:MoneyAmount Grid.Column="2" Display="{Binding Price}" Margin="12,0,0,0"/>

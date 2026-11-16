@@ -1,6 +1,5 @@
 using System.Security.Cryptography;
 using System.Text;
-using System.Text.Json;
 using Castar.Domain.Models.DataBase;
 using Castar.Domain.Models.SettingsModel;
 using Microsoft.Data.Sqlite;
@@ -23,9 +22,12 @@ namespace Castar.DAL.Repositories.DataBase
 
         public Task<Purchase?> FindManualByMessage(Guid userId, long messageId, CancellationToken cancellationToken) =>
             WithDetails(Context.Purchases)
-                .Where(x => x.UserId == userId && EF.Property<long?>(x, CastarDbContext.MessageIdField) == messageId
+                .Where(x => x.TelegramOriginUserId == userId && EF.Property<long?>(x, CastarDbContext.MessageIdField) == messageId
                     && x.RawData == null && EF.Property<byte[]?>(x, CastarDbContext.ReceiptKey) == null)
                 .OrderBy(x => x.CreatedOn).ThenBy(x => x.Id).FirstOrDefaultAsync(cancellationToken);
+
+        public Task<Purchase?> FindWithItemsAsync(Guid id, CancellationToken cancellationToken) =>
+            WithItems(Context.Purchases.AsNoTracking()).SingleOrDefaultAsync(purchase => purchase.Id == id, cancellationToken);
         public override async Task<Purchase> Add(Purchase purchase, CancellationToken cancellationToken = default)
         {
             purchase.RecalculateManualTotals();
@@ -178,7 +180,7 @@ namespace Castar.DAL.Repositories.DataBase
         public async Task<PurchaseMutationResult> EditPurchaseAsync(
             Guid purchaseId, long expectedRevision, string name, string? retailPlace, string? retailPlaceAddress,
             DateTime addedOn, string? currency = null, ManualCurrencySettings? currencyPolicy = null,
-            CancellationToken cancellationToken = default)
+            CancellationToken cancellationToken = default, Guid? userId = null, DateTime? legacyDate = null)
         {
             var purchase = await WithItems(Context.Purchases)
                 .SingleOrDefaultAsync(x => x.Id == purchaseId, cancellationToken);
@@ -186,6 +188,15 @@ namespace Castar.DAL.Repositories.DataBase
                 return PurchaseMutationResult.NotFound;
             if (purchase.Revision != expectedRevision)
                 return PurchaseMutationResult.Conflict;
+            if (legacyDate is { } local && purchase.AddedOn is { } current &&
+                BudgetTime.InZone(current, BudgetTime.Belgrade) == local)
+                addedOn = current;
+
+            var ownerId = userId ?? purchase.UserId;
+            var changingOwner = ownerId != purchase.UserId;
+            if (changingOwner &&
+                !await Context.Users.AnyAsync(owner => owner.Id == ownerId, cancellationToken))
+                return PurchaseMutationResult.InvalidOwner;
 
             var updatedCurrency = purchase.Currency;
             if (currency is not null)
@@ -199,7 +210,7 @@ namespace Castar.DAL.Repositories.DataBase
 
             if (purchase.Name == name && purchase.RetailPlace == retailPlace &&
                 purchase.RetailPlaceAddress == retailPlaceAddress && purchase.AddedOn == addedOn &&
-                purchase.Currency == updatedCurrency)
+                purchase.Currency == updatedCurrency && !changingOwner)
                 return PurchaseMutationResult.Applied;
 
             if (IsFiscal(Context, purchase))
@@ -209,8 +220,17 @@ namespace Castar.DAL.Repositories.DataBase
             purchase.RetailPlaceAddress = retailPlaceAddress;
             purchase.AddedOn = addedOn;
             purchase.Currency = updatedCurrency;
+            purchase.UserId = ownerId;
             purchase.Revision = checked(purchase.Revision + 1);
-            await Context.SaveChangesAsync(cancellationToken);
+            try
+            {
+                await Context.SaveChangesAsync(cancellationToken);
+            }
+            catch (DbUpdateException error) when (changingOwner &&
+                error.InnerException is SqliteException { SqliteExtendedErrorCode: 787 })
+            {
+                return PurchaseMutationResult.InvalidOwner;
+            }
             return PurchaseMutationResult.Applied;
         }
 
@@ -256,6 +276,35 @@ namespace Castar.DAL.Repositories.DataBase
             return await Context.Purchases.AnyAsync(x => x.RawData == padded);
         }
 
+        public async Task<PurchaseMutationResult> AddPurchaseItemAsync(Guid purchaseId, long expectedRevision,
+            string name, double quantity, decimal price, CancellationToken cancellationToken = default)
+        {
+            var purchase = await WithItems(Context.Purchases)
+                .SingleOrDefaultAsync(x => x.Id == purchaseId, cancellationToken);
+            if (purchase is null)
+                return PurchaseMutationResult.NotFound;
+            if (purchase.Revision != expectedRevision)
+                return PurchaseMutationResult.Conflict;
+
+            if (IsFiscal(Context, purchase))
+                PreserveOriginalReceipt(purchase);
+            var (unitPrice, sum) = purchase.CalculateManualItemAmounts(quantity, price);
+            var lineNumber = purchase.Items.Select(item =>
+                Context.Entry(item).Property<int?>(CastarDbContext.LineNumber).CurrentValue ?? -1)
+                .DefaultIfEmpty(-1).Max() + 1;
+            var item = new Item
+            {
+                PurchaseId = purchase.Id, Name = name, Quantity = quantity, Price = unitPrice, Sum = sum
+            };
+            purchase.Items.Add(item);
+            Context.Entry(item).State = EntityState.Added;
+            Context.Entry(item).Property<int?>(CastarDbContext.LineNumber).CurrentValue = lineNumber;
+            purchase.TotalSum = purchase.Items.Sum(line => line.Sum);
+            purchase.Revision = checked(purchase.Revision + 1);
+            await Context.SaveChangesAsync(cancellationToken);
+            return PurchaseMutationResult.Applied;
+        }
+
         private static IQueryable<Purchase> WithDetails(IQueryable<Purchase> purchases) =>
             WithItems(purchases.AsNoTrackingWithIdentityResolution().Include(x => x.User));
 
@@ -265,6 +314,8 @@ namespace Castar.DAL.Repositories.DataBase
 
         private void TrackNewPurchase(Purchase purchase)
         {
+            if (purchase.MessageId != 0)
+                purchase.TelegramOriginUserId ??= purchase.UserId;
             Context.Entry(purchase).State = EntityState.Added;
             var index = 0;
             foreach (var item in purchase.Items)
@@ -287,20 +338,7 @@ namespace Castar.DAL.Repositories.DataBase
 
         private static void PreserveOriginalReceipt(Purchase purchase)
         {
-            purchase.OriginalReceiptSnapshot ??= JsonSerializer.Serialize(new
-            {
-                purchase.Name,
-                purchase.RetailPlace,
-                purchase.RetailPlaceAddress,
-                purchase.AddedOn,
-                purchase.ReceiptDate,
-                purchase.Currency,
-                purchase.TotalSum,
-                Items = purchase.Items.Select(item => new
-                {
-                    item.Id, item.Name, item.Category, item.Quantity, item.Price, item.Sum
-                })
-            });
+            purchase.OriginalReceiptSnapshot ??= FiscalReceiptSnapshot.Capture(purchase);
         }
 
         private static string? DecodeLegacySource(byte[]? rawData)

@@ -30,12 +30,13 @@ internal sealed class BudgetStatistics(CastarServerClient server, HistoricalExch
 
         var entries = (await incomes).Select(income =>
         {
-            var date = DateOnly.FromDateTime(income.AddedOn);
-            return new Entry(true, income.Currency, income.Sum, date, date, []);
+            var date = DateOnly.FromDateTime(server.DisplayOperationDate(income.AddedOn, income.AddedOnUtc)!.Value);
+            return new Entry(true, income.Currency, income.Sum, date, income.RateDate ?? DateOnly.FromDateTime(income.AddedOn), []);
         }).Concat((await purchases).Select(purchase =>
         {
             var date = purchase.AddedOn is { } added ? DateOnly.FromDateTime(added) : purchase.ReceiptDate;
-            return new Entry(false, purchase.Currency, purchase.TotalSum, date, purchase.ReceiptDate ?? date, purchase.Items);
+            return new Entry(false, purchase.Currency, purchase.TotalSum, date,
+                purchase.RateDate ?? purchase.ReceiptDate ?? date, purchase.Items);
         })).ToArray();
         var rates = await exchangeRates.GetAsync(entries.Where(entry => entry.RateDate.HasValue)
             .Select(entry => (entry.Currency, entry.RateDate!.Value)), displayCurrency, token).ConfigureAwait(false);

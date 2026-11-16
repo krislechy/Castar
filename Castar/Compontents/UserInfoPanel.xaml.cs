@@ -100,31 +100,39 @@ namespace Castar.Compontents
             }
         }
 
-        private void ChooseImageButton_Click(object sender, RoutedEventArgs e)
+        private async void ChooseImageButton_Click(object sender, RoutedEventArgs e)
         {
-            var folderDialog = new OpenFileDialog();
-            folderDialog.Filter = "Изображение (*.png;*.jpg)|*.png;*.jpg";
-            var result = folderDialog.ShowDialog(Window.GetWindow(this));
-            if (result.HasValue && result.Value == true)
+            var chooser = new OpenFileDialog { Filter = "Изображения (*.png;*.jpg;*.jpeg)|*.png;*.jpg;*.jpeg" };
+            if (chooser.ShowDialog(Window.GetWindow(this)) != true || DataContext is not User user)
+                return;
+
+            try
             {
-                try
+                var image = await Task.Run(() => UserAvatarEditor.ReadImage(chooser.FileName));
+                if (!IsVisible || !ReferenceEquals(DataContext, user))
+                    return;
+
+                var editor = new UserAvatarEditor(image);
+                var accepted = await PopupDialog.ShowNested(this, editor, options =>
                 {
-                    var file = new FileInfo(folderDialog.FileName);
-                    if (file.Length > 1024 * 1024)
-                    {
-                        PopupDialog.SetContentWarning(this, "Выберите изображение размером до 1 МБ.");
-                        return;
-                    }
-                    var user = (User)DataContext;
-                    user.ImageRaw = File.ReadAllBytes(file.FullName);
+                    options.Title = "Аватар";
+                    options.AllowMissClick = false;
+                    options.SuccessButton.SuccessConfirmButtonText = "Применить";
+                    return options;
+                }, editor.Validate);
+
+                if (accepted == true && editor.Result is { } cropped && ReferenceEquals(DataContext, user))
+                {
+                    user.ImageRaw = cropped;
                     DataContext = null;
                     DataContext = user;
                     PopupDialog.SetContentWarning(this, null);
                 }
-                catch (Exception error) when (error is IOException or UnauthorizedAccessException)
-                {
-                    PopupDialog.SetContentWarning(this, "Не удалось открыть изображение.");
-                }
+            }
+            catch (Exception error) when (error is IOException or UnauthorizedAccessException or FormatException
+                or NotSupportedException or ArgumentException)
+            {
+                PopupDialog.SetContentWarning(this, "Не удалось открыть изображение.");
             }
         }
     }

@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Globalization;
+using System.IO;
 using System.Linq;
 using System.Net;
 using System.Net.Http;
@@ -131,17 +132,57 @@ public sealed class CastarServerClient(ClientSettings settings) : IDisposable
         return (ToUser(user), user.TelegramNotificationsEnabled.HasValue);
     }
 
-    internal async Task<byte[]?> GetUserAvatarAsync(Guid id)
+    internal Task<byte[]?> GetUserAvatarAsync(Guid id) => GetUserAvatarAsync(id, CancellationToken.None);
+
+    internal async Task<byte[]?> GetUserAvatarAsync(Guid id, CancellationToken cancellationToken)
     {
         const int maxAvatarSize = 1024 * 1024;
         using var request = CreateRequest(HttpMethod.Get, ParseServerUrl(settings.ServerUrl), settings.ApiKey, $"api/users/{id:D}/avatar");
-        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(8));
+        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        timeout.CancelAfter(TimeSpan.FromSeconds(8));
         using var response = await TransportFor(request).SendAsync(request, HttpCompletionOption.ResponseHeadersRead, timeout.Token);
         if (response.StatusCode == HttpStatusCode.NotFound || response.Content.Headers.ContentLength > maxAvatarSize)
             return null;
         EnsureSuccess(response);
         await response.Content.LoadIntoBufferAsync(maxAvatarSize, timeout.Token);
         return await response.Content.ReadAsByteArrayAsync(timeout.Token);
+    }
+
+    internal async Task DownloadDatabaseBackupAsync(string fileName, CancellationToken cancellationToken)
+    {
+        using var request = CreateRequest(HttpMethod.Post, ParseServerUrl(settings.ServerUrl), settings.ApiKey, "api/backup");
+        using var response = await TransportFor(request).SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
+        if (response.StatusCode is HttpStatusCode.NotFound or HttpStatusCode.MethodNotAllowed)
+            throw new HttpRequestException("Сервер не поддерживает резервное копирование.", null, response.StatusCode);
+        EnsureSuccess(response);
+        if (response.Content.Headers.ContentType?.MediaType != "application/vnd.sqlite3"
+            || response.Content.Headers.ContentLength is not > 0)
+            throw new HttpRequestException("Сервер вернул неверный формат резервной копии.");
+
+        var destination = Path.GetFullPath(fileName);
+        var temporary = Path.Combine(Path.GetDirectoryName(destination)!, $".castar-backup-{Guid.NewGuid():N}.part");
+        var created = false;
+        try
+        {
+            await using (var file = new FileStream(temporary, FileMode.CreateNew, FileAccess.Write, FileShare.None,
+                bufferSize: 81920, FileOptions.Asynchronous | FileOptions.SequentialScan))
+            {
+                created = true;
+                await response.Content.CopyToAsync(file, cancellationToken);
+                if (file.Length != response.Content.Headers.ContentLength)
+                    throw new HttpRequestException("Соединение оборвалось до получения полной резервной копии.");
+                await file.FlushAsync(cancellationToken);
+            }
+
+            cancellationToken.ThrowIfCancellationRequested();
+            File.Move(temporary, destination, overwrite: true);
+            created = false;
+        }
+        finally
+        {
+            if (created)
+                File.Delete(temporary);
+        }
     }
 
     public async Task<User> UpdateUserAsync(User user, bool updateTelegramNotifications = false)
@@ -168,13 +209,31 @@ public sealed class CastarServerClient(ClientSettings settings) : IDisposable
     internal Task<IncomeDto[]> GetIncomeRowsAsync(DateTime start, DateTime finish, CancellationToken cancellationToken) =>
         SendAsync<IncomeDto[]>(HttpMethod.Get, $"api/incomes?{DateQuery(start, finish)}", cancellationToken: cancellationToken);
 
-    public Task<PurchaseDto[]> GetPurchasesAsync(DateTime start, DateTime finish, CancellationToken cancellationToken = default) =>
-        SendAsync<PurchaseDto[]>(HttpMethod.Get, $"api/purchases?{DateQuery(start, finish)}", cancellationToken: cancellationToken);
+    public async Task<PurchaseDto[]> GetPurchasesAsync(DateTime start, DateTime finish, CancellationToken cancellationToken = default)
+    {
+        var purchases = await SendAsync<PurchaseDto[]>(HttpMethod.Get, $"api/purchases?{DateQuery(start, finish)}",
+            cancellationToken: cancellationToken);
+        return purchases.Select(purchase => purchase with
+        {
+            RateDate = purchase.RateDate ?? purchase.ReceiptDate ??
+                (purchase.AddedOn is { } original ? DateOnly.FromDateTime(original) : null),
+            AddedOn = DisplayOperationDate(purchase.AddedOn, purchase.AddedOnUtc)
+        }).ToArray();
+    }
 
     public Task<bool> EditPurchaseAsync(Guid purchaseId, long revision, PurchaseWriteDto purchase,
         CancellationToken cancellationToken = default) =>
         SendMutationAsync(HttpMethod.Put, FormattableString.Invariant($"api/purchases/{purchaseId:D}?revision={revision}"),
-            cancellationToken, purchase);
+            cancellationToken, WritePurchaseTime(purchase));
+
+    public Task<bool> CreatePurchaseAsync(PurchaseCreateDto draft, CancellationToken cancellationToken) =>
+        SendMutationAsync(HttpMethod.Post, "api/purchases", cancellationToken,
+            draft with { Purchase = WritePurchaseTime(draft.Purchase) });
+
+    public Task<bool> AddPurchaseItemAsync(Guid purchaseId, long revision, PurchaseItemWriteDto item,
+        CancellationToken cancellationToken) =>
+        SendMutationAsync(HttpMethod.Post, FormattableString.Invariant($"api/purchases/{purchaseId:D}/items?revision={revision}"),
+            cancellationToken, item);
 
     public Task<bool> EditPurchaseItemAsync(Guid purchaseId, Guid itemId, long revision, PurchaseItemWriteDto item,
         CancellationToken cancellationToken = default) =>
@@ -220,19 +279,34 @@ public sealed class CastarServerClient(ClientSettings settings) : IDisposable
         SendAsync<ServerUpdateStatusDto>(HttpMethod.Post, "api/server-update",
             cancellationToken: cancellationToken, readProblemDetails: true);
 
-    private static string DateQuery(DateTime start, DateTime finish)
+    private string DateQuery(DateTime start, DateTime finish)
     {
-        const string format = "yyyy-MM-ddTHH:mm:ss.fffffff";
-        var first = Uri.EscapeDataString(start.ToString(format, CultureInfo.InvariantCulture));
-        var last = Uri.EscapeDataString(finish.ToString(format, CultureInfo.InvariantCulture));
-        return $"start={first}&finish={last}";
+        var first = PeriodBoundary(start, 1);
+        var last = PeriodBoundary(finish, -1);
+        return $"start={Format(BudgetTime.InZone(first, BudgetTime.Belgrade))}&finish={Format(BudgetTime.InZone(last, BudgetTime.Belgrade))}" +
+            $"&startUtc={Format(first)}&finishUtc={Format(last)}";
+
+        static string Format(DateTime value) => Uri.EscapeDataString(value.ToString("O", CultureInfo.InvariantCulture));
+    }
+
+    private DateTime PeriodBoundary(DateTime local, int direction)
+    {
+        if (local == DateTime.MinValue || local == DateTime.MaxValue)
+            return BudgetTime.AsUtc(local);
+        var zone = settings.DisplayTimeZone;
+        local = DateTime.SpecifyKind(local, DateTimeKind.Unspecified);
+        while (zone.IsInvalidTime(local))
+            local = local.AddMinutes(direction);
+        if (direction < 0 && zone.IsAmbiguousTime(local))
+            return new DateTimeOffset(local, zone.GetAmbiguousTimeOffsets(local).Min()).UtcDateTime;
+        return BudgetTime.FromLocal(local, zone);
     }
 
     public async Task<Income> AddIncomeAsync(Income income) =>
         ToIncome(await SendAsync<IncomeDto>(HttpMethod.Post, "api/incomes", IncomeWrite(income)), income.User);
 
-    public async Task<Income> UpdateIncomeAsync(Income income) =>
-        ToIncome(await SendAsync<IncomeDto>(HttpMethod.Put, $"api/incomes/{income.Id:D}", IncomeWrite(income)), income.User);
+    public async Task<Income> UpdateIncomeAsync(Income income, DateTime? unchangedInstant = null) =>
+        ToIncome(await SendAsync<IncomeDto>(HttpMethod.Put, $"api/incomes/{income.Id:D}", IncomeWrite(income, unchangedInstant)), income.User);
 
     public Task<bool> DeleteIncomeAsync(Guid id) => DeleteAsync($"api/incomes/{id:D}");
 
@@ -334,8 +408,34 @@ public sealed class CastarServerClient(ClientSettings settings) : IDisposable
     private static UserWriteDto UserWrite(User user) =>
         new(user.TelegramId, user.Name, user.Sex, user.ColorRaw, user.ImageRaw);
 
-    private static IncomeWriteDto IncomeWrite(Income income) =>
-        new(income.User?.Id ?? income.UserId, income.Sum, income.Source, income.AddedOn) { Currency = income.Currency };
+    private IncomeWriteDto IncomeWrite(Income income, DateTime? unchangedInstant = null)
+    {
+        var instant = unchangedInstant ?? ReadSelectedTime(income.AddedOn);
+        return new(income.User?.Id ?? income.UserId, income.Sum, income.Source, BudgetTime.InZone(instant, BudgetTime.Belgrade))
+        {
+            Currency = income.Currency, AddedOnUtc = BudgetTime.AsUtc(instant)
+        };
+    }
+
+    private PurchaseWriteDto WritePurchaseTime(PurchaseWriteDto draft)
+    {
+        var instant = draft.AddedOnUtc?.UtcDateTime ?? ReadSelectedTime(draft.AddedOn);
+        return draft with { AddedOn = BudgetTime.InZone(instant, BudgetTime.Belgrade), AddedOnUtc = instant };
+    }
+
+    private DateTime ReadSelectedTime(DateTime local)
+    {
+        if (settings.DisplayTimeZone.IsInvalidTime(DateTime.SpecifyKind(local, DateTimeKind.Unspecified)))
+            throw new HttpRequestException("Это время пропущено при переводе часов. Укажите другое время.");
+        return BudgetTime.FromLocal(local, settings.DisplayTimeZone);
+    }
+
+    internal DateTime? DisplayOperationDate(DateTime? belgrade, DateTimeOffset? utc) =>
+        utc is { } instant ? BudgetTime.InZone(instant.UtcDateTime, settings.DisplayTimeZone)
+            : belgrade is { } date ? BudgetTime.InZone(ReadLegacyDate(date), settings.DisplayTimeZone) : null;
+
+    private static DateTime ReadLegacyDate(DateTime date) => date.Kind == DateTimeKind.Utc
+        ? date : BudgetTime.FromLocal(date, BudgetTime.Belgrade);
 
     private static User ToUser(UserDto dto) => new()
     {
@@ -347,7 +447,9 @@ public sealed class CastarServerClient(ClientSettings settings) : IDisposable
     private static Income ToIncome(IncomeDto dto, User? user) => new()
     {
         Id = dto.Id, UserId = dto.UserId, User = user ?? ToUser(dto.User), MessageId = dto.MessageId,
-        Sum = dto.Sum, Currency = dto.Currency, Source = dto.Source, AddedOn = dto.AddedOn
+        Sum = dto.Sum, Currency = dto.Currency, Source = dto.Source,
+        AddedOn = dto.AddedOnUtc?.UtcDateTime ?? ReadLegacyDate(dto.AddedOn),
+        RateDate = dto.RateDate ?? DateOnly.FromDateTime(dto.AddedOn)
     };
 
     public void Dispose()

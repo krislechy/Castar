@@ -81,9 +81,6 @@
                     <Grid.Style>
                         <Style TargetType="Grid">
                             <Style.Triggers>
-                                <DataTrigger Binding="{Binding IsVisible, ElementName=MainDialog}" Value="True">
-                                    <Setter Property="IsEnabled" Value="False"/>
-                                </DataTrigger>
                                 <DataTrigger Binding="{Binding IsVisible, ElementName=SettingsOverlay}" Value="True">
                                     <Setter Property="IsEnabled" Value="False"/>
                                 </DataTrigger>
@@ -126,17 +123,7 @@
                 </Grid>
                 <!--#region Popup-->
                 <Grid x:Name="SettingsOverlay" Visibility="Collapsed"
-                      KeyboardNavigation.TabNavigation="Cycle" KeyboardNavigation.ControlTabNavigation="Cycle"
                       PreviewKeyDown="SettingsOverlay_PreviewKeyDown">
-                    <Grid.Style>
-                        <Style TargetType="Grid">
-                            <Style.Triggers>
-                                <DataTrigger Binding="{Binding IsVisible, ElementName=MainDialog}" Value="True">
-                                    <Setter Property="IsEnabled" Value="False"/>
-                                </DataTrigger>
-                            </Style.Triggers>
-                        </Style>
-                    </Grid.Style>
                     <Border Background="#66000000" MouseLeftButtonDown="SettingsBackdrop_Click"/>
                     <Border Margin="58,12,12,12" MaxWidth="980" CornerRadius="8"
                             Background="{DynamicResource Main.Background.lvl2}"

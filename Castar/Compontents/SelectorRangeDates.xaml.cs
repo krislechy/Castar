@@ -122,18 +122,15 @@ namespace Castar.Compontents
             ChangeRangeDate(TypeRange.year, offset);
         }
 
-        bool isSkipped = false;
         private void DatePicker_SelectedStartDateChanged(object sender, SelectionChangedEventArgs e)
         {
-            var newStartDate = ((DatePicker)e.Source).SelectedDate;
-            if (newStartDate != null)
-                RangeDate = new RangeDate((DateTime)newStartDate, RangeDate.EndDate);
+            if (((CastarDatePicker)sender).SelectedDate is { } start)
+                RangeDate = new RangeDate(start.Date, RangeDate.EndDate);
         }
         private void DatePicker_SelectedEndDateChanged(object sender, SelectionChangedEventArgs e)
         {
-            var newEndDate = ((DatePicker)e.Source).SelectedDate;
-            if (newEndDate != null)
-                RangeDate = new RangeDate(RangeDate.StartDate, (DateTime)newEndDate);
+            if (((CastarDatePicker)sender).SelectedDate is { } end)
+                RangeDate = new RangeDate(RangeDate.StartDate, end.Date);
         }
     }
 }

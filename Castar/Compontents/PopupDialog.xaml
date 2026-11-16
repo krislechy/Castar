@@ -5,9 +5,6 @@
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008" 
              xmlns:local="clr-namespace:Castar.Compontents"
              mc:Ignorable="d" 
-             Background="#88000000"
-             KeyboardNavigation.TabNavigation="Cycle"
-             KeyboardNavigation.ControlTabNavigation="Cycle"
              KeyboardNavigation.DirectionalNavigation="Contained"
              IsVisibleChanged="Dialog_IsVisibleChanged"
              Unloaded="Dialog_Unloaded"
@@ -38,7 +35,7 @@
             </Style.Triggers>
         </Style>
     </UserControl.Resources>
-    <Grid>
+    <Grid Background="Transparent">
         <Border Background="{Binding Background,ElementName=border}" 
                 Width="{Binding ActualWidth,ElementName=border}" 
                 Height="{Binding ActualHeight,ElementName=border}"

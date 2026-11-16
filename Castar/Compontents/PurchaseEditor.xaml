@@ -5,12 +5,20 @@
     <StackPanel MinWidth="330">
         <TextBlock x:Name="NameLabel" Text="Название" Style="{StaticResource FormFieldLabel}"/>
         <TextBox x:Name="PurchaseName" MaxLength="400" AutomationProperties.LabeledBy="{Binding ElementName=NameLabel}"/>
+        <StackPanel x:Name="OwnerField" Visibility="Collapsed">
+            <TextBlock x:Name="OwnerLabel" Text="Пользователь" Style="{StaticResource FormFieldLabel}"/>
+            <c:CastarComboBox x:Name="PurchaseOwner" DisplayMemberPath="Name"
+                              AutomationProperties.LabeledBy="{Binding ElementName=OwnerLabel}"/>
+        </StackPanel>
         <TextBlock x:Name="PlaceLabel" Text="Место покупки" Style="{StaticResource FormFieldLabel}"/>
         <TextBox x:Name="RetailPlace" MaxLength="400" AutomationProperties.LabeledBy="{Binding ElementName=PlaceLabel}"/>
         <TextBlock x:Name="AddressLabel" Text="Адрес" Style="{StaticResource FormFieldLabel}"/>
         <TextBox x:Name="RetailPlaceAddress" MaxLength="400" AutomationProperties.LabeledBy="{Binding ElementName=AddressLabel}"/>
         <TextBlock x:Name="DateLabel" Text="Дата и время" Style="{StaticResource FormFieldLabel}"/>
-        <TextBox x:Name="OperationDate" AutomationProperties.LabeledBy="{Binding ElementName=DateLabel}"/>
+        <StackPanel Orientation="Horizontal">
+            <c:CastarDatePicker x:Name="OperationDate" AutomationProperties.Name="Дата"/>
+            <TextBox x:Name="OperationTime" Width="82" Margin="8,0,0,0" MaxLength="8" AutomationProperties.Name="Время"/>
+        </StackPanel>
         <StackPanel x:Name="CurrencyField" Visibility="Collapsed">
             <TextBlock x:Name="CurrencyLabel" Text="Валюта покупки" Style="{StaticResource FormFieldLabel}"/>
             <c:CastarComboBox x:Name="PurchaseCurrency" DisplayMemberPath="Label"

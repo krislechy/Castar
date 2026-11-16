@@ -8,6 +8,7 @@ namespace Castar.Domain.Models.DataBase
 
         public User User { get; private set; } = null!;
         public Guid UserId { get; set; }
+        public Guid? TelegramOriginUserId { get; set; }
         public string Name { get; set; } = string.Empty;
         public decimal TotalSum { get; set; }
         public long MessageId
@@ -23,6 +24,7 @@ namespace Castar.Domain.Models.DataBase
         public string? OriginalReceiptSnapshot { get; set; }
         public string? Currency { get; set; }
         public DateOnly? ReceiptDate { get; set; }
+        public DateOnly? RateDate { get; set; }
         public long Revision { get; set; }
         public ObservableCollection<Item> Items { get; set; } = new();
         public DateTime? AddedOn { get; set; }

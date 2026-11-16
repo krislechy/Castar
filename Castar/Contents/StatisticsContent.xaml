@@ -8,22 +8,23 @@
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto"/>
             <RowDefinition Height="Auto"/>
-            <RowDefinition Height="Auto"/>
             <RowDefinition/>
         </Grid.RowDefinitions>
-        <c:IslandPanel IsMainTitle="True" Title="Статистика"/>
-        <DockPanel x:Name="PeriodBar" Grid.Row="1" Style="{StaticResource BudgetPeriodBar}">
-            <c:CastarComboBox x:Name="CurrencyPicker" DockPanel.Dock="Right" MinWidth="88" Margin="12,0,0,0"
+        <Border Style="{StaticResource BudgetHeaderSurface}">
+          <WrapPanel x:Name="PeriodBar" Style="{StaticResource BudgetPeriodBar}">
+            <TextBlock Text="Статистика" Style="{StaticResource BudgetHeaderTitle}"/>
+            <c:SelectorRangeDates x:Name="Dates" VerticalAlignment="Center"
+                                  DateRangeChanged="Dates_DateRangeChanged"/>
+            <c:CastarComboBox x:Name="CurrencyPicker" MinWidth="88" Margin="12,0,0,0"
                               VerticalAlignment="Center"
                               Visibility="Collapsed" AutomationProperties.Name="Валюта статистики"
                               SelectionChanged="CurrencyPicker_SelectionChanged"/>
-            <c:SelectorRangeDates x:Name="Dates" HorizontalAlignment="Left" VerticalAlignment="Center"
-                                  DateRangeChanged="Dates_DateRangeChanged"/>
-        </DockPanel>
-        <TextBlock x:Name="MissingAmounts" Grid.Row="2" Margin="{StaticResource BudgetStatusMargin}"
+          </WrapPanel>
+        </Border>
+        <TextBlock x:Name="MissingAmounts" Grid.Row="1" Margin="{StaticResource BudgetStatusMargin}"
                    Foreground="{DynamicResource Warning.Svg.Brush}" TextWrapping="Wrap"
                    AutomationProperties.LiveSetting="Polite" Visibility="Collapsed"/>
-        <Grid x:Name="BudgetContent" Grid.Row="3" Margin="{StaticResource BudgetContentMargin}">
+        <Grid x:Name="BudgetContent" Grid.Row="2" Margin="{StaticResource BudgetContentMargin}">
             <TextBlock x:Name="StatusText" TextWrapping="Wrap" Margin="16"
                        Foreground="{DynamicResource Foreground.Gray}" TextAlignment="Center"
                        HorizontalAlignment="Center" VerticalAlignment="Center" AutomationProperties.LiveSetting="Polite"/>

@@ -18,7 +18,6 @@ using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
-using System.Windows.Threading;
 using AutomationProperties = System.Windows.Automation.AutomationProperties;
 
 namespace Castar.Contents;
@@ -30,7 +29,8 @@ public partial class StatisticsContent : UserControl
     private readonly ClientSettings settings;
     private readonly CartesianChart timelineChart;
     private readonly CartesianChart categoriesChart;
-    private readonly DispatcherTimer polling = new() { Interval = TimeSpan.FromSeconds(15) };
+    private bool listeningForChanges;
+    private bool dataStale = true;
     private CancellationTokenSource? activeRequest;
     private bool refreshPending;
     private StatisticsSnapshot? snapshot;
@@ -50,8 +50,11 @@ public partial class StatisticsContent : UserControl
         TimelinePanel.ObjectContent = timelineChart;
         categoriesChart = CreateChart("График расходов по категориям");
         CategoriesPanel.ObjectContent = categoriesChart;
-        polling.Tick += async (_, _) => await RefreshAfterServerChangeAsync();
-        server.ConnectionChanged += async (_, _) => await ResetAsync();
+        server.ConnectionChanged += async (_, _) =>
+        {
+            ShowSnapshot(null);
+            await ResetAsync();
+        };
         settings.PropertyChanged += Settings_PropertyChanged;
     }
 
@@ -69,30 +72,33 @@ public partial class StatisticsContent : UserControl
 
     private async Task StartAsync()
     {
-        if (!IsVisible || polling.IsEnabled)
+        if (!IsVisible || listeningForChanges)
             return;
 
-        polling.Start();
-        await ResetAsync();
+        listeningForChanges = true;
+        if (dataStale)
+            await RefreshAsync();
     }
 
     private void Stop()
     {
-        polling.Stop();
+        listeningForChanges = false;
         CancelRefresh();
+        Progress.IsLoading = false;
     }
 
     private async void Dates_DateRangeChanged(object sender, EventArgs e) => await ResetAsync();
 
     private async void Settings_PropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
-        if (e.PropertyName == nameof(ClientSettings.DisplayCurrency))
+        if (e.PropertyName is nameof(ClientSettings.DisplayCurrency) or nameof(ClientSettings.DisplayTimeZoneId))
             await ResetAsync();
     }
 
     private Task ResetAsync()
     {
-        if (!polling.IsEnabled)
+        dataStale = true;
+        if (!listeningForChanges)
             return Task.CompletedTask;
 
         CancelRefresh();
@@ -110,7 +116,8 @@ public partial class StatisticsContent : UserControl
 
     internal Task RefreshAfterServerChangeAsync()
     {
-        if (!polling.IsEnabled)
+        dataStale = true;
+        if (!listeningForChanges)
             return Task.CompletedTask;
         if (activeRequest is null)
             return RefreshAsync();
@@ -121,6 +128,7 @@ public partial class StatisticsContent : UserControl
 
     private async Task RefreshAsync()
     {
+        dataStale = true;
         var range = Dates.RangeDate;
         if (range.StartDate > range.EndDate)
         {
@@ -135,12 +143,15 @@ public partial class StatisticsContent : UserControl
         try
         {
             var result = await statistics.LoadAsync(range.StartDate, range.EndDate, settings.DisplayCurrency, request.Token);
-            if (request == activeRequest)
+            if (request == activeRequest && !refreshPending)
+            {
+                dataStale = false;
                 ShowSnapshot(result);
+            }
         }
         catch (Exception error) when (CastarServerClient.IsConnectionError(error))
         {
-            if (request == activeRequest)
+            if (request == activeRequest && !refreshPending)
             {
                 ShowSnapshot(null);
                 ShowStatus(CastarServerClient.DescribeError(error));
@@ -253,8 +264,8 @@ public partial class StatisticsContent : UserControl
         timelineChart.YAxes = [AmountAxis()];
         timelineChart.Series =
         [
-            DrawLine("Доходы", "Button.Foreground.Green", points.Select(point => (double?)point.Income), currency.Currency),
-            DrawLine("Расходы", "Highlight", points.Select(point => (double?)point.Expenses), currency.Currency)
+            DrawLine("Доходы", "Button.Foreground.Green", points.Select(point => point.Income), currency.Currency),
+            DrawLine("Расходы", "Highlight", points.Select(point => point.Expenses), currency.Currency)
         ];
     }
 
@@ -286,12 +297,13 @@ public partial class StatisticsContent : UserControl
         ];
         categoriesChart.Series =
         [
-            new RowSeries<double>
+            new RowSeries<decimal>
             {
-                Values = groups.Select(group => (double)group.Amount).ToArray(),
+                Values = groups.Select(group => group.Amount).ToArray(),
                 Name = "Расходы",
                 Fill = Paint("Highlight"),
-                XToolTipLabelFormatter = point => $"{point.Coordinate.PrimaryValue:N2} {currency.Currency}"
+                XToolTipLabelFormatter = point => groups[point.Index].Label,
+                YToolTipLabelFormatter = point => HistoricalExchangeRates.Format(point.Model, currency.Currency)
             }
         ];
     }
@@ -299,7 +311,7 @@ public partial class StatisticsContent : UserControl
     private static StatisticsTotal FormatTotal(string label, decimal? amount, string currency) =>
         new(label, amount is { } value ? HistoricalExchangeRates.Format(value, currency) : "Недоступно");
 
-    private LineSeries<double?> DrawLine(string name, string brush, IEnumerable<double?> values, string currency) =>
+    private LineSeries<decimal?> DrawLine(string name, string brush, IEnumerable<decimal?> values, string currency) =>
         new()
         {
             Values = values.ToArray(),
@@ -310,15 +322,26 @@ public partial class StatisticsContent : UserControl
             GeometryStroke = null,
             GeometrySize = 5,
             LineSmoothness = 0,
-            YToolTipLabelFormatter = point => $"{point.Coordinate.PrimaryValue:N2} {currency}"
+            YToolTipLabelFormatter = point => point.Model is { } amount ? HistoricalExchangeRates.Format(amount, currency) : ""
         };
 
     private Axis AmountAxis() => new()
     {
         LabelsPaint = Paint("Foreground.Gray"),
         SeparatorsPaint = Paint("Main.Background.lvl3", 1),
-        Labeler = value => value.ToString("G4", CultureInfo.CurrentCulture)
+        Labeler = FormatAmountLabel
     };
+
+    private static string FormatAmountLabel(double value)
+    {
+        var magnitude = Math.Abs(value);
+        var culture = CultureInfo.CurrentCulture;
+        if (magnitude >= 1_000_000)
+            return (value / 1_000_000).ToString("0.##", culture) + "M";
+        if (magnitude >= 1_000)
+            return (value / 1_000).ToString("0.##", culture) + "k";
+        return value.ToString("0.####", culture);
+    }
 
     private CartesianChart CreateChart(string name)
     {

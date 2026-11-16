@@ -17,6 +17,7 @@ public static class CastarSqliteSchema
         }
 
         await db.Database.MigrateAsync(cancellationToken);
+        await CastarSqliteCalendar.ConvertLegacyDatesAsync(db, cancellationToken);
     }
 
     private static async Task AdoptLegacySchemaAsync(CastarDbContext db, CancellationToken cancellationToken)

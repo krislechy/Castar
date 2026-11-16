@@ -20,7 +20,7 @@ namespace Castar.BL
                 : await GetUser(telegramUserId, CancellationToken.None);
             income.UserId = owner.Id;
             income.User = owner;
-            income.AddedOn = income.AddedOn == default ? DateTime.Now : income.AddedOn;
+            income.AddedOn = income.AddedOn == default ? DateTime.UtcNow : income.AddedOn;
             RoundLegacyAmount(income);
             return await incomesRepository.Add(income);
         }
@@ -36,7 +36,7 @@ namespace Castar.BL
             CancellationToken cancellationToken = default)
         {
             var user = await GetUser(telegramUserId, cancellationToken);
-            var now = DateTime.Now;
+            var now = DateTime.UtcNow;
             foreach (var income in incomes)
             {
                 if (income.AddedOn == default)

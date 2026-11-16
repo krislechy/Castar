@@ -20,6 +20,7 @@ internal sealed class ApiKeyStore : IDisposable
     private readonly byte[] configuredHash;
     private readonly SemaphoreSlim writes = new(1);
     private State current = new([], []);
+    public event Action<Guid>? Revoked;
 
     public ApiKeyStore(IConfiguration configuration)
     {
@@ -107,12 +108,14 @@ internal sealed class ApiKeyStore : IDisposable
             var next = WithoutKey(current, entry);
             await SaveAsync(next, token);
             Volatile.Write(ref current, next);
-            return true;
         }
         finally
         {
             writes.Release();
         }
+
+        Revoked?.Invoke(id);
+        return true;
     }
 
     private State ReconcileConfiguredKey(State stored)

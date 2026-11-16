@@ -7,6 +7,7 @@ namespace Castar.DAL.Repositories.DataBase
     {
         Task<IReadOnlyList<Purchase>> List(DateTime start, DateTime finish, bool includeDetails);
         Task<Purchase?> FindManualByMessage(Guid userId, long messageId, CancellationToken cancellationToken);
+        Task<Purchase?> FindWithItemsAsync(Guid id, CancellationToken cancellationToken);
         Task<Purchase?> AddReceipt(Purchase purchase, string provider, string receiptId, CancellationToken cancellationToken);
         Task<bool> SearchByRawData(byte[]? query);
         Task<(bool Found, string? ReceiptSource, bool IsLegacy)> GetReceiptSourceAsync(
@@ -18,9 +19,12 @@ namespace Castar.DAL.Repositories.DataBase
         Task<PurchaseMutationResult> EditPurchaseAsync(
             Guid purchaseId, long expectedRevision, string name, string? retailPlace, string? retailPlaceAddress,
             DateTime addedOn, string? currency = null, ManualCurrencySettings? currencyPolicy = null,
-            CancellationToken cancellationToken = default);
+            CancellationToken cancellationToken = default, Guid? userId = null, DateTime? legacyDate = null);
         Task<PurchaseMutationResult> EditPurchaseItemAsync(
             Guid purchaseId, Guid itemId, long expectedRevision, string name, double quantity, decimal price,
+            CancellationToken cancellationToken = default);
+        Task<PurchaseMutationResult> AddPurchaseItemAsync(
+            Guid purchaseId, long expectedRevision, string name, double quantity, decimal price,
             CancellationToken cancellationToken = default);
     }
 
@@ -29,6 +33,7 @@ namespace Castar.DAL.Repositories.DataBase
         Applied,
         NotFound,
         Conflict,
-        InvalidCurrency
+        InvalidCurrency,
+        InvalidOwner
     }
 }

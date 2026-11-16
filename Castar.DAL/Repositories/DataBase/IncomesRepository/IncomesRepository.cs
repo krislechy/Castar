@@ -33,6 +33,7 @@ namespace Castar.DAL.Repositories.DataBase
             current.AddedOn = income.AddedOn;
             await Context.SaveChangesAsync(cancellationToken);
             income.Currency = current.Currency;
+            income.RateDate = current.RateDate;
         }
 
         public async Task SaveMessageIncomes(

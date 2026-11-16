@@ -16,6 +16,8 @@ public sealed record ValidatePopupDialog(bool Result, string? Message);
 public partial class PopupDialog : UserControl
 {
     private readonly Queue<Request> pending = new();
+    private readonly Stack<(Request Request, IInputElement? Focus)> parents = new();
+    private Window? owner;
     private IInputElement? previousFocus;
     private bool closing;
 
@@ -88,17 +90,37 @@ public partial class PopupDialog : UserControl
             request.Warning = message;
     }
 
+    internal static Task<bool?> ShowNested(UIElement parent, object content, Func<Options, Options> options,
+        Func<ValidatePopupDialog>? validation = null)
+    {
+        if (Application.Current?.MainWindow is not MainWindow { MainDialog: { ActiveDialog: { } active, closing: false } dialog }
+            || !dialog.DialogContent.IsAncestorOf(parent))
+            return Task.FromResult<bool?>(null);
+
+        var request = new Request(content, TypeDialogEnum.Confirm, options(new Options()), validation);
+        dialog.parents.Push((active, Keyboard.FocusedElement));
+        dialog.Present(request);
+        return request.Completion.Task;
+    }
+
     private void ShowNext()
     {
         if (closing || ActiveDialog is not null || !pending.TryDequeue(out var request))
             return;
 
-        if (!IsVisible && Window.GetWindow(this) is { } owner)
+        if (!IsVisible && Window.GetWindow(this) is { } window)
         {
-            previousFocus = Keyboard.FocusedElement is UIElement focused && owner.IsAncestorOf(focused)
-                ? focused : FocusManager.GetFocusedElement(owner);
+            previousFocus = Keyboard.FocusedElement is UIElement focused && window.IsAncestorOf(focused)
+                ? focused : FocusManager.GetFocusedElement(window);
+            owner = window;
+            owner.AddHandler(Keyboard.PreviewGotKeyboardFocusEvent, new KeyboardFocusChangedEventHandler(KeepDialogFocus), true);
         }
 
+        Present(request);
+    }
+
+    private void Present(Request request, IInputElement? restoreFocus = null)
+    {
         SetValue(ActiveDialogPropertyKey, request);
         Visibility = Visibility.Visible;
 
@@ -106,10 +128,27 @@ public partial class PopupDialog : UserControl
         {
             if (ActiveDialog != request || closing || !IsVisible)
                 return;
+            if (restoreFocus is UIElement { IsVisible: true, IsEnabled: true } element && IsAncestorOf(element)
+                && Keyboard.Focus(element) == element)
+                return;
             if (request.Content is UIElement { } editor && editor.MoveFocus(new TraversalRequest(FocusNavigationDirection.First)))
                 return;
             (request.Type == TypeDialogEnum.Default ? DefaultButton : CancelButton).Focus();
         }, DispatcherPriority.Input);
+    }
+
+    private void KeepDialogFocus(object sender, KeyboardFocusChangedEventArgs e)
+    {
+        if (IsVisible && ActiveDialog is not null && e.NewFocus is Visual target
+            && PresentationSource.FromVisual(target) == PresentationSource.FromVisual(this)
+            && target != this && !IsAncestorOf(target))
+            e.Handled = true;
+    }
+
+    private void ReleaseDialogFocus()
+    {
+        owner?.RemoveHandler(Keyboard.PreviewGotKeyboardFocusEvent, new KeyboardFocusChangedEventHandler(KeepDialogFocus));
+        owner = null;
     }
 
     private void Close(bool? result)
@@ -124,6 +163,14 @@ public partial class PopupDialog : UserControl
         }
 
         closing = true;
+        if (parents.TryPop(out var parent))
+        {
+            Present(parent.Request, parent.Focus);
+            closing = false;
+            request.Completion.TrySetResult(result);
+            return;
+        }
+
         var fade = new DoubleAnimation(Opacity, 0, TimeSpan.FromMilliseconds(200), FillBehavior.Stop)
         {
             EasingFunction = new CubicEase { EasingMode = EasingMode.EaseInOut }
@@ -137,6 +184,7 @@ public partial class PopupDialog : UserControl
             if (pending.Count == 0)
             {
                 Visibility = Visibility.Collapsed;
+                ReleaseDialogFocus();
                 if (previousFocus is UIElement { IsVisible: true, IsEnabled: true } element)
                     Keyboard.Focus(element);
                 previousFocus = null;
@@ -162,11 +210,14 @@ public partial class PopupDialog : UserControl
         var request = ActiveDialog;
         closing = true;
         SetValue(ActiveDialogPropertyKey, null);
+        ReleaseDialogFocus();
         previousFocus = null;
         Visibility = Visibility.Collapsed;
         BeginAnimation(OpacityProperty, null);
 
         request?.Completion.TrySetResult(null);
+        while (parents.TryPop(out var parent))
+            parent.Request.Completion.TrySetResult(null);
         while (pending.TryDequeue(out var queued))
             queued.Completion.TrySetResult(null);
         closing = false;

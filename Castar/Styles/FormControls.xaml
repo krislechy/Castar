@@ -10,9 +10,47 @@
         <Setter Property="Margin" Value="0,8,0,0"/>
     </Style>
 
-    <Style x:Key="BudgetPeriodBar" TargetType="DockPanel">
-        <Setter Property="Margin" Value="12,8"/>
+    <Style x:Key="BudgetPeriodBar" TargetType="WrapPanel">
+        <Setter Property="Margin" Value="8,4"/>
         <Setter Property="MinHeight" Value="36"/>
+    </Style>
+
+    <Style x:Key="BudgetHeaderSurface" TargetType="Border">
+        <Setter Property="Background" Value="{DynamicResource Main.Background.lvl2}"/>
+        <Setter Property="BorderBrush" Value="{DynamicResource Main.Top.Panel}"/>
+        <Setter Property="BorderThickness" Value="0,0,0,1"/>
+    </Style>
+
+    <Style x:Key="BudgetHeaderTitle" TargetType="TextBlock">
+        <Setter Property="FontSize" Value="18"/>
+        <Setter Property="Foreground" Value="{DynamicResource Foreground.White}"/>
+        <Setter Property="VerticalAlignment" Value="Center"/>
+        <Setter Property="Margin" Value="4,0,14,0"/>
+    </Style>
+
+    <Style x:Key="BudgetOptionalText" TargetType="TextBlock">
+        <Setter Property="TextWrapping" Value="Wrap"/>
+        <Style.Triggers>
+            <Trigger Property="Text" Value="">
+                <Setter Property="Visibility" Value="Collapsed"/>
+            </Trigger>
+        </Style.Triggers>
+    </Style>
+
+    <Style x:Key="BudgetEditedMarker" TargetType="TextBlock">
+        <Setter Property="Text" Value="&#xE70F;"/>
+        <Setter Property="FontFamily" Value="Segoe MDL2 Assets"/>
+        <Setter Property="Foreground" Value="{DynamicResource Highlight}"/>
+        <Setter Property="VerticalAlignment" Value="Center"/>
+        <Setter Property="Margin" Value="0,0,5,0"/>
+        <Setter Property="ToolTip" Value="Изменено"/>
+        <Setter Property="AutomationProperties.Name" Value="Изменено"/>
+        <Setter Property="Visibility" Value="Collapsed"/>
+        <Style.Triggers>
+            <DataTrigger Binding="{Binding IsEdited}" Value="True">
+                <Setter Property="Visibility" Value="Visible"/>
+            </DataTrigger>
+        </Style.Triggers>
     </Style>
 
     <Thickness x:Key="BudgetStatusMargin">12,0,12,8</Thickness>

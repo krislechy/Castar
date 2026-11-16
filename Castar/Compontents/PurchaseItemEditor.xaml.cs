@@ -17,7 +17,7 @@ public partial class PurchaseItemEditor : UserControl
         Quantity.Text = item.Quantity.ToString(CultureInfo.CurrentCulture);
         UnitPrice.Text = item.Price.ToString(CultureInfo.CurrentCulture);
         if (HistoricalExchangeRates.IsCurrencyCode(currency))
-            PriceLabel.Text = $"Цена за единицу ({currency})";
+            PriceLabel.Text = $"Цена ({currency})";
     }
 
     internal PurchaseItemWriteDto? Result { get; private set; }
@@ -26,7 +26,7 @@ public partial class PurchaseItemEditor : UserControl
     {
         var name = ItemName.Text == originalName ? originalName : ItemName.Text.Trim();
         if (string.IsNullOrWhiteSpace(name) || name.Length > 400)
-            return new(false, "Укажите название позиции длиной до 400 символов.");
+            return new(false, "Укажите название товара длиной до 400 символов.");
         if (!double.TryParse(Quantity.Text, NumberStyles.Float, CultureInfo.CurrentCulture, out var quantity)
             || !double.IsFinite(quantity) || double.Abs(quantity) >= 1_000_000 || (decimal)quantity == 0)
             return new(false, "Укажите ненулевое количество с модулем меньше 1 000 000.");

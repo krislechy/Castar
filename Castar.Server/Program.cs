@@ -13,6 +13,8 @@ if (args is ["--stage-server-update", var updateWork, var updateStatus])
     return await ServerUpdateStaging.RunAsync(updateWork, updateStatus);
 if (args is ["--supervise-server", var installationRoot])
     return await DesktopServerSupervisor.RunAsync(installationRoot);
+if (args is ["--import-legacy", .. var importArguments])
+    return await LegacyImport.RunAsync(importArguments);
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -54,6 +56,8 @@ builder.Services.AddExchangeRates();
 builder.Services.AddSignalR();
 builder.Services.AddSingleton<BudgetEventPublisher>();
 builder.Services.AddHostedService(provider => provider.GetRequiredService<BudgetEventPublisher>());
+builder.Services.AddSingleton<ServerUpdateEvents>();
+builder.Services.AddHostedService(provider => provider.GetRequiredService<ServerUpdateEvents>());
 builder.Services.AddSingleton(settings);
 builder.Services.AddSingleton<IReceiptProvider, SerbiaReceiptProvider>();
 builder.Services.AddSingleton<IReceiptProvider>(_ => new Nalog(() =>

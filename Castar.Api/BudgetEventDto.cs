@@ -8,6 +8,8 @@ public sealed record BudgetEventDto(string Kind, bool Created)
     public Guid? EntityId { get; init; }
     public DateTime? AddedOn { get; init; }
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public DateTimeOffset? AddedOnUtc { get; init; }
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public BudgetOperationPreviewDto? Preview { get; init; }
 }
 

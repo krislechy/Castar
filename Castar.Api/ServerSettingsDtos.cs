@@ -9,6 +9,7 @@ public sealed record ServerSettingsDto(bool TelegramEnabled, bool TelegramConfig
     public bool? NalogConfigured { get; init; }
     public ManualCurrencySettingsDto? ManualCurrency { get; init; }
     public ReceiptAuthenticationProfileDto[]? ReceiptAuthenticationProfiles { get; init; }
+    public int? ReceiptRetryMinutes { get; init; }
     public TelegramPreferencesDto? TelegramPreferences { get; init; }
 }
 
@@ -57,6 +58,9 @@ public sealed record ServerSettingsWriteDto(
 
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public ReceiptAuthenticationWriteDto? ReceiptAuthentication { get; init; }
+
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public int? ReceiptRetryMinutes { get; init; }
 
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public ManualCurrencySettingsDto? ManualCurrency { get; init; }

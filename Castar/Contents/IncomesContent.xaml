@@ -37,14 +37,16 @@
             <RowDefinition/>
         </Grid.RowDefinitions>
         <Border Style="{StaticResource BudgetHeaderSurface}">
-          <WrapPanel x:Name="PeriodBar" Style="{StaticResource BudgetPeriodBar}">
-              <TextBlock Text="Доходы" Style="{StaticResource BudgetHeaderTitle}"/>
-              <Button Content="Добавить доход" Margin="0,0,12,0" VerticalAlignment="Center" Click="AddNewIncomeButton_Click"/>
-              <c:SelectorRangeDates x:Name="SelectorRangeDatesElement" VerticalAlignment="Center"
-                                    DateRangeChanged="SelectorRangeDates_DateRangeChanged"/>
-              <TextBlock Text="{Binding TotalSum}" Margin="12,0,0,0" VerticalAlignment="Center"
-                         FontWeight="SemiBold" Foreground="{DynamicResource Highlight}"/>
-          </WrapPanel>
+          <DockPanel>
+            <TextBlock DockPanel.Dock="Left" Text="Доходы" Style="{StaticResource BudgetHeaderTitle}"/>
+            <WrapPanel x:Name="PeriodBar" Style="{StaticResource BudgetPeriodBar}">
+                <Button Content="Добавить доход" Margin="0,0,12,0" VerticalAlignment="Center" Click="AddNewIncomeButton_Click"/>
+                <c:SelectorRangeDates x:Name="SelectorRangeDatesElement" VerticalAlignment="Center"
+                                      DateRangeChanged="SelectorRangeDates_DateRangeChanged"/>
+                <TextBlock Text="{Binding TotalSum}" Margin="12,0,0,0" VerticalAlignment="Center"
+                           FontWeight="SemiBold" Foreground="{DynamicResource Highlight}"/>
+            </WrapPanel>
+          </DockPanel>
         </Border>
         <Grid Grid.Row="1">
             <Grid.RowDefinitions>
@@ -110,7 +112,7 @@
             <TextBlock Text="{Binding Status}" Style="{StaticResource ViewStatus}"
                        Margin="{StaticResource BudgetStatusMargin}"/>
             <Grid x:Name="BudgetContent" Grid.Row="1" Margin="{StaticResource BudgetContentMargin}">
-                <ListView x:Name="IncomesListView" Style="{StaticResource BudgetList}"
+                <ListView x:Name="IncomesListView" Style="{StaticResource BudgetLedgerList}"
                           ItemsSource="{Binding Source={StaticResource IncomesSRC},UpdateSourceTrigger=PropertyChanged,Mode=OneWay}">
                     <ListView.ContextMenu>
                         <ContextMenu>
@@ -121,7 +123,7 @@
                         <GroupStyle>
                             <GroupStyle.HeaderTemplate>
                                 <DataTemplate>
-                                    <Border Background="{StaticResource Main.Background.lvl2}" Padding="20,10,30,10">
+                                    <Border Background="{StaticResource Main.Background.lvl2}" Padding="8,8">
                                         <Grid Margin="0,0,0,0" TextElement.FontSize="20" TextElement.Foreground="{StaticResource Highlight}">
                                             <Grid.ColumnDefinitions>
                                                 <ColumnDefinition Width="auto"/>

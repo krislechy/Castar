@@ -36,17 +36,19 @@
             <RowDefinition/>
         </Grid.RowDefinitions>
         <Border Style="{StaticResource BudgetHeaderSurface}">
-          <WrapPanel x:Name="PeriodBar" Style="{StaticResource BudgetPeriodBar}">
-            <TextBlock Text="Расходы" Style="{StaticResource BudgetHeaderTitle}"/>
-            <Button Content="Добавить" Click="AddPurchase_Click" Margin="0,0,12,0" VerticalAlignment="Center"/>
-            <c:SelectorRangeDates x:Name="Dates" VerticalAlignment="Center"
-                                  DateRangeChanged="Dates_DateRangeChanged"/>
-            <StackPanel Orientation="Horizontal" Margin="12,0,0,0">
-                <TextBlock x:Name="ExpenseTotal" VerticalAlignment="Center" FontWeight="SemiBold"
-                           Foreground="{DynamicResource Highlight}" AutomationProperties.Name="Сумма расходов за период"/>
-                <ContentControl x:Name="ExpenseTotalWarning" Style="{StaticResource ExpenseAmountWarning}"/>
-            </StackPanel>
-          </WrapPanel>
+          <DockPanel>
+            <TextBlock DockPanel.Dock="Left" Text="Расходы" Style="{StaticResource BudgetHeaderTitle}"/>
+            <WrapPanel x:Name="PeriodBar" Style="{StaticResource BudgetPeriodBar}">
+              <Button Content="Добавить" Click="AddPurchase_Click" Margin="0,0,12,0" VerticalAlignment="Center"/>
+              <c:SelectorRangeDates x:Name="Dates" VerticalAlignment="Center"
+                                    DateRangeChanged="Dates_DateRangeChanged"/>
+              <StackPanel Orientation="Horizontal" Margin="12,0,0,0">
+                  <TextBlock x:Name="ExpenseTotal" VerticalAlignment="Center" FontWeight="SemiBold"
+                             Foreground="{DynamicResource Highlight}" AutomationProperties.Name="Сумма расходов за период"/>
+                  <ContentControl x:Name="ExpenseTotalWarning" Style="{StaticResource ExpenseAmountWarning}"/>
+              </StackPanel>
+            </WrapPanel>
+          </DockPanel>
         </Border>
         <TextBlock x:Name="StatusText" Grid.Row="1" Margin="{StaticResource BudgetStatusMargin}"
                    Foreground="{DynamicResource Warning.Svg.Brush}" TextWrapping="Wrap"
@@ -57,7 +59,7 @@
                 <ColumnDefinition Width="8"/>
                 <ColumnDefinition Width="5*"/>
             </Grid.ColumnDefinitions>
-            <ListView x:Name="PurchasesList" Style="{StaticResource BudgetList}"
+            <ListView x:Name="PurchasesList" Style="{StaticResource BudgetLedgerList}"
                       SelectionMode="Single" SelectionChanged="PurchasesList_SelectionChanged"
                       ScrollViewer.HorizontalScrollBarVisibility="Disabled"
                       AutomationProperties.Name="Покупки за период">
@@ -106,7 +108,7 @@
                        Margin="20" TextWrapping="Wrap" TextAlignment="Center"
                        HorizontalAlignment="Center" VerticalAlignment="Center" IsHitTestVisible="False"
                        Foreground="{DynamicResource Foreground.Gray}" Visibility="Collapsed"/>
-            <c:IslandPanel x:Name="DetailsPanel" Grid.Column="2" Margin="0" Title="Товары"
+            <c:IslandPanel x:Name="DetailsPanel" Grid.Column="2" Margin="0" Title="Товары" Padding="0" HeaderMargin="8,8,8,10"
                            IsEnabled="{Binding HasItems, ElementName=PurchasesList}">
                 <Grid>
                     <TextBlock Text="Выберите покупку"
@@ -148,6 +150,10 @@
                             <TextBlock Text="{Binding RetailPlaceAddress, TargetNullValue=''}" Style="{StaticResource BudgetOptionalText}"/>
                             <c:MoneyAmount Display="{Binding Amount}" AmountAlignment="Left" Margin="0,3,0,0"
                                            FontWeight="SemiBold" AutomationProperties.Name="Итог чека"/>
+                            <TextBlock Style="{StaticResource BudgetOptionalText}"
+                                       Text="{Binding Tag.Message, RelativeSource={RelativeSource AncestorType=c:IslandPanel}}"
+                                       Foreground="{DynamicResource Warning.Svg.Brush}"
+                                       TextWrapping="Wrap" AutomationProperties.LiveSetting="Polite"/>
                         </StackPanel>
                         <Grid Grid.Row="1" Margin="11,4,11,4">
                             <Grid.ColumnDefinitions>
@@ -161,7 +167,7 @@
                             <TextBlock Grid.Column="2" Text="Цена" Margin="12,0,0,0" TextAlignment="Right"/>
                             <TextBlock Grid.Column="3" Text="Сумма" Margin="12,0,0,0" TextAlignment="Right"/>
                         </Grid>
-                        <ListView Grid.Row="2" Style="{StaticResource BudgetList}" ItemsSource="{Binding Items}"
+                        <ListView Grid.Row="2" Style="{StaticResource BudgetLedgerList}" ItemsSource="{Binding Items}"
                                   ScrollViewer.HorizontalScrollBarVisibility="Disabled"
                                   AutomationProperties.Name="Товары выбранной покупки">
                             <ListView.ContextMenu>
@@ -199,6 +205,8 @@
                                 </DataTemplate>
                             </ListView.ItemTemplate>
                         </ListView>
+                        <c:Loader Grid.Row="2"
+                                  IsLoading="{Binding Tag.IsLoading, RelativeSource={RelativeSource AncestorType=c:IslandPanel}, FallbackValue=False}"/>
                     </Grid>
                 </Grid>
             </c:IslandPanel>

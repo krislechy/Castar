@@ -105,7 +105,6 @@ namespace Castar.DAL.Repositories.DataBase
                     currentItem.Name = item.Name;
                     currentItem.Price = item.Price;
                     currentItem.Quantity = item.Quantity;
-                    currentItem.Category = item.Category;
                     Context.Entry(currentItem).Property<int?>(CastarDbContext.LineNumber).CurrentValue = index;
                 }
                 else

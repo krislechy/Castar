@@ -62,7 +62,7 @@ namespace Castar.Compontents
         private void UserControl_Loaded(object sender, RoutedEventArgs e)
         {
             if (DataContext is Income income)
-                UsersListView.SetCurrentValue(ListView.SelectedValueProperty, Users?.SingleOrDefault(user => user.Id == income.UserId));
+                UsersPicker.SetCurrentValue(BudgetUserPicker.SelectedUserProperty, Users?.SingleOrDefault(user => user.Id == income.UserId));
         }
     }
 }

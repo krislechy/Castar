@@ -15,6 +15,7 @@
             <ColumnDefinition/>
             <ColumnDefinition Width="auto"/>
             <ColumnDefinition Width="auto"/>
+            <ColumnDefinition Width="auto"/>
         </Grid.ColumnDefinitions>
         <Button Content="{DynamicResource Svg.LeftDoubleArrow}" Grid.Column="0" Click="OffsetYearButton_Click" 
                             Width="{Binding ActualHeight,RelativeSource={RelativeSource Mode=Self}}" 
@@ -36,5 +37,8 @@
         <Button Content="{DynamicResource Svg.RightDoubleArrow}" Grid.Column="6" Click="OffsetYearButton_Click" 
                             Width="{Binding ActualHeight,RelativeSource={RelativeSource Mode=Self}}"
                             CommandParameter="1" ToolTip="Следующий год" AutomationProperties.Name="Следующий год" Cursor="Hand"/>
+        <Button Grid.Column="7" Content="{DynamicResource Svg.CurrentMonth}" Click="CurrentMonth_Click"
+                Width="{Binding ActualHeight, RelativeSource={RelativeSource Self}}"
+                AutomationProperties.Name="Текущий месяц" ToolTip="Текущий месяц"/>
     </Grid>
 </UserControl>

@@ -7,7 +7,6 @@ namespace Castar.Domain.Models.DataBase
         public Purchase? Purchase { get; set; }
         public Guid PurchaseId { get; set; }
         public string Name { get; set; } = string.Empty;
-        public int? Category { get; set; }
         public double Quantity { get; set; }
         public decimal Price { get; set; }
         public decimal Sum { get; set; }

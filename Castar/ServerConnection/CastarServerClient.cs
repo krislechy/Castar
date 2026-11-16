@@ -3,6 +3,7 @@ using Castar.Domain.Models.DataBase;
 using Castar.Settings;
 using System;
 using System.Collections.Generic;
+using System.Collections.Concurrent;
 using System.Collections.ObjectModel;
 using System.Globalization;
 using System.IO;
@@ -23,6 +24,9 @@ public sealed class CastarServerClient(ClientSettings settings) : IDisposable
     internal const string ConnectionNotEstablished = "Соединение с сервером не установлено.";
     private readonly HttpClient httpsClient = CreateHttpClient(useProxy: true);
     private readonly HttpClient localClient = CreateHttpClient(useProxy: false);
+    private ConcurrentDictionary<(string Server, string Key, Guid Id), byte[]> avatars = new();
+
+    internal void ClearAvatarCache() => Interlocked.Exchange(ref avatars, new());
 
     internal event EventHandler? ConnectionChanged
     {
@@ -34,6 +38,7 @@ public sealed class CastarServerClient(ClientSettings settings) : IDisposable
     {
         AllowAutoRedirect = false,
         UseCookies = false,
+        AutomaticDecompression = DecompressionMethods.GZip,
         UseProxy = useProxy,
         PooledConnectionLifetime = TimeSpan.FromMinutes(5)
     })
@@ -137,7 +142,11 @@ public sealed class CastarServerClient(ClientSettings settings) : IDisposable
     internal async Task<byte[]?> GetUserAvatarAsync(Guid id, CancellationToken cancellationToken)
     {
         const int maxAvatarSize = 1024 * 1024;
-        using var request = CreateRequest(HttpMethod.Get, ParseServerUrl(settings.ServerUrl), settings.ApiKey, $"api/users/{id:D}/avatar");
+        var cache = Volatile.Read(ref avatars);
+        var key = (settings.ServerUrl, settings.ApiKey, id);
+        if (cache.TryGetValue(key, out var image))
+            return image;
+        using var request = CreateRequest(HttpMethod.Get, ParseServerUrl(key.ServerUrl), key.ApiKey, $"api/users/{id:D}/avatar");
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         timeout.CancelAfter(TimeSpan.FromSeconds(8));
         using var response = await TransportFor(request).SendAsync(request, HttpCompletionOption.ResponseHeadersRead, timeout.Token);
@@ -145,7 +154,9 @@ public sealed class CastarServerClient(ClientSettings settings) : IDisposable
             return null;
         EnsureSuccess(response);
         await response.Content.LoadIntoBufferAsync(maxAvatarSize, timeout.Token);
-        return await response.Content.ReadAsByteArrayAsync(timeout.Token);
+        image = await response.Content.ReadAsByteArrayAsync(timeout.Token);
+        cache.TryAdd(key, image);
+        return image;
     }
 
     internal async Task DownloadDatabaseBackupAsync(string fileName, CancellationToken cancellationToken)
@@ -198,12 +209,24 @@ public sealed class CastarServerClient(ClientSettings settings) : IDisposable
     public async Task<ObservableCollection<Income>> GetIncomesAsync(DateTime start, DateTime finish,
         CancellationToken cancellationToken = default)
     {
-        var incomes = GetIncomeRowsAsync(start, finish, cancellationToken);
-        var users = GetUsersAsync(cancellationToken);
-        await Task.WhenAll(incomes, users);
-        var usersById = (await users).ToDictionary(user => user.Id);
-        return new ObservableCollection<Income>((await incomes).Select(income =>
-            ToIncome(income, usersById.GetValueOrDefault(income.UserId))));
+        var incomes = await GetIncomeRowsAsync(start, finish, cancellationToken);
+        var users = incomes.Select(income => income.User).DistinctBy(user => user.Id).ToArray();
+        if (users.Any(user => user.HasAvatar is null))
+        {
+            var legacyUsers = (await GetUsersAsync(cancellationToken)).ToDictionary(user => user.Id);
+            return new ObservableCollection<Income>(incomes.Select(income =>
+                ToIncome(income, legacyUsers.GetValueOrDefault(income.UserId))));
+        }
+
+        var usersById = users.ToDictionary(user => user.Id, ToUser);
+        await Parallel.ForEachAsync(users.Where(user => user.HasAvatar == true),
+            new ParallelOptions { CancellationToken = cancellationToken, MaxDegreeOfParallelism = 4 },
+            async (user, token) =>
+            {
+                try { usersById[user.Id].ImageRaw = await GetUserAvatarAsync(user.Id, token); }
+                catch (Exception error) when (!token.IsCancellationRequested && IsConnectionError(error)) { }
+            });
+        return new ObservableCollection<Income>(incomes.Select(income => ToIncome(income, usersById[income.UserId])));
     }
 
     internal Task<IncomeDto[]> GetIncomeRowsAsync(DateTime start, DateTime finish, CancellationToken cancellationToken) =>
@@ -213,13 +236,57 @@ public sealed class CastarServerClient(ClientSettings settings) : IDisposable
     {
         var purchases = await SendAsync<PurchaseDto[]>(HttpMethod.Get, $"api/purchases?{DateQuery(start, finish)}",
             cancellationToken: cancellationToken);
-        return purchases.Select(purchase => purchase with
+        return purchases.Select(DisplayPurchase).ToArray();
+    }
+
+    internal async Task<PurchaseDto[]> GetPurchaseSummariesAsync(DateTime start, DateTime finish, CancellationToken token)
+    {
+        try
+        {
+            var summaries = await SendAsync<PurchaseDto[]>(HttpMethod.Get, $"api/purchases/summary?{DateQuery(start, finish)}",
+                cancellationToken: token);
+            return summaries.Select(DisplayPurchase).ToArray();
+        }
+        catch (HttpRequestException error) when (MissingRoute(error))
+        {
+            return await GetPurchasesAsync(start, finish, token);
+        }
+    }
+
+    internal async Task<PurchaseDto> GetPurchaseDetailsAsync(Guid id, CancellationToken token) =>
+        DisplayPurchase(await SendAsync<PurchaseDto>(HttpMethod.Get, $"api/purchases/{id:D}", cancellationToken: token));
+
+    internal async Task<BudgetOperationDto[]> GetBudgetOperationsAsync(DateTime start, DateTime finish, CancellationToken token)
+    {
+        try
+        {
+            return await SendAsync<BudgetOperationDto[]>(HttpMethod.Get, $"api/budget/operations?{DateQuery(start, finish)}",
+                cancellationToken: token);
+        }
+        catch (HttpRequestException error) when (MissingRoute(error))
+        {
+            var incomes = GetIncomeRowsAsync(start, finish, token);
+            var purchases = SendAsync<PurchaseDto[]>(HttpMethod.Get, $"api/purchases?{DateQuery(start, finish)}",
+                cancellationToken: token);
+            await Task.WhenAll(incomes, purchases);
+            return (await incomes).Select(row => new BudgetOperationDto(true, row.Currency, row.Sum,
+                    row.AddedOnUtc ?? ReadLegacyDate(row.AddedOn), row.RateDate ?? DateOnly.FromDateTime(row.AddedOn)))
+                .Concat((await purchases).Select(row => new BudgetOperationDto(false, row.Currency, row.TotalSum,
+                    row.AddedOnUtc ?? (row.AddedOn is { } date ? ReadLegacyDate(date) : null),
+                    row.RateDate ?? row.ReceiptDate ?? (row.AddedOn is { } legacy ? DateOnly.FromDateTime(legacy) : null),
+                    row.ReceiptDate))).ToArray();
+        }
+    }
+
+    private static bool MissingRoute(HttpRequestException error) =>
+        error.StatusCode is HttpStatusCode.NotFound or HttpStatusCode.MethodNotAllowed;
+
+    private PurchaseDto DisplayPurchase(PurchaseDto purchase) => purchase with
         {
             RateDate = purchase.RateDate ?? purchase.ReceiptDate ??
                 (purchase.AddedOn is { } original ? DateOnly.FromDateTime(original) : null),
             AddedOn = DisplayOperationDate(purchase.AddedOn, purchase.AddedOnUtc)
-        }).ToArray();
-    }
+        };
 
     public Task<bool> EditPurchaseAsync(Guid purchaseId, long revision, PurchaseWriteDto purchase,
         CancellationToken cancellationToken = default) =>

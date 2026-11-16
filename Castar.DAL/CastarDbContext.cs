@@ -16,6 +16,7 @@ namespace Castar.DAL
         public DbSet<Item> Items => Set<Item>();
         public DbSet<Income> Incomes => Set<Income>();
         public DbSet<ExchangeRateEntry> ExchangeRates => Set<ExchangeRateEntry>();
+        public DbSet<QueuedReceipt> QueuedReceipts => Set<QueuedReceipt>();
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
@@ -38,6 +39,7 @@ namespace Castar.DAL
             purchases.Property(x => x.TotalSum).HasPrecision(24, 2);
             purchases.Property(x => x.Revision).HasDefaultValue(0L).IsConcurrencyToken();
             purchases.Property(x => x.AddedOn).IsRequired();
+            purchases.HasIndex(x => x.AddedOn);
             purchases.Property(x => x.RetailPlace).HasMaxLength(400);
             purchases.Property(x => x.RetailPlaceAddress).HasMaxLength(400);
             purchases.Property(x => x.Currency).HasMaxLength(3);
@@ -63,6 +65,7 @@ namespace Castar.DAL
             incomes.Property<long?>(MessageIdField).HasColumnName("MessageId");
             incomes.Property<int?>(LineNumber);
             incomes.HasIndex(nameof(Income.UserId), MessageIdField).HasDatabaseName("IX_Incomes_UserId_MessageId");
+            incomes.HasIndex(x => x.AddedOn);
             incomes.Property(x => x.Sum).HasPrecision(24, 2);
             incomes.Property(x => x.Currency).HasMaxLength(3);
             incomes.Property(x => x.Source).HasMaxLength(400);
@@ -74,6 +77,13 @@ namespace Castar.DAL
             rates.HasKey(x => new { x.Target, x.Source, x.Date });
             rates.Property(x => x.Target).HasMaxLength(3);
             rates.Property(x => x.Source).HasMaxLength(3);
+
+            var receiptQueue = modelBuilder.Entity<QueuedReceipt>();
+            receiptQueue.ToTable("QueuedReceipts");
+            receiptQueue.HasKey(x => x.Key);
+            receiptQueue.Property(x => x.Key).HasMaxLength(64);
+            receiptQueue.Property(x => x.ProviderId).HasMaxLength(100);
+            receiptQueue.HasIndex(x => x.NextAttemptUtc);
         }
 
         public override int SaveChanges(bool acceptAllChangesOnSuccess)

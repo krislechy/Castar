@@ -41,6 +41,8 @@ public partial class IncomesContent : UserControl
         this.exchangeRates = exchangeRates;
         DataContext = context;
         InitializeComponent();
+        SelectorRangeDatesElement.DisplayTimeZone = () => settings.DisplayTimeZone;
+        SelectorRangeDatesElement.SetCurrentMonth();
         server.ConnectionChanged += Server_ConnectionChanged;
         settings.PropertyChanged += Settings_PropertyChanged;
         IsVisibleChanged += Incomes_IsVisibleChanged;

@@ -16,7 +16,7 @@
         </Style>
         <Style x:Key="BorderStyle" TargetType="{x:Type Border}">
             <Setter Property="Background" Value="{StaticResource Main.Background.lvl1}"/>
-            <Setter Property="Padding" Value="10"/>
+            <Setter Property="Padding" Value="{Binding Padding, RelativeSource={RelativeSource AncestorType=local:IslandPanel}}"/>
             <Setter Property="CornerRadius" Value="5"/>
             <Setter Property="MinWidth" Value="300"/>
             <Setter Property="MinHeight" Value="100"/>
@@ -69,7 +69,16 @@
                     <RowDefinition Height="auto"/>
                     <RowDefinition/>
                 </Grid.RowDefinitions>
-                <Grid Grid.Row="0" Margin="0,0,0,10">
+                <Grid Grid.Row="0" Margin="{Binding HeaderMargin, RelativeSource={RelativeSource AncestorType=local:IslandPanel}}">
+                    <Grid.Style>
+                        <Style TargetType="Grid">
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding ShowTitle, RelativeSource={RelativeSource AncestorType=local:IslandPanel}}" Value="False">
+                                    <Setter Property="Visibility" Value="Collapsed"/>
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </Grid.Style>
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="auto"/>
                         <ColumnDefinition/>

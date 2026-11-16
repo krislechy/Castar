@@ -1,8 +1,6 @@
 using System.Text;
-using Castar.Domain.Models.DataBase;
 using Castar.Services.Receipts;
 using Castar.Services.Receipts.Barcode;
-using Castar.Services.Receipts.Exceptions;
 using Telegram.Bot;
 using Telegram.Bot.Exceptions;
 using Telegram.Bot.Types;
@@ -52,56 +50,45 @@ public sealed partial class CommandHandler
 
         foreach (var source in sources.DistinctBy(source => source.Trim(), StringComparer.Ordinal))
         {
+            if (receiptQueue is not null && await receiptQueue.ContainsAsync(provider.Id, source, cancellationToken))
+            {
+                await ReplyAsync(bot, message, "Этот чек уже в очереди.", cancellationToken);
+                continue;
+            }
+
             Receipt receipt;
             try
             {
                 receipt = await provider.GetReceiptAsync(source, cancellationToken);
             }
-            catch (NotImplementedException)
+            catch (Exception ex) when (ReceiptProviderFailure.IsTemporary(ex, cancellationToken))
             {
-                await ReplyAsync(bot, message, "Этот поставщик пока не поддерживает импорт чеков.", cancellationToken);
-                continue;
-            }
-            catch (TicketNotReadyException)
-            {
-                await ReplyAsync(bot, message, "Поставщик ещё обрабатывает чек. Попробуйте позже.", cancellationToken);
-                continue;
-            }
-            catch (Exception ex) when (ex is ArgumentException or InvalidDataException)
-            {
-                await ReplyAsync(bot, message, ex.Message, cancellationToken);
-                continue;
-            }
-            catch (Exception ex) when (
-                ex is HttpRequestException or TimeoutException
-                || (ex is OperationCanceledException && !cancellationToken.IsCancellationRequested))
-            {
-                CastarTelegramBotClient.LogError(ex);
-                await ReplyAsync(bot, message, "Поставщик чеков временно недоступен. Попробуйте позже.", cancellationToken);
-                continue;
-            }
-
-            var purchase = new Purchase
-            {
-                MessageId = message.MessageId,
-                Name = receipt.Name,
-                RetailPlace = receipt.RetailPlace,
-                RetailPlaceAddress = receipt.RetailPlaceAddress,
-                AddedOn = receipt.IssuedAt.UtcDateTime,
-                ReceiptDate = receipt.OperationDate,
-                Currency = receipt.Currency,
-                TotalSum = receipt.Total,
-                RawData = receipt.LegacyVerificationCode is { } legacyCode ? Encoding.UTF8.GetBytes(legacyCode) : null,
-                ReceiptSource = receipt.Source ?? source,
-                Items = new(receipt.Items.Select(item => new Item
+                if (receiptQueue is null)
                 {
-                    Name = item.Name,
-                    Price = item.UnitPrice,
-                    Quantity = (double)item.Quantity,
-                    Sum = item.Total
-                }))
-            };
+                    await ReplyAsync(bot, message, "Поставщик чеков временно недоступен. Попробуйте позже.", cancellationToken);
+                    continue;
+                }
+                var request = new ReceiptRetryRequest(provider.Id, source, user.Id, user.TelegramId,
+                    message.Chat.Id, message.MessageId);
+                var retryAfter = (ex as ReceiptProviderUnavailableException)?.RetryAfterUtc;
+                if (await receiptQueue.EnqueueAsync(request, retryAfter, cancellationToken))
+                {
+                    var acknowledgement = await bot.SendMessage(message.Chat.Id,
+                        "Чек в очереди. Повторим запрос автоматически.", replyParameters: message.MessageId,
+                        cancellationToken: cancellationToken);
+                    await receiptQueue.SetAcknowledgementAsync(provider.Id, source, acknowledgement.MessageId, cancellationToken);
+                }
+                else
+                    await ReplyAsync(bot, message, "Этот чек уже в очереди.", cancellationToken);
+                continue;
+            }
+            catch (Exception ex) when (ReceiptProviderFailure.GetPermanentMessage(ex) is { } error)
+            {
+                await ReplyAsync(bot, message, error, cancellationToken);
+                continue;
+            }
 
+            var purchase = ReceiptPurchase.Create(receipt, source, message.MessageId);
             if (await purchasesService.AddReceipt(purchase, user.TelegramId, provider.Id, receipt.Id, cancellationToken) is null)
             {
                 await ReplyAsync(bot, message, "Этот чек уже добавлен.", cancellationToken);

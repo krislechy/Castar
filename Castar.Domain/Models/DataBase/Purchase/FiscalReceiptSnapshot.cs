@@ -39,7 +39,7 @@ public sealed record FiscalReceiptSnapshot(string Name, string? RetailPlace, str
     }
 }
 
-public sealed record FiscalReceiptLine(Guid Id, string Name, int? Category, double Quantity, decimal Price, decimal Sum)
+public sealed record FiscalReceiptLine(Guid Id, string Name, double Quantity, decimal Price, decimal Sum)
 {
-    public static FiscalReceiptLine Capture(Item item) => new(item.Id, item.Name, item.Category, item.Quantity, item.Price, item.Sum);
+    public static FiscalReceiptLine Capture(Item item) => new(item.Id, item.Name, item.Quantity, item.Price, item.Sum);
 }

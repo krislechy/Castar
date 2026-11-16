@@ -15,7 +15,7 @@ partial class CastarDbContextModelSnapshot : ModelSnapshot
     // If you encounter a merge conflict in the line below, it means you need to
     // discard one of the migration branches and recreate its migrations on top of
     // the other branch. See https://aka.ms/efcore-docs-migrations-conflicts for more info.
-    public override string LastMigrationId => "20261116153242_BudgetRateDate";
+    public override string LastMigrationId => "20261116174952_PersistReceiptRetryQueue";
 
     protected override void BuildModel(ModelBuilder modelBuilder)
     {
@@ -47,6 +47,58 @@ partial class CastarDbContextModelSnapshot : ModelSnapshot
                 b.HasKey("Target", "Source", "Date");
 
                 b.ToTable("ExchangeRates");
+            });
+
+        modelBuilder.Entity("Castar.DAL.QueuedReceipt", b =>
+            {
+                b.Property<string>("Key")
+                    .HasMaxLength(64)
+                    .HasColumnType("TEXT");
+
+                b.Property<int?>("AcknowledgementMessageId")
+                    .HasColumnType("INTEGER");
+
+                b.Property<long>("ChatId")
+                    .HasColumnType("INTEGER");
+
+                b.Property<DateTime>("LastAttemptUtc")
+                    .HasColumnType("TEXT");
+
+                b.Property<int>("MessageId")
+                    .HasColumnType("INTEGER");
+
+                b.Property<DateTime>("NextAttemptUtc")
+                    .HasColumnType("TEXT");
+
+                b.Property<string>("ProviderId")
+                    .IsRequired()
+                    .HasMaxLength(100)
+                    .HasColumnType("TEXT");
+
+                b.Property<string>("Result")
+                    .HasColumnType("TEXT");
+
+                b.Property<DateTime?>("RetryAfterUtc")
+                    .HasColumnType("TEXT");
+
+                b.Property<int>("ScheduledRetryMinutes")
+                    .HasColumnType("INTEGER");
+
+                b.Property<string>("Source")
+                    .IsRequired()
+                    .HasColumnType("TEXT");
+
+                b.Property<long>("TelegramUserId")
+                    .HasColumnType("INTEGER");
+
+                b.Property<Guid>("UserId")
+                    .HasColumnType("TEXT");
+
+                b.HasKey("Key");
+
+                b.HasIndex("NextAttemptUtc");
+
+                b.ToTable("QueuedReceipts");
             });
 
         modelBuilder.Entity("Castar.Domain.Models.DataBase.Income", b =>
@@ -92,6 +144,8 @@ partial class CastarDbContextModelSnapshot : ModelSnapshot
 
                 b.HasKey("Id");
 
+                b.HasIndex("AddedOn");
+
                 b.HasIndex("UserId", "_messageId")
                     .HasDatabaseName("IX_Incomes_UserId_MessageId");
 
@@ -103,9 +157,6 @@ partial class CastarDbContextModelSnapshot : ModelSnapshot
                 b.Property<Guid>("Id")
                     .ValueGeneratedOnAdd()
                     .HasColumnType("TEXT");
-
-                b.Property<int?>("Category")
-                    .HasColumnType("INTEGER");
 
                 b.Property<DateTime>("CreatedOn")
                     .HasColumnType("TEXT");
@@ -214,6 +265,8 @@ partial class CastarDbContextModelSnapshot : ModelSnapshot
                     .HasColumnName("MessageId");
 
                 b.HasKey("Id");
+
+                b.HasIndex("AddedOn");
 
                 b.HasIndex("ReceiptKey")
                     .IsUnique()

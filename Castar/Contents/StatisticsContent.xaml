@@ -11,15 +11,17 @@
             <RowDefinition/>
         </Grid.RowDefinitions>
         <Border Style="{StaticResource BudgetHeaderSurface}">
-          <WrapPanel x:Name="PeriodBar" Style="{StaticResource BudgetPeriodBar}">
-            <TextBlock Text="Статистика" Style="{StaticResource BudgetHeaderTitle}"/>
-            <c:SelectorRangeDates x:Name="Dates" VerticalAlignment="Center"
-                                  DateRangeChanged="Dates_DateRangeChanged"/>
-            <c:CastarComboBox x:Name="CurrencyPicker" MinWidth="88" Margin="12,0,0,0"
-                              VerticalAlignment="Center"
-                              Visibility="Collapsed" AutomationProperties.Name="Валюта статистики"
-                              SelectionChanged="CurrencyPicker_SelectionChanged"/>
-          </WrapPanel>
+          <DockPanel>
+            <TextBlock DockPanel.Dock="Left" Text="Статистика" Style="{StaticResource BudgetHeaderTitle}"/>
+            <WrapPanel x:Name="PeriodBar" Style="{StaticResource BudgetPeriodBar}">
+              <c:SelectorRangeDates x:Name="Dates" VerticalAlignment="Center"
+                                    DateRangeChanged="Dates_DateRangeChanged"/>
+              <c:CastarComboBox x:Name="CurrencyPicker" MinWidth="88" Margin="12,0,0,0"
+                                VerticalAlignment="Center"
+                                Visibility="Collapsed" AutomationProperties.Name="Валюта статистики"
+                                SelectionChanged="CurrencyPicker_SelectionChanged"/>
+            </WrapPanel>
+          </DockPanel>
         </Border>
         <TextBlock x:Name="MissingAmounts" Grid.Row="1" Margin="{StaticResource BudgetStatusMargin}"
                    Foreground="{DynamicResource Warning.Svg.Brush}" TextWrapping="Wrap"
@@ -52,11 +54,7 @@
                         </DataTemplate>
                     </ItemsControl.ItemTemplate>
                 </ItemsControl>
-                <DockPanel Grid.Row="1">
-                    <c:IslandPanel x:Name="CategoriesPanel" DockPanel.Dock="Right" Width="320"
-                                   Title="Расходы по категориям" Visibility="Collapsed"/>
-                    <c:IslandPanel x:Name="TimelinePanel" Title="Динамика за период"/>
-                </DockPanel>
+                <c:IslandPanel Grid.Row="1" x:Name="TimelinePanel" Title="Динамика за период"/>
             </Grid>
             <c:Loader x:Name="Progress"/>
         </Grid>

@@ -1,25 +1,38 @@
 #Requires -Version 5.1
 #Requires -PSEdition Desktop
 
-[CmdletBinding()]
+[CmdletBinding(DefaultParameterSetName = 'Archive')]
 param(
-    [Parameter(Mandatory = $true)][string]$ArchivePath,
+    [Parameter(Mandatory = $true, ParameterSetName = 'Archive')][string]$ArchivePath,
+    [Parameter(Mandatory = $true, ParameterSetName = 'DatabaseFiles')][string]$MdfPath,
     [Parameter(Mandatory = $true)][string]$OutputPath
 )
 
 $ErrorActionPreference = 'Stop'
 $localDb = (Get-Command SqlLocalDB.exe -CommandType Application).Source
-$tar = (Get-Command tar.exe -CommandType Application).Source
-$archive = (Resolve-Path -LiteralPath $ArchivePath).Path
 $output = $ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($OutputPath)
 if (Test-Path -LiteralPath $output) {
     throw 'Choose a new export filename.'
 }
 
-$entries = @(& $tar -tf $archive)
-if ($LASTEXITCODE -ne 0 -or $entries.Count -ne 2 -or
-    'origin_data_base.mdf' -cnotin $entries -or 'origin_data_base_log.ldf' -cnotin $entries) {
-    throw 'The archive must contain the original February 2022 MDF and LDF pair.'
+if ($PSCmdlet.ParameterSetName -eq 'Archive') {
+    $tar = (Get-Command tar.exe -CommandType Application).Source
+    $archive = (Resolve-Path -LiteralPath $ArchivePath).Path
+    $entries = @(& $tar -tf $archive)
+    if ($LASTEXITCODE -ne 0 -or $entries.Count -ne 2 -or
+        'origin_data_base.mdf' -cnotin $entries -or 'origin_data_base_log.ldf' -cnotin $entries) {
+        throw 'The archive must contain origin_data_base.mdf and origin_data_base_log.ldf.'
+    }
+}
+else {
+    $sourceMdf = (Get-Item -LiteralPath $MdfPath).FullName
+    $sourceLdf = Join-Path (Split-Path -Parent $sourceMdf) (([IO.Path]::GetFileNameWithoutExtension($sourceMdf)) + '_log.ldf')
+    foreach ($path in @($sourceMdf, $sourceLdf)) {
+        $file = Get-Item -LiteralPath $path
+        if ($file.PSIsContainer -or ($file.Attributes -band [IO.FileAttributes]::ReparsePoint)) {
+            throw 'The source MDF and LDF must be ordinary files.'
+        }
+    }
 }
 
 $instance = 'CastarExport' + [Guid]::NewGuid().ToString('N').Substring(0, 12)
@@ -73,8 +86,28 @@ function Read-Queries([System.Data.SqlClient.SqlConnection]$Connection, [string]
 
 try {
     New-Item -ItemType Directory -Path $temporary | Out-Null
-    & $tar -xf $archive -C $temporary
-    if ($LASTEXITCODE -ne 0) { throw 'Could not extract the legacy archive.' }
+    if ($PSCmdlet.ParameterSetName -eq 'Archive') {
+        & $tar -xf $archive -C $temporary
+        if ($LASTEXITCODE -ne 0) { throw 'Could not extract the legacy archive.' }
+        $fingerprint = (Get-FileHash -LiteralPath $archive -Algorithm SHA256).Hash
+    }
+    else {
+        Copy-Item -LiteralPath $sourceMdf -Destination $mdf
+        Copy-Item -LiteralPath $sourceLdf -Destination $ldf
+        $hashMdf = (Get-FileHash -LiteralPath $mdf -Algorithm SHA256).Hash
+        $hashLdf = (Get-FileHash -LiteralPath $ldf -Algorithm SHA256).Hash
+        if ($hashMdf -cne (Get-FileHash -LiteralPath $sourceMdf -Algorithm SHA256).Hash -or
+            $hashLdf -cne (Get-FileHash -LiteralPath $sourceLdf -Algorithm SHA256).Hash) {
+            throw 'The MDF or LDF changed during copy.'
+        }
+        $hash = [Security.Cryptography.SHA256]::Create()
+        try {
+            $fingerprint = [BitConverter]::ToString($hash.ComputeHash([Text.Encoding]::ASCII.GetBytes($hashMdf + $hashLdf))).Replace('-', '')
+        }
+        finally {
+            $hash.Dispose()
+        }
+    }
     foreach ($path in @($mdf, $ldf)) {
         $file = Get-Item -LiteralPath $path
         if ($file.PSIsContainer -or ($file.Attributes -band [IO.FileAttributes]::ReparsePoint)) {
@@ -118,7 +151,7 @@ FROM dbo.purchases ORDER BY Id;
 '@)
         $items = @(Read-Queries $database @'
 SELECT Id AS id, PurchaseId AS purchaseId, Name AS name, Quantity AS quantity,
-    CONVERT(decimal(28,10), Price) AS price, CONVERT(decimal(28,10), [Sum]) AS amount, Category AS category
+    CONVERT(decimal(28,10), Price) AS price, CONVERT(decimal(28,10), [Sum]) AS amount
 FROM dbo.items ORDER BY Id;
 '@)
         $history = Read-Queries $database 'SELECT COUNT(*) AS [rowCount] FROM dbo.historyoftransactions;'
@@ -128,7 +161,7 @@ FROM dbo.items ORDER BY Id;
 
     $payload = [ordered]@{
         format = 1
-        archiveSha256 = (Get-FileHash -LiteralPath $archive -Algorithm SHA256).Hash
+        archiveSha256 = $fingerprint
         historyTransactionCount = $history.rowCount
         incomes = $incomes
         purchases = $purchases

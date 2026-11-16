@@ -12,11 +12,13 @@ public sealed partial class CommandHandler(
     IPurchasesService purchasesService,
     IIncomesService incomesService,
     IUsersService usersService,
-    IEnumerable<IReceiptProvider> receiptProviders)
+    IEnumerable<IReceiptProvider> receiptProviders,
+    IReceiptImportQueue? receiptQueue = null)
 {
     private readonly IReceiptProvider[] providers = receiptProviders.ToArray();
 
-    internal async Task HandleAsync(ITelegramBotClient bot, Message message, bool edited, CancellationToken cancellationToken)
+    internal async Task HandleAsync(ITelegramBotClient bot, Message message, bool edited, CancellationToken cancellationToken,
+        string? botUsername = null)
     {
         if (message is not { From: { IsBot: false } sender, Chat.Type: ChatType.Private }
             || (message.Text is null && message.Photo is null && message.Document is null))
@@ -24,8 +26,8 @@ public sealed partial class CommandHandler(
 
         var sourceLines = message.Text?.Split(["\r\n", "\n"], StringSplitOptions.None)
             .Where(line => !string.IsNullOrWhiteSpace(line)).ToArray() ?? [];
-        var lines = sourceLines.Select(line => line.Trim()).ToArray();
-        if (lines.Length == 1 && lines[0].Equals("/me", StringComparison.OrdinalIgnoreCase))
+        var lines = sourceLines.Select(line => BotMenu.NormalizePrivateCommand(line.Trim(), botUsername)).ToArray();
+        if (lines.Length == 1 && lines[0].Equals("/" + BotMenu.Me, StringComparison.OrdinalIgnoreCase))
         {
             await ReplyAsync(bot, message, $"{sender.Username ?? sender.FirstName}: {sender.Id}", cancellationToken);
             return;
@@ -47,7 +49,7 @@ public sealed partial class CommandHandler(
         try
         {
             var firstWord = lines.FirstOrDefault()?.Split(' ', '\t')[0];
-            var result = string.Equals(firstWord, "/income", StringComparison.OrdinalIgnoreCase)
+            var result = string.Equals(firstWord, "/" + BotMenu.Income, StringComparison.OrdinalIgnoreCase)
                 ? await SaveIncomesAsync(message, user, lines, edited, cancellationToken)
                 : await SaveManualPurchaseAsync(bot, message, user, lines, edited, cancellationToken);
 
@@ -78,11 +80,12 @@ public sealed partial class CommandHandler(
         }
     }
 
-    private async Task NotifyUsersAsync(ITelegramBotClient bot, string text, CancellationToken cancellationToken)
+    private async Task NotifyUsersAsync(ITelegramBotClient bot, string text, CancellationToken cancellationToken,
+        long? excludeTelegramId = null)
     {
         var users = await usersService.GetAllUsersWithTelegramId(cancellationToken);
         var recipients = users.GroupBy(user => user.TelegramId)
-            .Where(accounts => accounts.All(user => user.TelegramNotificationsEnabled));
+            .Where(accounts => accounts.Key != excludeTelegramId && accounts.All(user => user.TelegramNotificationsEnabled));
         foreach (var recipient in recipients)
         {
             try
@@ -97,9 +100,10 @@ public sealed partial class CommandHandler(
     }
 
     private static Task ReplyAsync(ITelegramBotClient bot, Message message, string text, CancellationToken cancellationToken) =>
-        SendTextAsync(bot, message.Chat.Id, text, cancellationToken);
+        SendTextAsync(bot, message.Chat.Id, text, cancellationToken, message.MessageThreadId);
 
-    private static async Task SendTextAsync(ITelegramBotClient bot, long chatId, string text, CancellationToken cancellationToken)
+    private static async Task SendTextAsync(ITelegramBotClient bot, long chatId, string text, CancellationToken cancellationToken,
+        int? messageThreadId = null)
     {
         const int maxLength = 4096;
         while (text.Length > maxLength)
@@ -108,11 +112,11 @@ public sealed partial class CommandHandler(
             if (splitAt <= 0)
                 splitAt = char.IsHighSurrogate(text[maxLength - 1]) ? maxLength - 1 : maxLength;
 
-            await bot.SendMessage(chatId, text[..splitAt], cancellationToken: cancellationToken);
+            await bot.SendMessage(chatId, text[..splitAt], messageThreadId: messageThreadId, cancellationToken: cancellationToken);
             text = text[splitAt..].TrimStart('\n');
         }
 
         if (text.Length > 0)
-            await bot.SendMessage(chatId, text, cancellationToken: cancellationToken);
+            await bot.SendMessage(chatId, text, messageThreadId: messageThreadId, cancellationToken: cancellationToken);
     }
 }

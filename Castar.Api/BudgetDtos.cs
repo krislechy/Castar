@@ -3,6 +3,7 @@ namespace Castar.Api;
 public sealed record UserDto(Guid Id, long TelegramId, string Name, int Sex, byte[] ColorRaw, byte[]? ImageRaw)
 {
     public bool? TelegramNotificationsEnabled { get; init; }
+    public bool? HasAvatar { get; init; }
 }
 
 public sealed record UserWriteDto(long TelegramId, string Name, int Sex, byte[] ColorRaw, byte[]? ImageRaw)
@@ -35,7 +36,11 @@ public sealed record PurchaseDto(Guid Id, Guid UserId, string Name, decimal Tota
     public bool SupportsCurrencyEdit { get; init; }
     public PurchaseOwnerDto? Owner { get; init; }
     public bool IsEdited { get; init; }
+    public bool ItemsDeferred { get; init; }
 }
+
+public sealed record BudgetOperationDto(bool IsIncome, string? Currency, decimal Amount,
+    DateTimeOffset? AddedOnUtc, DateOnly? RateDate, DateOnly? ReceiptDate = null);
 
 public sealed record PurchaseOwnerDto(string Name, bool HasAvatar);
 

@@ -1,4 +1,6 @@
 using System.Net;
+using System.Text.Json;
+using System.Text.Json.Serialization;
 using Castar.Api;
 using Castar.BL;
 using Castar.DAL;
@@ -13,6 +15,10 @@ namespace Castar.Server;
 public static class CastarEndpoints
 {
     private static readonly SemaphoreSlim UserWrites = new(1);
+    private static readonly JsonSerializerOptions SummaryJson = new(JsonSerializerDefaults.Web)
+    {
+        DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingDefault
+    };
 
     public static RouteGroupBuilder MapCastarApi(this IEndpointRouteBuilder endpoints)
     {
@@ -36,6 +42,9 @@ public static class CastarEndpoints
         api.MapDelete("/incomes/{id:guid}", DeleteIncome);
 
         api.MapGet("/purchases", GetPurchases);
+        api.MapGet("/purchases/summary", GetPurchaseSummaries);
+        api.MapGet("/purchases/{purchaseId:guid}", GetPurchaseDetails);
+        api.MapGet("/budget/operations", GetBudgetOperations);
         api.MapPost("/purchases", CreatePurchase);
         api.MapGet("/purchases/{purchaseId:guid}/receipt-source", GetPurchaseReceiptSource);
         api.MapPut("/purchases/{purchaseId:guid}", EditPurchase);
@@ -266,6 +275,66 @@ public static class CastarEndpoints
 
         var entries = await purchases.GetEntitiesWithAllIncludes(first, last);
         return Results.Ok(entries.Select(ToDto).ToArray());
+    }
+
+    private static async Task<IResult> GetBudgetOperations(DateTime start, DateTime finish,
+        DateTimeOffset? startUtc, DateTimeOffset? finishUtc, CastarDbContext db, CancellationToken token)
+    {
+        if (!TryReadRange(start, finish, startUtc, finishUtc, out var first, out var last))
+            return InvalidInput("Укажите допустимый период.");
+
+        var incomes = await db.Incomes.AsNoTracking().Where(row => row.AddedOn >= first && row.AddedOn <= last)
+            .Select(row => new { row.Currency, row.Sum, row.AddedOn, row.RateDate }).ToListAsync(token);
+        var purchases = await db.Purchases.AsNoTracking().Where(row => row.AddedOn >= first && row.AddedOn <= last)
+            .Select(row => new { row.Currency, row.TotalSum, row.AddedOn, row.RateDate, row.ReceiptDate }).ToListAsync(token);
+        return Results.Ok(incomes.Select(row => new BudgetOperationDto(true, row.Currency, row.Sum,
+                BudgetTime.AsUtc(row.AddedOn), row.RateDate ?? DateOnly.FromDateTime(BudgetTime.InZone(row.AddedOn, BudgetTime.Belgrade))))
+            .Concat(purchases.Select(row => new BudgetOperationDto(false, row.Currency, row.TotalSum,
+                row.AddedOn is { } date ? BudgetTime.AsUtc(date) : null,
+                row.RateDate ?? row.ReceiptDate ?? (row.AddedOn is { } instant
+                    ? DateOnly.FromDateTime(BudgetTime.InZone(instant, BudgetTime.Belgrade)) : null),
+                row.ReceiptDate))).ToArray());
+    }
+
+    private static async Task<IResult> GetPurchaseSummaries(DateTime start, DateTime finish,
+        DateTimeOffset? startUtc, DateTimeOffset? finishUtc, CastarDbContext db, CancellationToken token)
+    {
+        if (!TryReadRange(start, finish, startUtc, finishUtc, out var first, out var last))
+            return InvalidInput("Укажите допустимый период.");
+
+        var rows = await db.Purchases.AsNoTracking().Where(row => row.AddedOn >= first && row.AddedOn <= last)
+            .ToListAsync(token);
+        if (rows.Count == 0)
+            return Results.Ok(Array.Empty<PurchaseDto>());
+
+        var ownerIds = rows.Select(row => row.UserId).Distinct().ToArray();
+        var owners = await db.Users.AsNoTracking().Where(user => ownerIds.Contains(user.Id))
+            .Select(user => new
+            {
+                user.Id,
+                Owner = new PurchaseOwnerDto(user.Name, user.ImageRaw != null && user.ImageRaw.Length > 0)
+            }).ToDictionaryAsync(user => user.Id, user => user.Owner, token);
+
+        var editedIds = rows.Where(row => row.Revision != 0 && row.OriginalReceiptSnapshot != null)
+            .Select(row => row.Id).ToArray();
+        var changedLines = editedIds.Length == 0 ? [] : await db.Items.AsNoTracking()
+            .Where(item => editedIds.Contains(item.PurchaseId)).ToListAsync(token);
+        var lines = changedLines.ToLookup(item => item.PurchaseId);
+        var result = rows.Select(row => PurchaseDtoFrom(row, owners.GetValueOrDefault(row.UserId),
+            lines[row.Id], deferItems: true)).ToArray();
+        return Results.Json(result, SummaryJson);
+    }
+
+    private static async Task<IResult> GetPurchaseDetails(Guid purchaseId, IPurchasesRepository purchases,
+        CastarDbContext db, CancellationToken token)
+    {
+        var purchase = await purchases.FindWithItemsAsync(purchaseId, token);
+        if (purchase is null)
+            return Results.NotFound();
+        var owner = await db.Users.AsNoTracking().Where(user => user.Id == purchase.UserId)
+            .Select(user => new PurchaseOwnerDto(user.Name, user.ImageRaw != null && user.ImageRaw.Length > 0))
+            .SingleAsync(token);
+        return Results.Ok(PurchaseDtoFrom(purchase, owner, purchase.Items, deferItems: false));
     }
 
     private static async Task<IResult> GetPurchaseReceiptSource(Guid purchaseId, IPurchasesRepository purchases,
@@ -504,7 +573,8 @@ public static class CastarEndpoints
     private static UserDto ToDto(User user) =>
         new(user.Id, user.TelegramId, user.Name, user.Sex, user.ColorRaw, user.ImageRaw)
         {
-            TelegramNotificationsEnabled = user.TelegramNotificationsEnabled
+            TelegramNotificationsEnabled = user.TelegramNotificationsEnabled,
+            HasAvatar = user.ImageRaw is { Length: > 0 }
         };
 
     private static IncomeDto ToDto(Income income) =>
@@ -514,14 +584,20 @@ public static class CastarEndpoints
             Currency = income.Currency, AddedOnUtc = BudgetTime.AsUtc(income.AddedOn), RateDate = income.RateDate
         };
 
-    private static PurchaseDto ToDto(Purchase purchase)
+    private static PurchaseDto ToDto(Purchase purchase) => PurchaseDtoFrom(purchase,
+        new PurchaseOwnerDto(purchase.User.Name, purchase.User.ImageRaw is { Length: > 0 }),
+        purchase.Items, deferItems: false);
+
+    private static PurchaseDto PurchaseDtoFrom(Purchase purchase, PurchaseOwnerDto? owner,
+        IEnumerable<Item> lines, bool deferItems)
     {
-        var snapshot = FiscalReceiptSnapshot.Read(purchase.OriginalReceiptSnapshot);
+        var snapshot = deferItems && purchase.Revision == 0 ? null : FiscalReceiptSnapshot.Read(purchase.OriginalReceiptSnapshot);
         var originalLines = snapshot?.Items.ToHashSet();
-        var items = purchase.Items.Select(item => new PurchaseItemDto(
-            item.Id, item.Name, item.Category, item.Quantity, item.Price, item.Sum)
+        bool LineChanged(Item item) => originalLines is not null && !originalLines.Contains(FiscalReceiptLine.Capture(item));
+        var items = deferItems ? [] : lines.Select(item => new PurchaseItemDto(
+            item.Id, item.Name, null, item.Quantity, item.Price, item.Sum)
         {
-            IsEdited = originalLines is not null && !originalLines.Contains(FiscalReceiptLine.Capture(item))
+            IsEdited = LineChanged(item)
         }).ToArray();
         return new(purchase.Id, purchase.UserId, purchase.Name, purchase.TotalSum, purchase.Currency, purchase.MessageId,
             purchase.AddedOn is { } date ? BudgetTime.InZone(date, BudgetTime.Belgrade) : null,
@@ -533,9 +609,10 @@ public static class CastarEndpoints
             Revision = purchase.Revision,
             HasReceiptSource = PurchasesRepository.HasReceiptSource(purchase),
             SupportsCurrencyEdit = true,
-            Owner = new PurchaseOwnerDto(purchase.User.Name, purchase.User.ImageRaw is { Length: > 0 }),
+            Owner = owner,
+            ItemsDeferred = deferItems,
             IsEdited = snapshot is not null &&
-                (snapshot.HeaderChanged(purchase) || snapshot.Items.Length != items.Length || items.Any(item => item.IsEdited))
+                (snapshot.HeaderChanged(purchase) || snapshot.Items.Length != lines.Count() || lines.Any(LineChanged))
         };
     }
 }

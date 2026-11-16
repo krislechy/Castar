@@ -24,10 +24,11 @@ public partial class PurchaseEditor : UserControl
         OperationTime.Text = CastarDatePicker.FormatTime(purchase.AddedOn);
         if (owners is not null)
         {
-            PurchaseOwner.ItemsSource = owners.OrderBy(user => user.Name).ToArray();
-            PurchaseOwner.SelectedItem = owners.FirstOrDefault(user => user.Id == purchase.UserId)
+            OwnerColumn.Width = new GridLength(160);
+            PurchaseOwner.Users = owners.OrderBy(user => user.Name).ToArray();
+            PurchaseOwner.SelectedUser = owners.FirstOrDefault(user => user.Id == purchase.UserId)
                 ?? (owners.Count == 1 ? owners[0] : null);
-            OwnerField.Visibility = Visibility.Visible;
+            PurchaseOwner.Visibility = Visibility.Visible;
         }
         if (allowedCurrencies is not null)
         {
@@ -48,8 +49,8 @@ public partial class PurchaseEditor : UserControl
         var name = PurchaseName.Text == original.Name ? original.Name : PurchaseName.Text.Trim();
         if (string.IsNullOrWhiteSpace(name) || name.Length > 400)
             return new(false, "Укажите название покупки длиной до 400 символов.");
-        var owner = PurchaseOwner.SelectedItem as User;
-        if (OwnerField.Visibility == Visibility.Visible && owner is null)
+        var owner = PurchaseOwner.SelectedUser;
+        if (PurchaseOwner.Visibility == Visibility.Visible && owner is null)
             return new(false, "Выберите пользователя.");
 
         var place = OptionalText(RetailPlace.Text, original.RetailPlace);

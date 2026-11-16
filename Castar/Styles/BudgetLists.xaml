@@ -19,6 +19,11 @@
         <Setter Property="VirtualizingPanel.VirtualizationMode" Value="Recycling"/>
     </Style>
 
+    <Style x:Key="BudgetLedgerList" TargetType="ListView" BasedOn="{StaticResource BudgetList}">
+        <Setter Property="Padding" Value="0"/>
+        <Setter Property="ScrollViewer.HorizontalScrollBarVisibility" Value="Disabled"/>
+    </Style>
+
     <Style x:Key="BudgetTableCell" TargetType="TextBlock">
         <Setter Property="VerticalAlignment" Value="Center"/>
         <Setter Property="TextWrapping" Value="NoWrap"/>

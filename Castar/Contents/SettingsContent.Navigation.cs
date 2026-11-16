@@ -17,7 +17,7 @@ public partial class SettingsContent
         activeSection = page;
         activeSectionButton = button;
         SectionMenu.Visibility = Visibility.Collapsed;
-        SettingsTitle.Title = panel.Title;
+        SettingsTitle.Text = panel.Title;
         BackToSections.Visibility = Visibility.Visible;
         page.Visibility = Visibility.Visible;
         SettingsScroll.ScrollToTop();
@@ -40,7 +40,7 @@ public partial class SettingsContent
             page.Visibility = Visibility.Collapsed;
         }
         BackToSections.Visibility = Visibility.Collapsed;
-        SettingsTitle.Title = "Настройки";
+        SettingsTitle.Text = "Настройки";
         SectionMenu.Visibility = Visibility.Visible;
         SettingsScroll.ScrollToTop();
         if (activeSectionButton?.IsVisible == true)

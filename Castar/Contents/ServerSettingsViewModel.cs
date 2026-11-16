@@ -3,6 +3,7 @@ using Castar.Domain.Models.SettingsModel;
 using Castar.ServerConnection;
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Linq;
 using System.Net;
 using System.Net.Http;
@@ -24,6 +25,7 @@ internal sealed class ServerSettingsViewModel(CastarServerClient server, BudgetE
     private long? pendingRevision;
     private bool telegramEnabled;
     private bool receiptsEnabled;
+    private string receiptRetryMinutesText = "";
     private string? receiptProvider;
     private ManualCurrencySettingsDto? manualCurrency;
     private TelegramPreferencesDto? telegramPreferences;
@@ -46,6 +48,19 @@ internal sealed class ServerSettingsViewModel(CastarServerClient server, BudgetE
     public bool SupportsManualCurrency => SavedManualCurrency is not null;
     public ManualCurrencySettingsDto? SavedManualCurrency => saved?.ManualCurrency;
     public bool SupportsTelegramPreferences => saved?.TelegramPreferences is not null;
+    public bool SupportsReceiptRetry => saved?.ReceiptRetryMinutes is not null;
+    public string ReceiptRetryMinutesText
+    {
+        get => receiptRetryMinutesText;
+        set
+        {
+            if (SetField(ref receiptRetryMinutesText, value))
+                OnPropertyChanged(nameof(CanSave));
+        }
+    }
+    private int? ReceiptRetryMinutes => int.TryParse(ReceiptRetryMinutesText, NumberStyles.None,
+        CultureInfo.InvariantCulture, out var minutes) && ReceiptSettings.IsValidRetryMinutes(minutes)
+        ? minutes : null;
     public TelegramPreferencesDto? TelegramPreferences
     {
         get => telegramPreferences;
@@ -69,10 +84,12 @@ internal sealed class ServerSettingsViewModel(CastarServerClient server, BudgetE
         && ReceiptProviders.Any(provider => provider.Id == ReceiptProvider)
         && (!TelegramEnabled || current.TelegramConfigured || HasTelegramToken)
         && (telegramToken.Length == 0 || HasTelegramToken)
+        && (!SupportsReceiptRetry || ReceiptRetryMinutes is not null)
         && (!ReceiptsEnabled || AuthenticationProfile is not { } profile || UseAnonymous
             || profile.CredentialsConfigured || receiptCredentials is not null || !profile.Fields.Any(input => input.Required))
         && (TelegramEnabled != current.TelegramEnabled || ReceiptsEnabled != current.ReceiptsEnabled
             || ReceiptProvider != current.ReceiptProvider || HasTelegramToken || AuthenticationChanged
+            || ReceiptRetryMinutes != current.ReceiptRetryMinutes
             || !SameCurrencySettings(ManualCurrency, current.ManualCurrency)
             || TelegramPreferences != current.TelegramPreferences);
     public string TelegramStatus => saved?.TelegramConfigured switch
@@ -108,6 +125,7 @@ internal sealed class ServerSettingsViewModel(CastarServerClient server, BudgetE
     private bool HasDraft => saved is { } current
         && (TelegramEnabled != current.TelegramEnabled || ReceiptsEnabled != current.ReceiptsEnabled
             || ReceiptProvider != current.ReceiptProvider || telegramToken.Length != 0 || AuthenticationChanged
+            || ReceiptRetryMinutes != current.ReceiptRetryMinutes
             || !SameCurrencySettings(ManualCurrency, current.ManualCurrency)
             || TelegramPreferences != current.TelegramPreferences);
 
@@ -251,6 +269,8 @@ internal sealed class ServerSettingsViewModel(CastarServerClient server, BudgetE
         var update = new ServerSettingsWriteDto(TelegramEnabled, ReceiptsEnabled, ReceiptProvider, saved.Revision)
         {
             TelegramToken = HasTelegramToken ? telegramToken.Trim() : null,
+            ReceiptRetryMinutes = SupportsReceiptRetry && ReceiptRetryMinutes != saved.ReceiptRetryMinutes
+                ? ReceiptRetryMinutes : null,
             NalogCredentials = legacy && ReceiptProvider == "nalog" && receiptCredentials is { } credentials
                 ? new NalogCredentialsWriteDto(credentials["inn"].Trim(), credentials["password"]) : null,
             ReceiptAuthentication = !legacy && AuthenticationChanged
@@ -320,6 +340,8 @@ internal sealed class ServerSettingsViewModel(CastarServerClient server, BudgetE
     private void ApplySettings(ServerSettingsDto? value)
     {
         saved = value;
+        ReceiptRetryMinutesText = value?.ReceiptRetryMinutes?.ToString(CultureInfo.InvariantCulture) ?? "";
+        OnPropertyChanged(nameof(SupportsReceiptRetry));
         if (!SupportsCredentials)
             ClearCredentials();
         requiresReload = false;

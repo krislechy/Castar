@@ -16,7 +16,6 @@ public partial class UserAvatarEditor : UserControl
     private readonly BitmapSource source;
     private CroppedBitmap? crop;
     private byte[]? candidate;
-    private bool compressed;
     private bool ready;
 
     internal UserAvatarEditor(BitmapSource source)
@@ -25,7 +24,6 @@ public partial class UserAvatarEditor : UserControl
         InitializeComponent();
         ready = true;
         UpdateCrop();
-        UpdateCandidate();
     }
 
     internal byte[]? Result { get; private set; }
@@ -90,40 +88,37 @@ public partial class UserAvatarEditor : UserControl
         Result = null;
     }
 
-    private void Compress_Click(object sender, RoutedEventArgs e)
-    {
-        compressed = true;
-        candidate = null;
-        UpdateCandidate();
-        PopupDialog.SetContentWarning(this, null);
-    }
-
     internal ValidatePopupDialog Validate()
     {
         UpdateCandidate();
         Result = candidate is { Length: <= MaximumBytes } ? candidate : null;
         return Result is not null
             ? new(true, null)
-            : new(false, "Размер аватара превышает 1 МБ. Нажмите «Сжать».");
+            : new(false, "Не удалось сохранить аватар размером до 1 МиБ.");
     }
 
     private void UpdateCandidate()
     {
-        if (candidate is null && crop is not null)
+        if (candidate is not null || crop is null)
+            return;
+
+        candidate = Encode(crop, FullPixels);
+        for (var limit = CompressedPixels; candidate.Length > MaximumBytes && limit >= 1; limit /= 2)
+            candidate = Encode(crop, limit);
+    }
+
+    private static byte[] Encode(BitmapSource source, int limit)
+    {
+        BitmapSource bitmap = source;
+        if (bitmap.PixelWidth > limit)
         {
-            BitmapSource bitmap = crop;
-            var limit = compressed ? CompressedPixels : FullPixels;
-            if (bitmap.PixelWidth > limit)
-            {
-                var scale = (double)limit / bitmap.PixelWidth;
-                bitmap = new TransformedBitmap(bitmap, new ScaleTransform(scale, scale));
-            }
-            var encoder = new PngBitmapEncoder();
-            encoder.Frames.Add(BitmapFrame.Create(bitmap));
-            using var stream = new MemoryStream();
-            encoder.Save(stream);
-            candidate = stream.ToArray();
+            var scale = (double)limit / bitmap.PixelWidth;
+            bitmap = new TransformedBitmap(bitmap, new ScaleTransform(scale, scale));
         }
-        Compress.Visibility = candidate is { Length: > MaximumBytes } ? Visibility.Visible : Visibility.Collapsed;
+        var encoder = new PngBitmapEncoder();
+        encoder.Frames.Add(BitmapFrame.Create(bitmap));
+        using var stream = new MemoryStream();
+        encoder.Save(stream);
+        return stream.ToArray();
     }
 }

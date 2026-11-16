@@ -1,0 +1,23 @@
+<UserControl x:Class="Castar.Compontents.BudgetUserPicker" x:Name="Picker"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:c="clr-namespace:Castar.Compontents">
+    <StackPanel>
+        <TextBlock x:Name="UserLabel" Text="Пользователь" Style="{StaticResource FormFieldLabel}"/>
+        <ListView ItemsSource="{Binding Users, ElementName=Picker}"
+                  SelectedItem="{Binding SelectedUser, ElementName=Picker, Mode=TwoWay}"
+                  Style="{StaticResource BudgetList}" MaxHeight="160" SelectionMode="Single"
+                  AutomationProperties.LabeledBy="{Binding ElementName=UserLabel}">
+            <ListView.ItemTemplate>
+                <DataTemplate>
+                    <DockPanel>
+                        <c:UserAvatar Width="32" Height="32" Margin="0,0,8,0"
+                                      UserName="{Binding Name}"
+                                      Photo="{Binding ImageRaw, Converter={StaticResource UserAvatarImageConverter}}"/>
+                        <TextBlock Text="{Binding Name}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
+                    </DockPanel>
+                </DataTemplate>
+            </ListView.ItemTemplate>
+        </ListView>
+    </StackPanel>
+</UserControl>

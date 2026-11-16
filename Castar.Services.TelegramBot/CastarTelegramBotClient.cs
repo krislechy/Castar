@@ -36,8 +36,7 @@ public sealed class CastarTelegramBotClient : ICastarTelegramBotClient
 
     private void OnSettingsChanged(object? sender, PropertyChangedEventArgs e)
     {
-        if (e.PropertyName is nameof(Systems.IsEnableTelegramBot) or nameof(TelegramSettings.TelegramBotApi_KEY)
-            or nameof(TelegramSettings.TestChatId))
+        if (e.PropertyName is nameof(Systems.IsEnableTelegramBot) or nameof(TelegramSettings.TelegramBotApi_KEY))
             QueueConfiguration();
     }
 
@@ -101,9 +100,11 @@ public sealed class CastarTelegramBotClient : ICastarTelegramBotClient
         {
             using var httpClient = new HttpClient { Timeout = TimeSpan.FromSeconds(45) };
             var bot = new TelegramBotClient(configuration.Token!, httpClient, cancellationToken);
-            var testPurchases = new TestPurchaseSessions();
+            var purchases = new PurchaseWizardSessions();
             int? offset = null;
             PublishStatus(configuration, "Подключение...");
+            var menu = await BotMenu.ConfigureAsync(bot, cancellationToken);
+            var nextMenuAttempt = DateTimeOffset.UtcNow.AddMinutes(1);
             while (!cancellationToken.IsCancellationRequested)
             {
                 Update[] updates;
@@ -127,10 +128,16 @@ public sealed class CastarTelegramBotClient : ICastarTelegramBotClient
                 }
 
                 PublishStatus(configuration, "Подключено");
+                if (!menu.Configured && DateTimeOffset.UtcNow >= nextMenuAttempt)
+                {
+                    var retry = await BotMenu.ConfigureAsync(bot, cancellationToken);
+                    menu = (retry.Username ?? menu.Username, retry.Configured);
+                    nextMenuAttempt = DateTimeOffset.UtcNow.AddMinutes(1);
+                }
                 foreach (var update in updates)
                 {
                     cancellationToken.ThrowIfCancellationRequested();
-                    await HandleUpdateAsync(bot, update, testPurchases, cancellationToken);
+                    await HandleUpdateAsync(bot, update, purchases, menu.Username, cancellationToken);
                     offset = update.Id + 1;
                 }
             }
@@ -149,8 +156,8 @@ public sealed class CastarTelegramBotClient : ICastarTelegramBotClient
         }
     }
 
-    private async Task HandleUpdateAsync(ITelegramBotClient client, Update update, TestPurchaseSessions testPurchases,
-        CancellationToken cancellationToken)
+    private async Task HandleUpdateAsync(ITelegramBotClient client, Update update, PurchaseWizardSessions purchases,
+        string? botUsername, CancellationToken cancellationToken)
     {
         var message = update.Message ?? update.EditedMessage;
         if (message is null && update.CallbackQuery is null)
@@ -160,10 +167,10 @@ public sealed class CastarTelegramBotClient : ICastarTelegramBotClient
         {
             await using var scope = scopeFactory.CreateAsyncScope();
             var handler = scope.ServiceProvider.GetRequiredService<CommandHandler>();
-            if (await handler.HandleTestPurchaseAsync(client, update, testPurchases, cancellationToken))
+            if (await handler.HandlePurchaseWizardAsync(client, update, purchases, botUsername, cancellationToken))
                 return;
             if (message is not null)
-                await handler.HandleAsync(client, message, update.EditedMessage is not null, cancellationToken);
+                await handler.HandleAsync(client, message, update.EditedMessage is not null, cancellationToken, botUsername);
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {

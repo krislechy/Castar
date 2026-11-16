@@ -77,7 +77,11 @@ public partial class App : Application
         var tray = serviceProvider.GetRequiredService<ITrayIcon>();
         var notifications = serviceProvider.GetRequiredService<CastarNotificationCenter>();
         notifications.Configure(settings.NotificationCorner, settings.MaxVisibleNotifications);
-        settings.ConnectionChanged += (_, _) => notifications.Clear();
+        settings.ConnectionChanged += (_, _) =>
+        {
+            notifications.Clear();
+            serviceProvider.GetRequiredService<CastarServerClient>().ClearAvatarCache();
+        };
         ApplyPreferences(settings, tray);
         Task<bool?>? settingsSaveWarning = null;
         settings.PropertyChanged += (_, change) =>
@@ -142,6 +146,7 @@ public partial class App : Application
         };
         budgetEvents.Synchronized += () =>
         {
+            serviceProvider.GetRequiredService<CastarServerClient>().ClearAvatarCache();
             _ = purchases.RefreshAfterServerChangeAsync();
             _ = incomes.RefreshAfterServerChangeAsync();
             RefreshOpenStatistics();
@@ -150,6 +155,7 @@ public partial class App : Application
         {
             if (change.Kind == ServerSynchronization.Users)
             {
+                serviceProvider.GetRequiredService<CastarServerClient>().ClearAvatarCache();
                 _ = purchases.RefreshAfterServerChangeAsync();
                 _ = incomes.RefreshAfterServerChangeAsync();
             }

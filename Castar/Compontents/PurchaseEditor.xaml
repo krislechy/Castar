@@ -2,14 +2,15 @@
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:c="clr-namespace:Castar.Compontents">
-    <StackPanel MinWidth="330">
+    <Grid MinWidth="450">
+      <Grid.ColumnDefinitions>
+          <ColumnDefinition x:Name="OwnerColumn" Width="0"/>
+          <ColumnDefinition Width="*"/>
+      </Grid.ColumnDefinitions>
+      <c:BudgetUserPicker x:Name="PurchaseOwner" Margin="0,0,12,0" Visibility="Collapsed"/>
+      <StackPanel Grid.Column="1">
         <TextBlock x:Name="NameLabel" Text="Название" Style="{StaticResource FormFieldLabel}"/>
         <TextBox x:Name="PurchaseName" MaxLength="400" AutomationProperties.LabeledBy="{Binding ElementName=NameLabel}"/>
-        <StackPanel x:Name="OwnerField" Visibility="Collapsed">
-            <TextBlock x:Name="OwnerLabel" Text="Пользователь" Style="{StaticResource FormFieldLabel}"/>
-            <c:CastarComboBox x:Name="PurchaseOwner" DisplayMemberPath="Name"
-                              AutomationProperties.LabeledBy="{Binding ElementName=OwnerLabel}"/>
-        </StackPanel>
         <TextBlock x:Name="PlaceLabel" Text="Место покупки" Style="{StaticResource FormFieldLabel}"/>
         <TextBox x:Name="RetailPlace" MaxLength="400" AutomationProperties.LabeledBy="{Binding ElementName=PlaceLabel}"/>
         <TextBlock x:Name="AddressLabel" Text="Адрес" Style="{StaticResource FormFieldLabel}"/>
@@ -24,5 +25,6 @@
             <c:CastarComboBox x:Name="PurchaseCurrency" DisplayMemberPath="Label"
                               AutomationProperties.LabeledBy="{Binding ElementName=CurrencyLabel}"/>
         </StackPanel>
-    </StackPanel>
+      </StackPanel>
+    </Grid>
 </UserControl>

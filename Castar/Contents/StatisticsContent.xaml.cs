@@ -24,11 +24,9 @@ namespace Castar.Contents;
 
 public partial class StatisticsContent : UserControl
 {
-    private const int VisibleCategoryCount = 8;
     private readonly BudgetStatistics statistics;
     private readonly ClientSettings settings;
     private readonly CartesianChart timelineChart;
-    private readonly CartesianChart categoriesChart;
     private bool listeningForChanges;
     private bool dataStale = true;
     private CancellationTokenSource? activeRequest;
@@ -44,12 +42,12 @@ public partial class StatisticsContent : UserControl
         this.statistics = statistics;
         this.settings = settings;
         InitializeComponent();
+        Dates.DisplayTimeZone = () => settings.DisplayTimeZone;
+        Dates.SetCurrentMonth();
 
         timelineChart = CreateChart("График доходов и расходов за период");
         timelineChart.LegendPosition = LegendPosition.Top;
         TimelinePanel.ObjectContent = timelineChart;
-        categoriesChart = CreateChart("График расходов по категориям");
-        CategoriesPanel.ObjectContent = categoriesChart;
         server.ConnectionChanged += async (_, _) =>
         {
             ShowSnapshot(null);
@@ -228,8 +226,8 @@ public partial class StatisticsContent : UserControl
     private void ShowCurrency(StatisticsCurrency? currency)
     {
         if (currency == renderedCurrency || currency is not null && renderedCurrency is { } previous &&
-            (previous with { Points = currency.Points, Categories = currency.Categories }) == currency &&
-            previous.Points.SequenceEqual(currency.Points) && previous.Categories.SequenceEqual(currency.Categories))
+            (previous with { Points = currency.Points }) == currency &&
+            previous.Points.SequenceEqual(currency.Points))
             return;
 
         renderedCurrency = currency;
@@ -238,7 +236,6 @@ public partial class StatisticsContent : UserControl
         {
             Totals.ItemsSource = null;
             timelineChart.Series = [];
-            categoriesChart.Series = [];
             return;
         }
 
@@ -249,7 +246,6 @@ public partial class StatisticsContent : UserControl
             FormatTotal("Разница", currency.Balance, currency.Currency)
         };
         DrawTimeline(currency);
-        DrawCategories(currency);
     }
 
     private void DrawTimeline(StatisticsCurrency currency)
@@ -266,45 +262,6 @@ public partial class StatisticsContent : UserControl
         [
             DrawLine("Доходы", "Button.Foreground.Green", points.Select(point => point.Income), currency.Currency),
             DrawLine("Расходы", "Highlight", points.Select(point => point.Expenses), currency.Currency)
-        ];
-    }
-
-    private void DrawCategories(StatisticsCurrency currency)
-    {
-        CategoriesPanel.Visibility = currency.Categories.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
-        if (currency.Categories.Count == 0)
-        {
-            categoriesChart.Series = [];
-            return;
-        }
-
-        var ordered = currency.Categories.OrderByDescending(category => decimal.Abs(category.Amount)).ToArray();
-        var groups = ordered.Take(VisibleCategoryCount)
-            .Select(category => (Label: $"Категория {category.Id}", category.Amount)).ToList();
-        if (ordered.Length > VisibleCategoryCount)
-            groups.Add(("Остальные", ordered.Skip(VisibleCategoryCount).Sum(category => category.Amount)));
-        groups.Reverse();
-
-        var amountAxis = AmountAxis();
-        if (groups.All(group => group.Amount >= 0))
-            amountAxis.MinLimit = 0;
-        else if (groups.All(group => group.Amount <= 0))
-            amountAxis.MaxLimit = 0;
-        categoriesChart.XAxes = [amountAxis];
-        categoriesChart.YAxes =
-        [
-            new Axis { Labels = groups.Select(group => group.Label).ToArray(), MinStep = 1, LabelsPaint = Paint("Foreground.Gray") }
-        ];
-        categoriesChart.Series =
-        [
-            new RowSeries<decimal>
-            {
-                Values = groups.Select(group => group.Amount).ToArray(),
-                Name = "Расходы",
-                Fill = Paint("Highlight"),
-                XToolTipLabelFormatter = point => groups[point.Index].Label,
-                YToolTipLabelFormatter = point => HistoricalExchangeRates.Format(point.Model, currency.Currency)
-            }
         ];
     }
 

@@ -42,7 +42,6 @@ namespace Castar.DAL.Repositories.DataBase
             var current = purchase.Items.FirstOrDefault(x => x.Id == item.Id)
                 ?? throw new InvalidOperationException("Товар больше не принадлежит этой покупке.");
             current.Name = item.Name;
-            current.Category = item.Category;
             current.Quantity = item.Quantity;
             current.Price = item.Price;
             purchase.RecalculateManualTotals();

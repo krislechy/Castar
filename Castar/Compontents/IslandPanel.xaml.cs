@@ -58,6 +58,24 @@ namespace Castar.Compontents
                 SetValue(TitleProperty, value);
             }
         }
+        public static readonly DependencyProperty ShowTitleProperty =
+            DependencyProperty.Register(nameof(ShowTitle), typeof(bool), typeof(IslandPanel), new PropertyMetadata(true));
+
+        public bool ShowTitle
+        {
+            get => (bool)GetValue(ShowTitleProperty);
+            set => SetValue(ShowTitleProperty, value);
+        }
+
+        public static readonly DependencyProperty HeaderMarginProperty = DependencyProperty.Register(
+            nameof(HeaderMargin), typeof(Thickness), typeof(IslandPanel), new PropertyMetadata(new Thickness(0, 0, 0, 10)));
+
+        public Thickness HeaderMargin
+        {
+            get => (Thickness)GetValue(HeaderMarginProperty);
+            set => SetValue(HeaderMarginProperty, value);
+        }
+
         private static DependencyProperty IsMainTitleProperty = DependencyProperty.Register(nameof(IsMainTitle), typeof(bool), typeof(IslandPanel));
         public bool IsMainTitle
         {
@@ -72,6 +90,7 @@ namespace Castar.Compontents
         }
         public IslandPanel()
         {
+            SetCurrentValue(PaddingProperty, new Thickness(10));
             InitializeComponent();
         }
     }

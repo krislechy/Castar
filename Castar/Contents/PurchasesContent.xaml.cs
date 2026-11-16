@@ -27,6 +27,8 @@ public partial class PurchasesContent : UserControl
     private bool listeningForChanges;
     private PurchaseRow[] purchases = [];
     private CancellationTokenSource? activeRequest;
+    private CancellationTokenSource? detailsRequest;
+    private CancellationTokenSource? avatarRequest;
     private CancellationTokenSource? purchaseAction;
     private long connectionRevision;
     private bool hasLoaded;
@@ -40,6 +42,8 @@ public partial class PurchasesContent : UserControl
         this.settings = settings;
         this.exchangeRates = exchangeRates;
         InitializeComponent();
+        Dates.DisplayTimeZone = () => settings.DisplayTimeZone;
+        Dates.SetCurrentMonth();
         server.ConnectionChanged += Server_ConnectionChanged;
         settings.PropertyChanged += Settings_PropertyChanged;
     }
@@ -62,6 +66,8 @@ public partial class PurchasesContent : UserControl
             return;
 
         listeningForChanges = true;
+        if (DetailsPanel.DataContext is PurchaseRow { Source.ItemsDeferred: true } && !dataStale)
+            await LoadSelectionAsync();
         if (dataStale)
             await RefreshAsync();
     }
@@ -72,6 +78,7 @@ public partial class PurchasesContent : UserControl
         CancelRefresh();
         Progress.IsLoading = false;
         purchaseAction?.Cancel();
+        detailsRequest?.Cancel();
     }
 
     private async void Dates_DateRangeChanged(object sender, EventArgs e)
@@ -108,6 +115,7 @@ public partial class PurchasesContent : UserControl
 
     private void ClearPurchases()
     {
+        avatarRequest?.Cancel();
         hasLoaded = false;
         ShowPurchases([], "");
         ShowStatus("");
@@ -151,7 +159,7 @@ public partial class PurchasesContent : UserControl
         Progress.IsLoading = !hasLoaded;
         try
         {
-            var rows = await server.GetPurchasesAsync(range.StartDate, range.EndDate, request.Token);
+            var rows = await server.GetPurchaseSummariesAsync(range.StartDate, range.EndDate, request.Token);
             if (request != activeRequest || refreshPending)
                 return;
 
@@ -160,17 +168,16 @@ public partial class PurchasesContent : UserControl
             var target = settings.DisplayCurrency;
             var dated = rows.Select(row => (row.Currency, Date: OperationDate(row))).Where(row => row.Date.HasValue);
             var rates = await exchangeRates.GetAsync(dated.Select(row => (row.Currency, row.Date!.Value)), target, request.Token);
-            var avatars = await LoadOwnerAvatarsAsync(rows, request.Token);
             if (request != activeRequest || refreshPending)
                 return;
-            var views = rows.Select(row => new PurchaseRow(row, target, RateFor(row, target, rates),
-                avatars.GetValueOrDefault(row.UserId))).ToArray();
+            var views = rows.Select(row => new PurchaseRow(row, target, RateFor(row, target, rates), null)).ToArray();
             dataStale = false;
             ShowPurchases(views, target);
             SelectNotificationTarget();
             notificationTarget = null;
             hasLoaded = true;
             ShowStatus("");
+            _ = RefreshOwnerAvatarsAsync(rows);
         }
         catch (Exception error) when (CastarServerClient.IsConnectionError(error))
         {
@@ -187,6 +194,32 @@ public partial class PurchasesContent : UserControl
                 else
                     Progress.IsLoading = false;
             }
+        }
+    }
+
+    private async Task RefreshOwnerAvatarsAsync(PurchaseDto[] rows)
+    {
+        var previous = avatarRequest;
+        using var request = new CancellationTokenSource();
+        avatarRequest = request;
+        previous?.Cancel();
+        try
+        {
+            var images = await LoadOwnerAvatarsAsync(rows, request.Token);
+            if (request != avatarRequest || request.IsCancellationRequested)
+                return;
+            foreach (var row in purchases)
+                row.SetOwnerAvatar(images.GetValueOrDefault(row.Source.UserId));
+            if (DetailsPanel.DataContext is PurchaseRow details)
+                details.SetOwnerAvatar(images.GetValueOrDefault(details.Source.UserId));
+        }
+        catch (OperationCanceledException) when (request.IsCancellationRequested)
+        {
+        }
+        finally
+        {
+            if (request == avatarRequest)
+                avatarRequest = null;
         }
     }
 
@@ -251,10 +284,45 @@ public partial class PurchasesContent : UserControl
             : Visibility.Collapsed;
     }
 
-    private void PurchasesList_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    private async void PurchasesList_SelectionChanged(object sender, SelectionChangedEventArgs e) => await LoadSelectionAsync();
+
+    private async Task LoadSelectionAsync()
     {
-        DetailsPanel.DataContext = PurchasesList.SelectedItem;
+        var previous = detailsRequest;
+        detailsRequest = null;
+        previous?.Cancel();
+        var selected = PurchasesList.SelectedItem as PurchaseRow;
+        DetailsPanel.DataContext = selected;
+        DetailsPanel.Tag = null;
+        if (!listeningForChanges || selected is not { Source.ItemsDeferred: true })
+            return;
+
+        using var request = new CancellationTokenSource();
+        detailsRequest = request;
+        DetailsPanel.Tag = new DetailStatus(true, "");
+        try
+        {
+            var detail = await server.GetPurchaseDetailsAsync(selected.Id, request.Token);
+            if (request == detailsRequest && !request.IsCancellationRequested)
+                DetailsPanel.DataContext = selected.WithDetails(detail);
+        }
+        catch (Exception error) when (CastarServerClient.IsConnectionError(error))
+        {
+            if (request == detailsRequest && !request.IsCancellationRequested)
+                DetailsPanel.Tag = new DetailStatus(false, CastarServerClient.DescribeError(error));
+        }
+        finally
+        {
+            if (request == detailsRequest)
+            {
+                detailsRequest = null;
+                if (DetailsPanel.Tag is DetailStatus { IsLoading: true })
+                    DetailsPanel.Tag = null;
+            }
+        }
     }
+
+    private sealed record DetailStatus(bool IsLoading, string Message);
 
     internal void RevealNotification(Guid id, DateTime? addedOn)
     {
@@ -435,8 +503,9 @@ public partial class PurchasesContent : UserControl
         await RefreshAsync();
     }
 
-    private sealed class PurchaseRow(PurchaseDto source, string target, decimal? rate, byte[]? ownerAvatar)
+    private sealed class PurchaseRow(PurchaseDto source, string target, decimal? rate, byte[]? ownerAvatar) : INotifyPropertyChanged
     {
+        public event PropertyChangedEventHandler? PropertyChanged;
         public PurchaseDto Source { get; } = source;
         public decimal? Rate { get; } = rate;
         private string Target { get; } = target;
@@ -444,7 +513,7 @@ public partial class PurchasesContent : UserControl
         public string Name => Source.Name;
         public bool IsEdited => Source.IsEdited;
         public string? OwnerName => Source.Owner?.Name;
-        public byte[]? OwnerAvatar { get; } = ownerAvatar;
+        public byte[]? OwnerAvatar { get; private set; } = ownerAvatar;
         public bool CanDelete => Source.Revision.HasValue;
         public bool HasReceiptSource => Source.HasReceiptSource;
         public DateTime? AddedOn => Source.AddedOn;
@@ -462,8 +531,18 @@ public partial class PurchasesContent : UserControl
 
         public bool EquivalentTo(PurchaseRow other) => Target == other.Target && Rate == other.Rate
             && (Source with { Items = other.Source.Items }) == other.Source
-            && Source.Items.SequenceEqual(other.Source.Items)
-            && OwnerAvatar.AsSpan().SequenceEqual(other.OwnerAvatar);
+            && Source.Items.SequenceEqual(other.Source.Items);
+
+        public void SetOwnerAvatar(byte[]? image)
+        {
+            if (OwnerAvatar.AsSpan().SequenceEqual(image))
+                return;
+            OwnerAvatar = image;
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(OwnerAvatar)));
+        }
+
+        public PurchaseRow WithDetails(PurchaseDto detail) => new(detail, Target,
+            detail.Currency == Source.Currency && OperationDate(detail) == OperationDate(Source) ? Rate : null, OwnerAvatar);
 
         private static string? GetAmountWarning(PurchaseDto purchase, string target, decimal? rate)
         {

@@ -1,4 +1,5 @@
 using System.Net;
+using System.IO.Compression;
 using System.Text.Json;
 using Castar.Api;
 using Castar.DAL;
@@ -7,6 +8,7 @@ using Castar.Server;
 using Castar.Services.Receipts;
 using Castar.Services.TelegramBot;
 using Castar.Services.TelegramBot.Commands;
+using Microsoft.AspNetCore.ResponseCompression;
 using Microsoft.EntityFrameworkCore;
 
 if (args is ["--stage-server-update", var updateWork, var updateStatus])
@@ -51,6 +53,13 @@ if (string.IsNullOrWhiteSpace(configuration["urls"]))
     builder.WebHost.UseUrls("http://127.0.0.1:5080");
 builder.WebHost.ConfigureKestrel(options => options.Limits.MaxRequestBodySize = 6 * 1024 * 1024);
 builder.Services.AddProblemDetails();
+builder.Services.AddResponseCompression(options =>
+{
+    options.EnableForHttps = true;
+    options.MimeTypes = ["application/json"];
+    options.Providers.Add<GzipCompressionProvider>();
+});
+builder.Services.Configure<GzipCompressionProviderOptions>(options => options.Level = CompressionLevel.Fastest);
 builder.Services.AddCastarData(configuration);
 builder.Services.AddExchangeRates();
 builder.Services.AddSignalR();
@@ -66,6 +75,17 @@ builder.Services.AddSingleton<IReceiptProvider>(_ => new Nalog(() =>
     return new NetworkCredential(credentials.INN, credentials.Password);
 }));
 builder.Services.AddSingleton<ServerSettings>();
+builder.Services.AddSingleton(TimeProvider.System);
+builder.Services.AddSingleton(provider => new ReceiptQueueNotifications(settings,
+    provider.GetRequiredService<ILogger<ReceiptQueueNotifications>>(),
+    new HttpClient { Timeout = TimeSpan.FromSeconds(30) }));
+builder.Services.AddSingleton(provider => new ReceiptImportQueue(
+    provider.GetRequiredService<IServiceScopeFactory>(), settings, provider.GetRequiredService<ServerSettings>(),
+    provider.GetServices<IReceiptProvider>(), provider.GetRequiredService<ReceiptQueueNotifications>(),
+    provider.GetRequiredService<TimeProvider>(), provider.GetRequiredService<ILogger<ReceiptImportQueue>>(), IsUpdating));
+builder.Services.AddSingleton<IReceiptImportQueue>(provider => provider.GetRequiredService<ReceiptImportQueue>());
+if (!verifyingUpdate)
+    builder.Services.AddHostedService(provider => provider.GetRequiredService<ReceiptImportQueue>());
 builder.Services.AddSingleton<ApiKeyStore>();
 if (!verifyingUpdate && !string.IsNullOrWhiteSpace(configuration["Castar:LocalAdminDirectory"]))
     builder.Services.AddHostedService<LocalKeyAdmin>();
@@ -99,6 +119,10 @@ app.Use(async (context, next) =>
     }
     await next(context);
 });
+app.UseWhen(context => HttpMethods.IsGet(context.Request.Method) &&
+    (context.Request.Path.Equals("/api/purchases/summary", StringComparison.OrdinalIgnoreCase) ||
+     context.Request.Path.Equals("/api/budget/operations", StringComparison.OrdinalIgnoreCase)),
+    branch => branch.UseResponseCompression());
 
 app.MapGet("/health", () => Results.Ok(new
 {

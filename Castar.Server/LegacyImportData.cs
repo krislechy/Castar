@@ -10,6 +10,8 @@ namespace Castar.Server;
 
 internal sealed class LegacyImportData
 {
+    internal static readonly DateTime StartOf2026Utc = BudgetTime.FromLocal(new DateTime(2026, 1, 1), BudgetTime.Belgrade);
+
     private readonly Income[] incomes;
     private readonly Purchase[] purchases;
     private readonly Dictionary<Guid, long> ownerIds;
@@ -77,8 +79,7 @@ internal sealed class LegacyImportData
                 Name = Text(item.Name, "Товар", "item", item.Id),
                 Quantity = item.Quantity,
                 Price = item.Price,
-                Sum = item.Amount,
-                Category = item.Category
+                Sum = item.Amount
             }))
         }).ToArray();
         var summary = new ArchiveSummary(archive.ArchiveSha256, telegramIds.Length,
@@ -104,8 +105,17 @@ internal sealed class LegacyImportData
         }
     }
 
+    public void ValidateReplacement(DateTime? replaceBefore)
+    {
+        if (replaceBefore is not { } cutoff)
+            return;
+        if (incomes.Length == 0 || purchases.Length == 0 ||
+            incomes.Any(row => row.AddedOn >= cutoff) || purchases.Any(row => row.AddedOn is null || row.AddedOn >= cutoff))
+            throw new InvalidDataException("The replacement requires nonempty archive incomes and purchases dated before the cutoff.");
+    }
+
     public async Task<ImportResult> ImportAsync(
-        CastarDbContext db, string? target, CurrencyRateDto[] quotes, CancellationToken token)
+        CastarDbContext db, string? target, CurrencyRateDto[] quotes, DateTime? replaceBefore, CancellationToken token)
     {
         await using var transaction = await db.Database.BeginTransactionAsync(token);
         var knownOwners = await db.Users.AsNoTracking().ToListAsync(token);
@@ -133,6 +143,10 @@ internal sealed class LegacyImportData
             createdOwners++;
         }
 
+        var removed = replaceBefore is { } cutoff
+            ? await RemoveReplacedRowsAsync(db, cutoff, owners, token)
+            : default;
+
         var incomeCount = 0;
         foreach (var batch in incomes.Chunk(200))
         {
@@ -143,8 +157,7 @@ internal sealed class LegacyImportData
                 var ownerId = owners[source.UserId];
                 if (current.TryGetValue(source.Id, out var entry))
                 {
-                    if (entry.UserId != ownerId || entry.Sum != source.Sum || entry.Source != source.Source ||
-                        entry.AddedOn != source.AddedOn || entry.Currency != source.Currency || entry.RateDate != source.RateDate)
+                    if (!SameIncome(source, entry, ownerId))
                         throw new InvalidDataException($"Archive income {source.Id} conflicts with an existing record.");
                     continue;
                 }
@@ -187,8 +200,37 @@ internal sealed class LegacyImportData
         if (db.ChangeTracker.HasChanges())
             await db.SaveChangesAsync(token);
         await transaction.CommitAsync(token);
-        return new(createdOwners, incomeCount, purchaseCount, itemCount, rateCount);
+        return new(createdOwners, incomeCount, purchaseCount, itemCount, rateCount,
+            removed.Incomes, removed.Purchases, removed.Items);
     }
+
+    private async Task<(int Incomes, int Purchases, int Items)> RemoveReplacedRowsAsync(
+        CastarDbContext db, DateTime cutoff, Dictionary<Guid, Guid> owners, CancellationToken token)
+    {
+        var oldIncomes = db.Incomes.Where(row => row.AddedOn < cutoff);
+        var oldPurchases = db.Purchases.Where(row => row.AddedOn < cutoff);
+        if (await oldIncomes.CountAsync(token) == incomes.Length && await oldPurchases.CountAsync(token) == purchases.Length)
+        {
+            var currentIncomes = await oldIncomes.AsNoTracking().ToDictionaryAsync(row => row.Id, token);
+            var currentPurchases = await oldPurchases.AsNoTracking().Include(row => row.Items)
+                .ToDictionaryAsync(row => row.Id, token);
+            if (incomes.All(source => currentIncomes.TryGetValue(source.Id, out var entry) &&
+                    entry.MessageId == 0 && SameIncome(source, entry, owners[source.UserId])) &&
+                purchases.All(source => currentPurchases.TryGetValue(source.Id, out var entry) &&
+                    entry.MessageId == 0 && entry.TelegramOriginUserId is null && entry.Revision == 0 &&
+                    entry.OriginalReceiptSnapshot is null && SamePurchase(source, entry, owners[source.UserId])))
+                return default;
+        }
+
+        var items = await db.Items.CountAsync(item => oldPurchases.Any(purchase => purchase.Id == item.PurchaseId), token);
+        var purchasesRemoved = await oldPurchases.ExecuteDeleteAsync(token);
+        var incomesRemoved = await oldIncomes.ExecuteDeleteAsync(token);
+        return (incomesRemoved, purchasesRemoved, items);
+    }
+
+    private static bool SameIncome(Income source, Income entry, Guid ownerId) =>
+        entry.UserId == ownerId && entry.Sum == source.Sum && entry.Source == source.Source &&
+        entry.AddedOn == source.AddedOn && entry.Currency == source.Currency && entry.RateDate == source.RateDate;
 
     private static bool SamePurchase(Purchase source, Purchase entry, Guid ownerId) =>
         entry.UserId == ownerId && entry.Name == source.Name && entry.TotalSum == source.TotalSum &&
@@ -197,8 +239,8 @@ internal sealed class LegacyImportData
         entry.RetailPlace is null && entry.RetailPlaceAddress is null &&
         entry.Items.OrderBy(item => item.Id).Select(ItemKey).SequenceEqual(source.Items.OrderBy(item => item.Id).Select(ItemKey));
 
-    private static (Guid Id, string Name, double Quantity, decimal Price, decimal Amount, int? Category) ItemKey(Item item) =>
-        (item.Id, item.Name, item.Quantity, item.Price, item.Sum, item.Category);
+    private static (Guid Id, string Name, double Quantity, decimal Price, decimal Amount) ItemKey(Item item) =>
+        (item.Id, item.Name, item.Quantity, item.Price, item.Sum);
 
     private static async Task<int> WriteMissingQuotesAsync(
         CastarDbContext db, string? target, CurrencyRateDto[] quotes, CancellationToken token)
@@ -264,10 +306,11 @@ internal sealed class LegacyImportData
         ArchiveIncome[] Incomes, ArchivePurchase[] Purchases, ArchiveItem[] Items);
     internal sealed record ArchiveIncome(int Id, long TelegramId, DateTime AddedOn, decimal Amount, string? Source);
     internal sealed record ArchivePurchase(int Id, long TelegramId, DateTime AddedOn, decimal Amount, string? Name);
-    internal sealed record ArchiveItem(int Id, int PurchaseId, string? Name, double Quantity, decimal Price, decimal Amount, int? Category);
+    internal sealed record ArchiveItem(int Id, int PurchaseId, string? Name, double Quantity, decimal Price, decimal Amount);
     internal sealed record ArchiveSummary(string Sha256, int Owners, int Incomes, int Purchases, int Items,
         decimal IncomeTotalRub, decimal PurchaseTotalRub, decimal ItemTotalRub, int HistoryRowsOutsideBudgetModel,
         int MissingIncomeNames, int MissingPurchaseNames, int MissingItemNames, int PurchasesWithDifferentItemTotals,
         int ItemsWithDifferentCalculatedAmounts, string[] AmbiguousMoscowTimes);
-    internal sealed record ImportResult(int UsersAdded, int IncomesAdded, int PurchasesAdded, int ItemsAdded, int RatesWritten);
+    internal sealed record ImportResult(int UsersAdded, int IncomesAdded, int PurchasesAdded, int ItemsAdded, int RatesWritten,
+        int IncomesRemoved, int PurchasesRemoved, int ItemsRemoved);
 }

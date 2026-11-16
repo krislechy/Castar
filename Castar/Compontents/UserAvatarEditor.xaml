@@ -15,16 +15,14 @@
         </Ellipse>
         <StackPanel Grid.Column="1" Margin="16,0,0,0" MinWidth="160" VerticalAlignment="Center">
             <TextBlock x:Name="ZoomLabel" Text="Масштаб" Style="{StaticResource FormFieldLabel}"/>
-            <Slider x:Name="Zoom" Minimum="1" Maximum="3" Value="1" SmallChange="0.05" LargeChange="0.2"
+            <Slider x:Name="Zoom" Style="{StaticResource FormSlider}" Minimum="1" Maximum="3" Value="1" SmallChange="0.05" LargeChange="0.2"
                     AutomationProperties.LabeledBy="{Binding ElementName=ZoomLabel}" ValueChanged="Crop_Changed"/>
             <TextBlock x:Name="HorizontalLabel" Text="По горизонтали" Style="{StaticResource FormFieldLabel}"/>
-            <Slider x:Name="Horizontal" Minimum="-1" Maximum="1" SmallChange="0.05" LargeChange="0.2"
+            <Slider x:Name="Horizontal" Style="{StaticResource FormSlider}" Minimum="-1" Maximum="1" SmallChange="0.05" LargeChange="0.2"
                     AutomationProperties.LabeledBy="{Binding ElementName=HorizontalLabel}" ValueChanged="Crop_Changed"/>
             <TextBlock x:Name="VerticalLabel" Text="По вертикали" Style="{StaticResource FormFieldLabel}"/>
-            <Slider x:Name="Vertical" Minimum="-1" Maximum="1" SmallChange="0.05" LargeChange="0.2"
+            <Slider x:Name="Vertical" Style="{StaticResource FormSlider}" Minimum="-1" Maximum="1" SmallChange="0.05" LargeChange="0.2"
                     AutomationProperties.LabeledBy="{Binding ElementName=VerticalLabel}" ValueChanged="Crop_Changed"/>
-            <Button x:Name="Compress" Content="Сжать" Style="{StaticResource FormAction}"
-                    Visibility="Collapsed" Click="Compress_Click"/>
         </StackPanel>
     </Grid>
 </UserControl>

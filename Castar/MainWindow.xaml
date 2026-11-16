@@ -125,7 +125,7 @@
                 <Grid x:Name="SettingsOverlay" Visibility="Collapsed"
                       PreviewKeyDown="SettingsOverlay_PreviewKeyDown">
                     <Border Background="#66000000" MouseLeftButtonDown="SettingsBackdrop_Click"/>
-                    <Border Margin="58,12,12,12" MaxWidth="980" CornerRadius="8"
+                    <Border Margin="16,12" MaxWidth="600" CornerRadius="8"
                             Background="{DynamicResource Main.Background.lvl2}"
                             BorderBrush="{DynamicResource Main.Top.Panel}" BorderThickness="1"
                             Padding="6">

@@ -39,8 +39,8 @@ namespace Castar.Compontents
             month,
             year
         }
-        private static DateTime DateTimeNow = DateTime.Now;
-        public static DependencyProperty RangeDateProperty = DependencyProperty.Register(
+        private static readonly DateTime DateTimeNow = DateTime.Now;
+        public static readonly DependencyProperty RangeDateProperty = DependencyProperty.Register(
     nameof(RangeDate),
     typeof(RangeDate),
     typeof(SelectorRangeDates),
@@ -66,12 +66,8 @@ namespace Castar.Compontents
         public event EventHandler? DateRangeChanged;
         private static void OnChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
         {
-            SelectorRangeDates SelectorRangeDates = (SelectorRangeDates)d;
-            EventHandler handler = SelectorRangeDates.DateRangeChanged;
-            if (handler != null)
-            {
-                handler(SelectorRangeDates, SelectorRangeDates.RangeDate);
-            }
+            var selector = (SelectorRangeDates)d;
+            selector.DateRangeChanged?.Invoke(selector, selector.RangeDate);
         }
         public SelectorRangeDates()
         {
@@ -83,10 +79,22 @@ namespace Castar.Compontents
             if (operationDate is not { } date || date >= RangeDate.StartDate && date <= RangeDate.EndDate)
                 return false;
 
+            SetMonth(date);
+            return true;
+        }
+
+        internal Func<TimeZoneInfo> DisplayTimeZone { get; set; } = () => TimeZoneInfo.Local;
+
+        internal void SetCurrentMonth() =>
+            SetMonth(TimeZoneInfo.ConvertTime(DateTimeOffset.UtcNow, DisplayTimeZone()).DateTime);
+
+        private void CurrentMonth_Click(object sender, RoutedEventArgs e) => SetCurrentMonth();
+
+        private void SetMonth(DateTime date)
+        {
             var start = new DateTime(date.Year, date.Month, 1);
             var end = new DateTime(date.Year, date.Month, DateTime.DaysInMonth(date.Year, date.Month));
             RangeDate = new RangeDate(start, end);
-            return true;
         }
 
         private void ChangeRangeDate(TypeRange type, int offset)

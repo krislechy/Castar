@@ -1,4 +1,3 @@
-using Castar.Api;
 using Castar.Currency;
 using Castar.ServerConnection;
 using System;
@@ -13,31 +12,22 @@ internal sealed record StatisticsSnapshot(bool HasRecords, int UnconvertedIncome
     IReadOnlyList<StatisticsCurrency> Currencies);
 
 internal sealed record StatisticsCurrency(string Currency, decimal? Income, decimal? Expenses, decimal? Balance,
-    IReadOnlyList<StatisticsPoint> Points, IReadOnlyList<StatisticsCategory> Categories);
+    IReadOnlyList<StatisticsPoint> Points);
 
 internal sealed record StatisticsPoint(string Label, decimal? Income, decimal? Expenses);
-
-internal sealed record StatisticsCategory(int Id, decimal Amount);
 
 internal sealed class BudgetStatistics(CastarServerClient server, HistoricalExchangeRates exchangeRates)
 {
     internal async Task<StatisticsSnapshot> LoadAsync(DateTime start, DateTime finish, string displayCurrency,
         CancellationToken token)
     {
-        var incomes = server.GetIncomeRowsAsync(start, finish, token);
-        var purchases = server.GetPurchasesAsync(start, finish, token);
-        await Task.WhenAll(incomes, purchases).ConfigureAwait(false);
-
-        var entries = (await incomes).Select(income =>
+        var operations = await server.GetBudgetOperationsAsync(start, finish, token).ConfigureAwait(false);
+        var entries = operations.Select(operation =>
         {
-            var date = DateOnly.FromDateTime(server.DisplayOperationDate(income.AddedOn, income.AddedOnUtc)!.Value);
-            return new Entry(true, income.Currency, income.Sum, date, income.RateDate ?? DateOnly.FromDateTime(income.AddedOn), []);
-        }).Concat((await purchases).Select(purchase =>
-        {
-            var date = purchase.AddedOn is { } added ? DateOnly.FromDateTime(added) : purchase.ReceiptDate;
-            return new Entry(false, purchase.Currency, purchase.TotalSum, date,
-                purchase.RateDate ?? purchase.ReceiptDate ?? date, purchase.Items);
-        })).ToArray();
+            var date = server.DisplayOperationDate(null, operation.AddedOnUtc) is { } added
+                ? DateOnly.FromDateTime(added) : operation.ReceiptDate;
+            return new Entry(operation.IsIncome, operation.Currency, operation.Amount, date, operation.RateDate ?? date);
+        }).ToArray();
         var rates = await exchangeRates.GetAsync(entries.Where(entry => entry.RateDate.HasValue)
             .Select(entry => (entry.Currency, entry.RateDate!.Value)), displayCurrency, token).ConfigureAwait(false);
         token.ThrowIfCancellationRequested();
@@ -95,15 +85,8 @@ internal sealed class BudgetStatistics(CastarServerClient server, HistoricalExch
             first = last;
         }
 
-        var categories = converted.SelectMany(entry => entry.Original.Items
-                .Where(item => item.Category is not null)
-                .Select(item => new StatisticsCategory(item.Category!.Value, entry.ConvertAmount(item.Sum))))
-            .GroupBy(item => item.Id)
-            .Select(group => new StatisticsCategory(group.Key, group.Sum(item => item.Amount)))
-            .OrderByDescending(item => item.Amount).ThenBy(item => item.Id).ToArray();
-
         return new StatisticsCurrency(currency, income, expenses, omitted.Length == 0 ? income - expenses : null,
-            points, categories);
+            points);
     }
 
     private static decimal? Total(ReadOnlySpan<ConvertedEntry> rows, bool isIncome)
@@ -160,7 +143,7 @@ internal sealed class BudgetStatistics(CastarServerClient server, HistoricalExch
     }
 
     private sealed record Entry(bool IsIncome, string? Currency, decimal Amount, DateOnly? ReportDate,
-        DateOnly? RateDate, IReadOnlyList<PurchaseItemDto> Items);
+        DateOnly? RateDate);
 
     private sealed record ConvertedEntry(Entry Original, string? Currency, decimal? Rate)
     {

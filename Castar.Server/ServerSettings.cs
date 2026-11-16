@@ -20,6 +20,7 @@ internal sealed class ServerSettings : IDisposable
     private readonly SemaphoreSlim writes = new(1);
     private StoredSettings current;
     private readonly BudgetEventPublisher? events;
+    public event Action? Changed;
 
     public ServerSettings(IConfiguration configuration, SettingsModel settings, IEnumerable<IReceiptProvider> providers,
         BudgetEventPublisher? events = null)
@@ -48,6 +49,7 @@ internal sealed class ServerSettings : IDisposable
             var saved = await JsonSerializer.DeserializeAsync<StoredSettings>(input, JsonOptions);
             var provider = FindProvider(saved?.ReceiptProvider);
             if (saved is null || saved.Revision <= 0 || provider is null ||
+                saved.ReceiptRetryMinutes is { } minutes && !ReceiptSettings.IsValidRetryMinutes(minutes) ||
                 ValidateCredentials(saved.TelegramToken, saved.NalogCredentials) is not null ||
                 !HasValidSavedAuthentication(saved) || saved.TelegramPreferences is { } savedTelegram && !savedTelegram.IsValid())
                 throw new InvalidDataException($"Invalid server settings in {path}.");
@@ -108,6 +110,8 @@ internal sealed class ServerSettings : IDisposable
             var provider = FindProvider(requested.ReceiptProvider);
             if (provider is null)
                 return Invalid("Выберите доступного поставщика чеков.");
+            if (requested.ReceiptRetryMinutes is { } minutes && !ReceiptSettings.IsValidRetryMinutes(minutes))
+                return Invalid($"Укажите интервал повтора от 1 до {ReceiptSettings.MaxRetryMinutes} минут.");
             if (ValidateCredentials(requested.TelegramToken, requested.NalogCredentials) is { } error)
                 return Invalid(error);
             if (requested.TelegramPreferences is { } telegram && !telegram.IsValid())
@@ -134,6 +138,7 @@ internal sealed class ServerSettings : IDisposable
                 TelegramEnabled = requested.TelegramEnabled,
                 ReceiptsEnabled = requested.ReceiptsEnabled,
                 ReceiptProvider = provider.Id,
+                ReceiptRetryMinutes = requested.ReceiptRetryMinutes ?? current.ReceiptRetryMinutes,
                 TelegramToken = requested.TelegramToken ?? current.TelegramToken,
                 NalogCredentials = requested.NalogCredentials ?? current.NalogCredentials,
                 ManualCurrency = manualCurrency,
@@ -280,6 +285,7 @@ internal sealed class ServerSettings : IDisposable
         providers.Values.Select(provider => provider.Id).ToArray(), value.Revision)
     {
         NalogConfigured = EffectiveNalogCredentials(value) is not null,
+        ReceiptRetryMinutes = value.ReceiptRetryMinutes ?? ReceiptSettings.DefaultRetryMinutes,
         TelegramPreferences = EffectiveTelegramPreferences(value),
         ManualCurrency = value.ManualCurrency is { } currency
             ? currency with { Currencies = currency.Currencies.ToArray() }
@@ -354,7 +360,12 @@ internal sealed class ServerSettings : IDisposable
                 : authentication.Values;
             provider.ConfigureAuthentication(new ReceiptAuthenticationSettings(authentication.UseAnonymous, values));
         }
-        settings.Receipts = new ReceiptSettings { IsEnabled = value.ReceiptsEnabled, Provider = value.ReceiptProvider };
+        settings.Receipts = new ReceiptSettings
+        {
+            IsEnabled = value.ReceiptsEnabled,
+            Provider = value.ReceiptProvider,
+            RetryMinutes = value.ReceiptRetryMinutes ?? ReceiptSettings.DefaultRetryMinutes
+        };
         if (!value.TelegramEnabled)
             settings.Systems.IsEnableTelegramBot = false;
         var telegram = settings.TelegramBot;
@@ -371,6 +382,7 @@ internal sealed class ServerSettings : IDisposable
         if (value.TelegramEnabled)
             settings.Systems.IsEnableTelegramBot = true;
         Volatile.Write(ref current, value);
+        Changed?.Invoke();
     }
 
     public void Dispose() => writes.Dispose();
@@ -386,6 +398,9 @@ internal sealed class ServerSettings : IDisposable
 
         [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
         public TelegramPreferencesDto? TelegramPreferences { get; init; }
+
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        public int? ReceiptRetryMinutes { get; init; }
 
         [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
         public NalogCredentialsWriteDto? NalogCredentials { get; init; }

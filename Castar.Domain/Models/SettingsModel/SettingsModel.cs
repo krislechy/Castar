@@ -77,8 +77,15 @@ namespace Castar.Domain.Models.SettingsModel
 
     public sealed class ReceiptSettings : BaseSettingsModel
     {
+        public const int DefaultRetryMinutes = 5;
+        public const int MaxRetryMinutes = 1440;
+
         private bool isEnabled = true;
         private string provider = "serbia";
+
+        public int RetryMinutes { get; init; } = DefaultRetryMinutes;
+
+        public static bool IsValidRetryMinutes(int minutes) => minutes is >= 1 and <= MaxRetryMinutes;
 
         public bool IsEnabled
         {

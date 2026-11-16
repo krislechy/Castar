@@ -75,6 +75,14 @@ public abstract class ReceiptProvider : IReceiptProvider, IDisposable
         string invalidFormatMessage, CancellationToken cancellationToken) where T : class
     {
         using var response = await Client.SendAsync(request, cancellationToken);
+        if (ReceiptProviderFailure.IsTemporaryStatus(response.StatusCode))
+        {
+            var retryAfter = response.Headers.RetryAfter;
+            var retryAfterUtc = retryAfter?.Date?.UtcDateTime ?? (retryAfter?.Delta is { } delay
+                ? DateTime.UtcNow.Add(delay)
+                : (DateTime?)null);
+            throw new ReceiptProviderUnavailableException(response.StatusCode, retryAfterUtc);
+        }
         response.EnsureSuccessStatusCode();
         try
         {

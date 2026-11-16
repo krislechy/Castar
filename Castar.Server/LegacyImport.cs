@@ -21,7 +21,7 @@ internal static class LegacyImport
     {
         if (!TryParse(arguments, out var options))
         {
-            Console.Error.WriteLine("Usage: Castar.Server --import-legacy <export.json> <castar.sqlite> [--target RSD] [--apply]");
+            Console.Error.WriteLine("Usage: Castar.Server --import-legacy <export.json> <castar.sqlite> [--target RSD] [--replace-before-2026] [--apply]");
             return 2;
         }
 
@@ -33,6 +33,8 @@ internal static class LegacyImport
         {
             var archive = await ReadArchiveAsync(options.ExportPath, cancellation.Token);
             var data = LegacyImportData.Prepare(archive);
+            var replaceBefore = options.ReplaceBefore2026 ? LegacyImportData.StartOf2026Utc : (DateTime?)null;
+            data.ValidateReplacement(replaceBefore);
             var source = new FileInfo(options.DatabasePath);
             if (!source.Exists || source.Length == 0)
                 throw new InvalidDataException("The target must be an existing Castar SQLite database.");
@@ -49,7 +51,7 @@ internal static class LegacyImport
                 await SnapshotAsync(copyPath, quotesPath, cancellation.Token);
                 quotes = await LoadQuotesAsync(quotesPath, options.Target, data.Dates, cancellation.Token);
             }
-            var preview = await data.ImportAsync(copy, options.Target, quotes, cancellation.Token);
+            var preview = await data.ImportAsync(copy, options.Target, quotes, replaceBefore, cancellation.Token);
             await CheckIntegrityAsync(copy, cancellation.Token);
 
             string? backup = null;
@@ -62,7 +64,7 @@ internal static class LegacyImport
                 Console.Error.WriteLine($"Pre-import backup: {backup}");
                 await using var database = OpenDatabase(source.FullName);
                 await CastarSqliteSchema.MigrateAsync(database, cancellation.Token);
-                result = await data.ImportAsync(database, options.Target, quotes, cancellation.Token);
+                result = await data.ImportAsync(database, options.Target, quotes, replaceBefore, cancellation.Token);
                 await CheckIntegrityAsync(database, cancellation.Token);
             }
 
@@ -70,6 +72,7 @@ internal static class LegacyImport
             {
                 Mode = options.Apply ? "applied" : "preview",
                 Backup = backup,
+                ReplaceBeforeUtc = replaceBefore,
                 Archive = data.Summary,
                 Result = result,
                 Rates = new
@@ -222,6 +225,7 @@ internal static class LegacyImport
             return false;
         string? target = null;
         var apply = false;
+        var replaceBefore2026 = false;
         for (var index = 2; index < arguments.Length; index++)
         {
             switch (arguments[index])
@@ -234,13 +238,16 @@ internal static class LegacyImport
                 case "--apply" when !apply:
                     apply = true;
                     break;
+                case "--replace-before-2026" when !replaceBefore2026:
+                    replaceBefore2026 = true;
+                    break;
                 default:
                     return false;
             }
         }
-        options = new(arguments[0], arguments[1], target, apply);
+        options = new(arguments[0], arguments[1], target, apply, replaceBefore2026);
         return true;
     }
 
-    private sealed record Options(string ExportPath, string DatabasePath, string? Target, bool Apply);
+    private sealed record Options(string ExportPath, string DatabasePath, string? Target, bool Apply, bool ReplaceBefore2026);
 }

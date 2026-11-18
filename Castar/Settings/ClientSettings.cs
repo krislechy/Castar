@@ -22,8 +22,13 @@ public sealed record DisplayTimeZoneOption(string Id, string Label);
 public sealed class ClientSettings : INotifyPropertyChanged
 {
     public const string DefaultServerUrl = "http://127.0.0.1:5080";
-    public static string DataDirectory { get; } = Path.Combine(
+    private static readonly string InstalledDataDirectory = Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Castar");
+    internal static bool IsLocalPreview { get; } =
+        Environment.GetCommandLineArgs().Contains("--local-preview", StringComparer.Ordinal) ||
+        File.Exists(Path.Combine(AppContext.BaseDirectory, "Castar-Preview.cmd"));
+    public static string DataDirectory { get; } = IsLocalPreview
+        ? Path.Combine(InstalledDataDirectory, "Preview") : InstalledDataDirectory;
 
     private bool hideInTray;
     private bool autoRun;
@@ -110,7 +115,27 @@ public sealed class ClientSettings : INotifyPropertyChanged
     public event PropertyChangedEventHandler? PropertyChanged;
     internal event EventHandler? ConnectionChanged;
 
-    internal static ClientSettings Load() => Load(DataDirectory, AppContext.BaseDirectory);
+    internal static ClientSettings Load()
+    {
+        if (IsLocalPreview)
+        {
+            var installed = Path.Combine(InstalledDataDirectory, "Castar.Client.xml");
+            var preview = Path.Combine(DataDirectory, "Castar.Client.xml");
+            if (File.Exists(installed) && !File.Exists(preview))
+            {
+                try
+                {
+                    using var stream = File.OpenRead(installed);
+                    var copy = (ClientSettings)Serializer.Deserialize(stream)!;
+                    copy.settingsPath = preview;
+                    copy.Save(overwrite: false);
+                }
+                catch (FileNotFoundException) { }
+                catch (IOException) when (File.Exists(preview)) { }
+            }
+        }
+        return Load(DataDirectory, AppContext.BaseDirectory);
+    }
 
     internal static ClientSettings Load(string dataDirectory, string installationDirectory)
     {
@@ -175,12 +200,19 @@ public sealed class ClientSettings : INotifyPropertyChanged
 
     internal void SaveConnection(Uri server, string apiKey)
     {
-        var previousUrl = ServerUrl;
-        var previousKey = ProtectedApiKey;
         var encrypted = Convert.ToBase64String(ProtectedData.Protect(
             Encoding.UTF8.GetBytes(apiKey), null, DataProtectionScope.CurrentUser));
-        ServerUrl = server.AbsoluteUri;
-        ProtectedApiKey = encrypted;
+        StoreConnection(server.AbsoluteUri, encrypted);
+    }
+
+    internal void Disconnect() => StoreConnection(ServerUrl, null);
+
+    private void StoreConnection(string address, string? protectedKey)
+    {
+        var previousUrl = ServerUrl;
+        var previousKey = ProtectedApiKey;
+        ServerUrl = address;
+        ProtectedApiKey = protectedKey;
         try
         {
             Save();

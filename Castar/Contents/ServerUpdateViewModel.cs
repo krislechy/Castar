@@ -75,15 +75,9 @@ internal sealed class ServerUpdateViewModel : BaseSettingsModel
         return connection is not null && request is null && !hasSnapshot ? RequestAsync(start: false) : Task.CompletedTask;
     }
 
-    public void Close()
-    {
-        active = false;
-        if (!starting)
-            CancelRequest();
-        if (!receivesEvents)
-            hasSnapshot = false;
-        OnPropertyChanged(nameof(CanStart));
-    }
+    internal Task RefreshWorkingUpdateAsync() => active && connection is not null && IsWorking && !hasSnapshot && request is null
+        ? RequestAsync(start: false)
+        : Task.CompletedTask;
 
     public Task StartAsync() => CanStart ? RequestAsync(start: true) : Task.CompletedTask;
 
@@ -183,6 +177,7 @@ internal sealed class ServerUpdateViewModel : BaseSettingsModel
 
     private void ConnectionLost()
     {
+        receivesEvents = false;
         hasSnapshot = false;
         if (!IsWorking || restartWait is not null)
             return;

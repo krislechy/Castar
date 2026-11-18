@@ -1,23 +1,31 @@
-﻿<Window x:Class="Castar.MainWindow"
+<Window x:Class="Castar.MainWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
-        xmlns:local="clr-namespace:Castar" 
+        xmlns:local="clr-namespace:Castar"
         xmlns:c="clr-namespace:Castar.Compontents"
         xmlns:sys="clr-namespace:System;assembly=mscorlib"
         xmlns:menuCommands="clr-namespace:Castar.Commands"
         mc:Ignorable="d"
         Icon="pack://application:,,,/Castar;component/logo.ico"
+        FontFamily="{StaticResource Castar.FontFamily}" FontSize="14"
+        UseLayoutRounding="True" SnapsToDevicePixels="True"
         Padding="0"
         Margin="0"
         WindowStyle="SingleBorderWindow"
         WindowStartupLocation="CenterScreen"
         ResizeMode="CanResize"
-        Closing="thisClosing"
+        Closing="thisClosing" PreviewKeyDown="Navigation_PreviewKeyDown"
         Background="{DynamicResource Main.Background.lvl1}"
         Style="{DynamicResource WithoutChrome}"
         Title="Castar" MinHeight="600" MinWidth="1000">
+    <Window.Resources>
+        <ResourceDictionary><ResourceDictionary.MergedDictionaries>
+            <ResourceDictionary Source="/Castar;component/Styles/Navigation.xaml"/>
+            <ResourceDictionary Source="/Castar;component/Styles/LedgerCards.xaml"/>
+        </ResourceDictionary.MergedDictionaries></ResourceDictionary>
+    </Window.Resources>
     <Window.CommandBindings>
         <CommandBinding Command="{x:Static SystemCommands.MinimizeWindowCommand}" CanExecute="SystemCommandBinding_CanExecute_Default" Executed="SystemCommandBinding_Executed_Minimize"/>
         <CommandBinding Command="{x:Static SystemCommands.MaximizeWindowCommand}" CanExecute="SystemCommandBinding_CanExecute_Default" Executed="SystemCommandBinding_Executed_Maximize"/>
@@ -77,59 +85,60 @@
             </Grid>
             <!--#endregion-->
             <Grid Grid.Row="1">
-                <Grid>
-                    <Grid.Style>
-                        <Style TargetType="Grid">
-                            <Style.Triggers>
-                                <DataTrigger Binding="{Binding IsVisible, ElementName=SettingsOverlay}" Value="True">
-                                    <Setter Property="IsEnabled" Value="False"/>
-                                </DataTrigger>
-                            </Style.Triggers>
-                        </Style>
-                    </Grid.Style>
+                <Grid x:Name="MainWorkspace" PreviewGotKeyboardFocus="MainWorkspace_PreviewGotKeyboardFocus">
                     <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="50"/>
+                        <ColumnDefinition Width="64"/>
                         <ColumnDefinition Width="*"/>
                     </Grid.ColumnDefinitions>
-                    <!--#region Menu-->
-                    <Grid Grid.Column="0">
-                        <Grid.RowDefinitions>
-                            <RowDefinition/>
-                            <RowDefinition Height="Auto"/>
-                        </Grid.RowDefinitions>
-                        <StackPanel x:Name="MenuToggleButtons">
-                            <ToggleButton Style="{DynamicResource Menu.ToggleButton}" Content="{DynamicResource Svg.Menu.Purchases}"
-                                          ToolTip="Расходы" AutomationProperties.Name="Расходы"
-                                          Command="{x:Static menuCommands:MenuSelector.MenuSelect}" CommandParameter="Purchases"/>
-                            <ToggleButton Style="{DynamicResource Menu.ToggleButton}" Content="{DynamicResource Svg.Menu.Incomes}"
-                                          ToolTip="Доходы" AutomationProperties.Name="Доходы"
-                                          Command="{x:Static menuCommands:MenuSelector.MenuSelect}" CommandParameter="Incomes"/>
-                            <ToggleButton x:Name="StatisticsMenuButton" Style="{DynamicResource Menu.ToggleButton}"
-                                          Content="{DynamicResource Svg.Menu.Statistics}" ToolTip="Статистика"
-                                          AutomationProperties.Name="Статистика"
-                                          Command="{x:Static menuCommands:MenuSelector.MenuSelect}" CommandParameter="Statistics"/>
-                        </StackPanel>
-                        <ToggleButton x:Name="SettingsMenuButton" Grid.Row="1" Margin="0,0,0,4"
-                                      Style="{DynamicResource Menu.ToggleButton}" Content="{DynamicResource Svg.Menu.Settings}"
-                                      ToolTip="Настройки" AutomationProperties.Name="Настройки"
-                                      Command="{x:Static menuCommands:MenuSelector.MenuSelect}" CommandParameter="Settings"/>
-                    </Grid>
-                    <!--#endregion-->
                     <!--#region Content-->
                     <Grid Grid.Column="1" Background="{StaticResource Main.Background.lvl2}">
-                        <ContentPresenter x:Name="MainContent" Margin="10,0,10,10"/>
+                        <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/></Grid.RowDefinitions>
+                        <Border x:Name="SharedPeriodSurface" Grid.Row="0" Margin="24,16,24,0" Padding="16,12"
+                                Background="{StaticResource LedgerSurface}" BorderBrush="{StaticResource LedgerBorder}"
+                                BorderThickness="1" CornerRadius="12">
+                            <c:SelectorRangeDates x:Name="SharedPeriodSelector" UseLedgerStyle="True"
+                                                  HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <ContentPresenter x:Name="MainContent" Grid.Row="1" Margin="0"/>
                     </Grid>
                     <!--#endregion-->
+                    <Border x:Name="NavigationDismissLayer" Grid.Column="1" Background="Transparent" Visibility="Collapsed"
+                            Panel.ZIndex="10" MouseLeftButtonDown="NavigationDismiss_Click"/>
+                    <Border x:Name="NavigationDrawer" Grid.ColumnSpan="2" Width="240" HorizontalAlignment="Left"
+                            Panel.ZIndex="11" Background="{StaticResource NavigationSurface}" BorderBrush="{StaticResource NavigationBorder}"
+                            BorderThickness="0" SizeChanged="NavigationDrawer_SizeChanged" MouseEnter="NavigationDrawer_MouseEnter" MouseLeave="NavigationDrawer_MouseLeave" SnapsToDevicePixels="True">
+                        <Border.Clip><RectangleGeometry x:Name="NavigationClip" Rect="0,0,64,10000"/></Border.Clip>
+                        <Grid>
+                            <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+
+                            <StackPanel x:Name="MenuToggleButtons" Grid.Row="1" Margin="0,12,0,0">
+                                <ToggleButton Style="{StaticResource NavigationItem}" Content="{StaticResource Svg.Menu.Incomes}" Tag="Доходы"
+                                              ToolTip="Доходы" AutomationProperties.Name="Доходы"
+                                              Command="{x:Static menuCommands:MenuSelector.MenuSelect}" CommandParameter="Incomes"/>
+                                <ToggleButton Style="{StaticResource NavigationItem}" Content="{StaticResource Svg.Menu.Purchases}" Tag="Расходы"
+                                              ToolTip="Расходы" AutomationProperties.Name="Расходы"
+                                              Command="{x:Static menuCommands:MenuSelector.MenuSelect}" CommandParameter="Purchases"/>
+                                <ToggleButton x:Name="StatisticsMenuButton" Style="{StaticResource NavigationItem}" Content="{StaticResource Svg.Menu.Statistics}" Tag="Статистика"
+                                              ToolTip="Статистика" AutomationProperties.Name="Статистика"
+                                              Command="{x:Static menuCommands:MenuSelector.MenuSelect}" CommandParameter="Statistics"/>
+                            </StackPanel>
+                            <StackPanel Grid.Row="2" Margin="0,0,0,12">
+                                <ToggleButton x:Name="SettingsMenuButton" Style="{StaticResource NavigationItem}" Content="{StaticResource Svg.Menu.Settings}" Tag="Настройки"
+                                              ToolTip="Настройки" AutomationProperties.Name="Настройки"
+                                              Command="{x:Static menuCommands:MenuSelector.MenuSelect}" CommandParameter="Settings"/>
+                            </StackPanel>
+                        </Grid>
+                    </Border>
                 </Grid>
                 <!--#region Popup-->
                 <Grid x:Name="SettingsOverlay" Visibility="Collapsed"
                       PreviewKeyDown="SettingsOverlay_PreviewKeyDown">
-                    <Border Background="#66000000" MouseLeftButtonDown="SettingsBackdrop_Click"/>
-                    <Border Margin="16,12" MaxWidth="600" CornerRadius="8"
-                            Background="{DynamicResource Main.Background.lvl2}"
+                    <Border x:Name="SettingsBackdrop" Background="Transparent" MouseLeftButtonDown="SettingsBackdrop_Click"/>
+                    <Border x:Name="SettingsShell" Margin="16,12" MaxWidth="510" CornerRadius="12" VerticalAlignment="Top"
+                            Background="{DynamicResource Main.Background.lvl1}"
                             BorderBrush="{DynamicResource Main.Top.Panel}" BorderThickness="1"
-                            Padding="6">
-                        <ContentPresenter x:Name="SettingsPresenter"/>
+                            ClipToBounds="True">
+                        <ContentPresenter x:Name="SettingsPresenter" SizeChanged="SettingsPresenter_SizeChanged"/>
                     </Border>
                 </Grid>
                 <c:PopupDialog x:Name="MainDialog"/>

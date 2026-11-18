@@ -24,7 +24,6 @@ namespace Castar.Contents;
 
 public partial class SettingsContent : UserControl
 {
-    private const string Connected = "Соединение установлено.";
     private readonly ClientSettings settings;
     private readonly CastarServerClient server;
     private readonly BudgetEventConnection? events;
@@ -32,12 +31,11 @@ public partial class SettingsContent : UserControl
     private readonly SettingsContext context;
     private CancellationTokenSource? usersRequest;
     private bool usersReloadPending;
-    private bool showingServerSettings;
+    private bool preloadStarted;
     private bool checkingConnection;
     private bool editingUser;
-    private string savedConnectionStatus = CastarServerClient.ConnectionNotEstablished;
+    private string savedConnectionStatus = "";
     private string pendingKey = "";
-    private PasswordBox? keyInput;
     private PasswordBox? telegramTokenInput;
 
     public SettingsContent(ClientSettings settings, CastarServerClient server, GitHubUpdateService updateService,
@@ -48,10 +46,7 @@ public partial class SettingsContent : UserControl
         this.events = events;
         this.updateService = updateService;
         this.exchangeRates = exchangeRates;
-        context = new SettingsContext(settings, new ServerSettingsViewModel(server, events))
-        {
-            UpdateStatus = $"Текущая версия {updateService.InstalledVersion}"
-        };
+        context = new SettingsContext(settings, new ServerSettingsViewModel(server, events));
         context.ServerConfiguration.Updates.SetConnection(settings.ServerUrl, settings.ProtectedApiKey);
         context.ServerConfiguration.CredentialsCleared += (_, _) => telegramTokenInput?.Clear();
         context.PropertyChanged += (_, change) =>
@@ -81,62 +76,57 @@ public partial class SettingsContent : UserControl
         InitializeComponent();
     }
 
-    private async void Settings_Loaded(object sender, RoutedEventArgs e) => await OpenServerSettingsAsync();
-
-    private void Settings_Unloaded(object sender, RoutedEventArgs e)
+    internal Task PreloadAsync()
     {
-        CloseServerSettings();
-        BackToSectionMenu();
-    }
-
-    private async void Settings_IsVisibleChanged(object sender, DependencyPropertyChangedEventArgs e)
-    {
-        if (IsVisible)
-            await OpenServerSettingsAsync();
-        else
-            CloseServerSettings();
-    }
-
-    private Task OpenServerSettingsAsync()
-    {
-        if (!IsLoaded || !IsVisible || showingServerSettings)
+        if (preloadStarted)
             return Task.CompletedTask;
 
-        showingServerSettings = true;
+        preloadStarted = true;
         return Task.WhenAll(LoadServerSettingsAsync(), LoadUsersAsync(verifyConnection: events?.IsSynchronized != true));
     }
 
-    private void CloseServerSettings()
+    internal void CloseScreen()
     {
-        if (!showingServerSettings)
-            return;
-
-        showingServerSettings = false;
         backupRequest?.Cancel();
-        context.ServerConfiguration.Close();
-        ResetUsers();
+        BackToSectionMenu();
+        ApiKeyInput.Clear();
+        context.IsApiKeyEditorVisible = false;
+        context.ServerConfiguration.ClearSensitiveDraft();
+    }
+
+    internal Task RetryUnavailableDataAsync()
+    {
+        if (!preloadStarted)
+            return PreloadAsync();
+        if (settings.ApiKey.Length == 0)
+            return Task.CompletedTask;
+
+        return Task.WhenAll(
+            context.ServerConfiguration.HasSettings ? Task.CompletedTask : context.ServerConfiguration.ReloadAsync(),
+            context.UsersAvailable && context.UsersStatus.Length == 0 ? Task.CompletedTask : LoadUsersAsync(),
+            context.ServerConfiguration.Updates.RefreshWorkingUpdateAsync());
     }
 
     private async void Server_ConnectionChanged(object? sender, EventArgs e)
     {
+        context.HasSavedConnection = settings.ApiKey.Length != 0;
         backupRequest?.Cancel();
         context.ServerConfiguration.Updates.SetConnection(settings.ServerUrl, settings.ProtectedApiKey);
-        SetSavedConnectionStatus(CastarServerClient.ConnectionNotEstablished);
+        SetSavedConnectionStatus(context.HasSavedConnection ? CastarServerClient.ConnectionNotEstablished : "");
         ResetUsers();
-        if (showingServerSettings)
-            await Task.WhenAll(LoadServerSettingsAsync(), LoadUsersAsync());
+        if (preloadStarted)
+            await Task.WhenAll(LoadServerSettingsAsync(), LoadUsersAsync(verifyConnection: !checkingConnection));
     }
 
     private async void ConnectionSynchronized()
     {
-        SetSavedConnectionStatus(Connected);
+        SetSavedConnectionStatus("");
         await Task.WhenAll(context.ServerConfiguration.MarkChangedAsync(), LoadUsersAsync(verifyConnection: false));
     }
 
     private void ConnectionLost()
     {
-        SetSavedConnectionStatus(CastarServerClient.ConnectionNotEstablished);
-        ResetUsers();
+        SetSavedConnectionStatus("Канал событий недоступен. Ожидание восстановления связи.");
     }
 
     private async void Configuration_Changed(ServerSynchronizationDto change)
@@ -156,40 +146,25 @@ public partial class SettingsContent : UserControl
         context.ServerConfiguration.OpenAsync(settings.ServerUrl, settings.ProtectedApiKey);
 
     private async void SaveServerSettings_Click(object sender, RoutedEventArgs e) =>
-        await context.ServerConfiguration.SaveAsync();
+        await ButtonLoading.RunAsync(sender, () => context.ServerConfiguration.SaveAsync());
 
     private async void ReloadServerSettings_Click(object sender, RoutedEventArgs e) =>
-        await context.ServerConfiguration.ReloadAsync();
+        await ButtonLoading.RunAsync(sender, () => context.ServerConfiguration.ReloadAsync());
 
-    private async void ConfigureManualCurrencies_Click(object sender, RoutedEventArgs e)
+    private void ConfigureManualCurrencies_Click(object sender, RoutedEventArgs e)
     {
         var viewModel = context.ServerConfiguration;
-        if (viewModel.ManualCurrency is not { } original)
+        if (!viewModel.CanEdit || viewModel.ManualCurrency is not { } original)
             return;
 
         var panel = new ManualCurrencyPanel(exchangeRates, original);
-        try
-        {
-            var accepted = await PopupDialog.Show(panel, PopupDialog.TypeDialogEnum.Confirm, options =>
-            {
-                options.Title = "Валюты ручного ввода";
-                options.Background = (SolidColorBrush)Application.Current.FindResource("Main.Background.lvl3");
-                options.SuccessButton.SuccessConfirmButtonText = "Применить";
-                options.AllowMissClick = false;
-                return options;
-            }, panel.Validate);
-
-            if (accepted == true)
-                viewModel.SetManualCurrency(original, panel.CreateResult());
-        }
-        finally
-        {
-            panel.CancelCatalog();
-        }
+        OpenNestedSettings((Button)sender, "Валюты ручного ввода", panel,
+            () => viewModel.CanEdit && ReferenceEquals(viewModel.ManualCurrency, original), panel.Validate,
+            () => viewModel.SetManualCurrency(original, panel.CreateResult()), panel.CancelCatalog);
     }
 
     private async void UpdateServer_Click(object sender, RoutedEventArgs e) =>
-        await context.ServerConfiguration.Updates.StartAsync();
+        await ButtonLoading.RunAsync(sender, () => context.ServerConfiguration.Updates.StartAsync());
 
     private void TelegramToken_PasswordChanged(object sender, RoutedEventArgs e)
     {
@@ -197,75 +172,105 @@ public partial class SettingsContent : UserControl
         context.ServerConfiguration.EnterTelegramToken(telegramTokenInput.Password);
     }
 
-    private async void ConfigureReceiptCredentials_Click(object sender, RoutedEventArgs e)
+    private void ConfigureReceiptCredentials_Click(object sender, RoutedEventArgs e)
     {
         var viewModel = context.ServerConfiguration;
-        if (!viewModel.ShowReceiptCredentials || viewModel.AuthenticationProfile is not { } profile)
+        if (!viewModel.CanEdit || !viewModel.ShowReceiptCredentials || viewModel.AuthenticationProfile is not { } profile)
             return;
 
         var panel = new ReceiptCredentialsPanel(profile.Fields);
-        var accepted = await PopupDialog.Show(panel, PopupDialog.TypeDialogEnum.Confirm, options =>
-        {
-            options.Title = "Данные для входа";
-            options.SuccessButton.SuccessConfirmButtonText = "Применить";
-            options.AllowMissClick = false;
-            return options;
-        }, panel.Validate);
-        if (accepted == true)
-            viewModel.SetReceiptCredentials(profile, panel.Values);
+        OpenNestedSettings((Button)sender, "Данные для входа", panel,
+            () => viewModel.CanEdit && viewModel.ShowReceiptCredentials && ReferenceEquals(viewModel.AuthenticationProfile, profile),
+            panel.Validate, () => viewModel.SetReceiptCredentials(profile, panel.Values));
     }
 
     private void ApiKey_PasswordChanged(object sender, RoutedEventArgs e)
     {
-        keyInput = (PasswordBox)sender;
-        pendingKey = keyInput.Password.Trim();
+        pendingKey = ((PasswordBox)sender).Password.Trim();
         RefreshConnectionStatus();
     }
 
-    private async void SaveServerConnection_Click(object sender, RoutedEventArgs e)
+    private void RevealApiKey_Click(object sender, RoutedEventArgs e)
     {
-        var button = (Button)sender;
-        button.IsEnabled = false;
-        checkingConnection = true;
-        var addressInput = context.ServerAddress;
-        var enteredKey = pendingKey;
-        bool IsCurrentInput() => context.ServerAddress == addressInput && pendingKey == enteredKey;
-        Uri? address = null;
+        context.IsApiKeyEditorVisible = true;
+        ApiKeyInput.Focus();
+    }
+
+    private async void DisconnectServer_Click(object sender, RoutedEventArgs e)
+    {
+        var connection = (settings.ServerUrl, settings.ProtectedApiKey);
+        if (!context.HasSavedConnection || await PopupDialog.Show("Отключиться от Castar Server?",
+            PopupDialog.TypeDialogEnum.Confirm, options =>
+            {
+                options.SuccessButton.SuccessConfirmButtonText = "Отключиться";
+                options.SuccessButton.SuccessConfirmButtonForeground = Brushes.OrangeRed;
+                return options;
+            }) != true || connection != (settings.ServerUrl, settings.ProtectedApiKey))
+            return;
+
         try
         {
-            address = CastarServerClient.ParseServerUrl(addressInput);
-            var key = enteredKey;
-            if (key.Length == 0 && Uri.TryCreate(settings.ServerUrl, UriKind.Absolute, out var saved) && saved == address)
-                key = settings.ApiKey;
-
-            context.ConnectionStatus = "Проверка подключения…";
-            await server.TestConnectionAsync(address, key);
-            if (!IsCurrentInput())
-                return;
-
-            settings.SaveConnection(address, key);
-            keyInput?.Clear();
-            pendingKey = "";
-            savedConnectionStatus = Connected;
-            context.ConnectionStatus = Connected;
-        }
-        catch (Exception error) when (CastarServerClient.IsConnectionError(error))
-        {
-            if (IsCurrentInput())
-                context.ConnectionStatus = CastarServerClient.DescribeConnectionFailure(error, address);
+            settings.Disconnect();
+            ApiKeyInput.Clear();
+            context.IsApiKeyEditorVisible = false;
+            context.ConnectionStatus = "";
+            RevealApiKeyButton.Focus();
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException or CryptographicException)
         {
             context.ConnectionStatus = "Не удалось сохранить настройки подключения.";
         }
-        finally
-        {
-            checkingConnection = false;
-            if (!IsCurrentInput())
-                RefreshConnectionStatus();
-            button.IsEnabled = true;
-        }
     }
+
+    private async void SaveServerConnection_Click(object sender, RoutedEventArgs e) =>
+        await ButtonLoading.RunAsync(sender, async () =>
+        {
+            checkingConnection = true;
+            var addressInput = context.ServerAddress;
+            var enteredKey = pendingKey;
+            bool IsCurrentInput() => context.ServerAddress == addressInput && pendingKey == enteredKey;
+            Uri? address = null;
+            try
+            {
+                address = CastarServerClient.ParseServerUrl(addressInput);
+                var key = enteredKey;
+                if (key.Length == 0 && Uri.TryCreate(settings.ServerUrl, UriKind.Absolute, out var saved) && saved == address)
+                    key = settings.ApiKey;
+
+                context.ConnectionStatus = "Проверка подключения…";
+                await server.TestConnectionAsync(address, key);
+                if (!IsCurrentInput())
+                    return;
+
+                if (!Uri.TryCreate(settings.ServerUrl, UriKind.Absolute, out var previous) ||
+                    previous != address || settings.ApiKey != key)
+                    settings.SaveConnection(address, key);
+                else
+                    _ = Task.WhenAll(context.ServerConfiguration.MarkChangedAsync(), LoadUsersAsync(verifyConnection: false),
+                        context.ServerConfiguration.Updates.RefreshWorkingUpdateAsync());
+                ApiKeyInput.Clear();
+                pendingKey = "";
+                context.IsApiKeyEditorVisible = false;
+                savedConnectionStatus = "";
+                context.ConnectionStatus = "";
+                DisconnectServerButton.Focus();
+            }
+            catch (Exception error) when (CastarServerClient.IsConnectionError(error))
+            {
+                if (IsCurrentInput())
+                    context.ConnectionStatus = CastarServerClient.DescribeConnectionFailure(error, address);
+            }
+            catch (Exception error) when (error is IOException or UnauthorizedAccessException or CryptographicException)
+            {
+                context.ConnectionStatus = "Не удалось сохранить настройки подключения.";
+            }
+            finally
+            {
+                checkingConnection = false;
+                if (!IsCurrentInput())
+                    RefreshConnectionStatus();
+            }
+        });
 
     private bool DisplaysSavedConnection => pendingKey.Length == 0
         && Uri.TryCreate(context.ServerAddress.Trim().TrimEnd('/') + "/", UriKind.Absolute, out var shown)
@@ -276,7 +281,7 @@ public partial class SettingsContent : UserControl
     {
         if (!checkingConnection)
             context.ConnectionStatus = DisplaysSavedConnection
-                ? savedConnectionStatus : CastarServerClient.ConnectionNotEstablished;
+                ? savedConnectionStatus : "";
     }
 
     private void SetSavedConnectionStatus(string status)
@@ -288,7 +293,7 @@ public partial class SettingsContent : UserControl
 
     private async Task LoadUsersAsync(bool verifyConnection = true)
     {
-        if (!showingServerSettings)
+        if (!preloadStarted)
             return;
         if (usersRequest is not null)
         {
@@ -300,7 +305,7 @@ public partial class SettingsContent : UserControl
         var key = settings.ApiKey;
         if (key.Length == 0)
         {
-            SetSavedConnectionStatus(CastarServerClient.ConnectionNotEstablished);
+            SetSavedConnectionStatus("");
             return;
         }
 
@@ -318,7 +323,7 @@ public partial class SettingsContent : UserControl
                     return;
                 verifiedConnection = true;
             }
-            SetSavedConnectionStatus(Connected);
+            SetSavedConnectionStatus("");
             var users = await server.GetUsersAsync(current.Token);
             if (usersRequest != current)
                 return;
@@ -333,6 +338,7 @@ public partial class SettingsContent : UserControl
                 context.Users = users;
             }
             context.UsersAvailable = true;
+            context.UsersStatus = "";
         }
         catch (Exception error) when (CastarServerClient.IsConnectionError(error))
         {
@@ -340,7 +346,12 @@ public partial class SettingsContent : UserControl
             {
                 if (!verifiedConnection || error is HttpRequestException { StatusCode: HttpStatusCode.Unauthorized })
                     SetSavedConnectionStatus(CastarServerClient.DescribeConnectionFailure(error, address));
-                ResetUsers();
+                if (error is HttpRequestException { StatusCode: HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden })
+                {
+                    context.UsersAvailable = false;
+                    context.Users = [];
+                }
+                context.UsersStatus = CastarServerClient.DescribeError(error);
             }
         }
         finally
@@ -364,6 +375,7 @@ public partial class SettingsContent : UserControl
         usersReloadPending = false;
         previous?.Cancel();
         context.UsersAvailable = false;
+        context.UsersStatus = CastarServerClient.ConnectionNotEstablished;
         if (context.Users.Count > 0)
             context.Users = [];
     }
@@ -374,9 +386,9 @@ public partial class SettingsContent : UserControl
             await EditUserAsync(user);
     }
 
-    private async void NewUserButton_Click(object sender, RoutedEventArgs e) => await EditUserAsync(new User());
+    private async void NewUserButton_Click(object sender, RoutedEventArgs e) => await EditUserAsync(new User(), sender);
 
-    private async Task EditUserAsync(User user)
+    private async Task EditUserAsync(User user, object? source = null)
     {
         if (!context.UsersAvailable || editingUser)
             return;
@@ -415,13 +427,16 @@ public partial class SettingsContent : UserControl
                 return;
 
             user.Name = string.IsNullOrWhiteSpace(user.Name) ? "NONAME" : user.Name.Trim();
-            if (isNew)
-                await server.AddUserAsync(user);
-            else
-                await server.UpdateUserAsync(user, canSetTelegramNotifications &&
-                    user.TelegramNotificationsEnabled != initialNotifications);
-            if (events is not { IsSynchronized: true, SupportsConfigurationEvents: true })
-                await LoadUsersAsync(verifyConnection: false);
+            await ButtonLoading.RunAsync(source, async () =>
+            {
+                if (isNew)
+                    await server.AddUserAsync(user);
+                else
+                    await server.UpdateUserAsync(user, canSetTelegramNotifications &&
+                        user.TelegramNotificationsEnabled != initialNotifications);
+                if (events is not { IsSynchronized: true, SupportsConfigurationEvents: true })
+                    await LoadUsersAsync(verifyConnection: false);
+            });
         }
         catch (Exception error) when (CastarServerClient.IsConnectionError(error))
         {
@@ -452,9 +467,12 @@ public partial class SettingsContent : UserControl
             return;
         try
         {
-            await server.DeleteUserAsync(user.Id);
-            if (events is not { IsSynchronized: true, SupportsConfigurationEvents: true })
-                await LoadUsersAsync(verifyConnection: false);
+            await ButtonLoading.RunAsync(sender, async () =>
+            {
+                await server.DeleteUserAsync(user.Id);
+                if (events is not { IsSynchronized: true, SupportsConfigurationEvents: true })
+                    await LoadUsersAsync(verifyConnection: false);
+            });
         }
         catch (Exception error) when (CastarServerClient.IsConnectionError(error))
         {
@@ -465,11 +483,16 @@ public partial class SettingsContent : UserControl
     private sealed class SettingsContext(ClientSettings settings, ServerSettingsViewModel serverConfiguration) : BaseSettingsModel
     {
         private string address = settings.ServerUrl;
-        private string connectionStatus = CastarServerClient.ConnectionNotEstablished;
+        private string connectionStatus = "";
+        private bool hasSavedConnection = settings.ApiKey.Length != 0;
+        private bool isApiKeyEditorVisible;
+        private bool clientUpdateAvailable;
+        private bool isInstallingClientUpdate;
         private string updateStatus = "";
         private int updateDownloadPercent;
         private bool isDownloadingUpdate;
         private bool usersAvailable;
+        private string usersStatus = "";
         private ObservableCollection<User> users = [];
 
         public ClientSettings Settings { get; } = settings;
@@ -507,10 +530,24 @@ public partial class SettingsContent : UserControl
         public ServerSettingsViewModel ServerConfiguration { get; } = serverConfiguration;
         public string ServerAddress { get => address; set => SetField(ref address, value); }
         public string ConnectionStatus { get => connectionStatus; set => SetField(ref connectionStatus, value); }
+        public bool HasSavedConnection { get => hasSavedConnection; set => SetField(ref hasSavedConnection, value); }
+        public bool IsApiKeyEditorVisible { get => isApiKeyEditorVisible; set => SetField(ref isApiKeyEditorVisible, value); }
+        public bool ClientUpdateAvailable { get => clientUpdateAvailable; set => SetField(ref clientUpdateAvailable, value); }
+        public bool IsInstallingClientUpdate
+        {
+            get => isInstallingClientUpdate;
+            set
+            {
+                if (SetField(ref isInstallingClientUpdate, value))
+                    OnPropertyChanged(nameof(CanInstallClientUpdate));
+            }
+        }
+        public bool CanInstallClientUpdate => !ClientSettings.IsLocalPreview && !IsInstallingClientUpdate;
         public string UpdateStatus { get => updateStatus; set => SetField(ref updateStatus, value); }
         public int UpdateDownloadPercent { get => updateDownloadPercent; set => SetField(ref updateDownloadPercent, value); }
         public bool IsDownloadingUpdate { get => isDownloadingUpdate; set => SetField(ref isDownloadingUpdate, value); }
         public bool UsersAvailable { get => usersAvailable; set => SetField(ref usersAvailable, value); }
+        public string UsersStatus { get => usersStatus; set => SetField(ref usersStatus, value); }
         public ObservableCollection<User> Users { get => users; set => SetField(ref users, value); }
     }
 

@@ -13,6 +13,7 @@ using Microsoft.Win32;
 using System;
 using System.Drawing;
 using System.IO;
+using System.Reflection;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Threading;
@@ -22,15 +23,23 @@ namespace Castar;
 public partial class App : Application
 {
     private const string AutorunKey = @"Software\Microsoft\Windows\CurrentVersion\Run";
-    private readonly ICLogger cLogger = new CLogger(Path.Combine(ClientSettings.DataDirectory, "Logs", "castar.log"));
+    private static readonly string LogPath = Path.Combine(ClientSettings.DataDirectory, "Logs", "castar.log");
+    private readonly ICLogger cLogger = new CLogger(LogPath);
     private ServiceProvider? serviceProvider;
+
+    public App()
+    {
+        AppDomain.CurrentDomain.UnhandledException += CurrentDomain_UnhandledException;
+        TaskScheduler.UnobservedTaskException += TaskScheduler_UnobservedTaskException;
+    }
 
     protected override void OnStartup(StartupEventArgs e)
     {
+        var version = typeof(App).Assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion;
+        cLogger.Log<App>($"Запуск Castar {version}.", TypeLog.Info);
         base.OnStartup(e);
         TabNavigationBlock.Install();
         InitializeCultures();
-        AppDomain.CurrentDomain.UnhandledException += CurrentDomain_UnhandledException;
 
         ClientSettings settings;
         var settingsReadFailed = false;
@@ -104,7 +113,9 @@ public partial class App : Application
         };
 
         MainWindow = serviceProvider.GetRequiredService<MainWindow>();
+        _ = serviceProvider.GetRequiredService<SettingsContent>().PreloadAsync();
         MainWindow.Show();
+        cLogger.Log<App>("Главное окно открыто.", TypeLog.Info);
         if (settingsReadFailed)
             _ = ShowSettingsWarning("Не удалось прочитать настройки. Укажите адрес и ключ сервера.");
 
@@ -177,6 +188,9 @@ public partial class App : Application
         else
             tray.Dispose();
 
+        if (ClientSettings.IsLocalPreview)
+            return;
+
         using var registry = Registry.CurrentUser.OpenSubKey(AutorunKey, writable: true);
         if (settings.IsAutoRun)
             registry?.SetValue("Castar", $"\"{Environment.ProcessPath}\"");
@@ -186,13 +200,15 @@ public partial class App : Application
 
     protected override void OnExit(ExitEventArgs e)
     {
-        AppDomain.CurrentDomain.UnhandledException -= CurrentDomain_UnhandledException;
         try
         {
             serviceProvider?.Dispose();
         }
         finally
         {
+            cLogger.Log<App>($"Завершение Castar. Код {e.ApplicationExitCode}.", TypeLog.Info);
+            AppDomain.CurrentDomain.UnhandledException -= CurrentDomain_UnhandledException;
+            TaskScheduler.UnobservedTaskException -= TaskScheduler_UnobservedTaskException;
             base.OnExit(e);
         }
     }

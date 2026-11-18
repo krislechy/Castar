@@ -18,6 +18,15 @@ public sealed record MoneyAmountDisplay(string Primary, string? Original)
 
 public partial class MoneyAmount : UserControl
 {
+    public static readonly DependencyProperty PrefixProperty =
+        DependencyProperty.Register(nameof(Prefix), typeof(string), typeof(MoneyAmount), new PropertyMetadata(""));
+
+    public string Prefix
+    {
+        get => (string)GetValue(PrefixProperty);
+        set => SetValue(PrefixProperty, value);
+    }
+
     public static readonly DependencyProperty DisplayProperty =
         DependencyProperty.Register(nameof(Display), typeof(MoneyAmountDisplay), typeof(MoneyAmount));
 

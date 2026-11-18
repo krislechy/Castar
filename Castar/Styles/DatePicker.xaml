@@ -1,4 +1,4 @@
-﻿<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
                     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
                     xmlns:c="clr-namespace:Castar.Compontents">
     
@@ -124,6 +124,54 @@
         </Setter>
     </Style>
 
+    <Style x:Key="CastarCalendarHeaderButton" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
+        <Setter Property="MinWidth" Value="0"/>
+        <Setter Property="MinHeight" Value="30"/>
+        <Setter Property="Height" Value="30"/>
+        <Setter Property="Margin" Value="0"/>
+        <Setter Property="Padding" Value="5"/>
+        <Setter Property="Background" Value="Transparent"/>
+        <Setter Property="Foreground" Value="{DynamicResource Foreground.White}"/>
+        <Setter Property="FontSize" Value="14"/>
+        <Setter Property="Typography.Capitals" Value="Normal"/>
+        <Setter Property="HorizontalContentAlignment" Value="Center"/>
+        <Setter Property="VerticalContentAlignment" Value="Center"/>
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="Button">
+                    <Border x:Name="Surface" Background="{TemplateBinding Background}" CornerRadius="6"
+                            Padding="{TemplateBinding Padding}" ClipToBounds="True" SnapsToDevicePixels="True">
+                        <Grid><ContentPresenter x:Name="ButtonContent" HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"
+                                          VerticalAlignment="{TemplateBinding VerticalContentAlignment}"/>
+                            <ContentControl x:Name="BusyIndicator" Style="{StaticResource Castar.ButtonBusyIndicator}"/></Grid>
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsMouseOver" Value="True">
+                            <Setter TargetName="Surface" Property="Background" Value="{DynamicResource Main.MouseOver}"/>
+                        </Trigger>
+                        <Trigger Property="IsKeyboardFocused" Value="True">
+                            <Setter TargetName="Surface" Property="Background" Value="{DynamicResource Main.MouseOver}"/>
+                        </Trigger>
+                        <Trigger Property="IsEnabled" Value="False">
+                            <Setter TargetName="Surface" Property="Opacity" Value="0.4"/>
+                        </Trigger>
+                        <Trigger Property="c:ButtonLoading.IsBusy" Value="True"><Setter TargetName="ButtonContent" Property="Opacity" Value="0"/><Setter TargetName="Surface" Property="Opacity" Value="1"/></Trigger>
+                <MultiTrigger>
+                    <MultiTrigger.Conditions>
+                        <Condition Property="c:ButtonLoading.IsBusy" Value="True"/>
+                        <Condition Property="c:ButtonLoading.AllowInteractionWhileBusy" Value="True"/>
+                    </MultiTrigger.Conditions>
+                    <Setter TargetName="ButtonContent" Property="Opacity" Value="1"/>
+                    <Setter TargetName="BusyIndicator" Property="HorizontalAlignment" Value="Right"/>
+                    <Setter TargetName="BusyIndicator" Property="Margin" Value="8,0,8,0"/>
+                </MultiTrigger>
+
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
     <Style x:Key="CastarCalendarItem" TargetType="CalendarItem">
         <Setter Property="Template">
             <Setter.Value>
@@ -135,19 +183,26 @@
                         </DataTemplate>
                     </ControlTemplate.Resources>
                     <Border Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}"
-                            BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="6" Padding="8">
+                            BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="6" Padding="8"
+                            UseLayoutRounding="True" SnapsToDevicePixels="True">
                         <DockPanel>
                             <Grid DockPanel.Dock="Top" Margin="0,0,0,4">
                                 <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="32"/>
+                                    <ColumnDefinition Width="Auto"/>
                                     <ColumnDefinition/>
-                                    <ColumnDefinition Width="32"/>
+                                    <ColumnDefinition Width="Auto"/>
                                 </Grid.ColumnDefinitions>
-                                <Button x:Name="PART_PreviousButton" Height="28" Margin="0" Padding="5"
+                                <Button x:Name="PART_PreviousButton" Style="{StaticResource CastarCalendarHeaderButton}" Width="30"
                                         Content="{DynamicResource Svg.LeftArrow}" AutomationProperties.Name="Предыдущий период"/>
-                                <Button x:Name="PART_HeaderButton" Grid.Column="1" Height="28" Margin="0" Padding="4"
-                                        FontWeight="SemiBold"/>
-                                <Button x:Name="PART_NextButton" Grid.Column="2" Height="28" Margin="0" Padding="5"
+                                <Button x:Name="PART_HeaderButton" Grid.Column="1" Style="{StaticResource CastarCalendarHeaderButton}"
+                                        Margin="4,0" FontWeight="SemiBold" HorizontalContentAlignment="Stretch">
+                                    <Button.ContentTemplate>
+                                        <DataTemplate>
+                                            <TextBlock Text="{Binding}" TextAlignment="Center" TextTrimming="CharacterEllipsis"/>
+                                        </DataTemplate>
+                                    </Button.ContentTemplate>
+                                </Button>
+                                <Button x:Name="PART_NextButton" Grid.Column="2" Style="{StaticResource CastarCalendarHeaderButton}" Width="30"
                                         Content="{DynamicResource Svg.RightArrow}" AutomationProperties.Name="Следующий период"/>
                             </Grid>
                             <Grid>
@@ -162,26 +217,26 @@
                                         <RowDefinition Height="28"/>
                                     </Grid.RowDefinitions>
                                     <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="32"/>
-                                        <ColumnDefinition Width="32"/>
-                                        <ColumnDefinition Width="32"/>
-                                        <ColumnDefinition Width="32"/>
-                                        <ColumnDefinition Width="32"/>
-                                        <ColumnDefinition Width="32"/>
-                                        <ColumnDefinition Width="32"/>
+                                        <ColumnDefinition Width="*" MinWidth="32"/>
+                                        <ColumnDefinition Width="*" MinWidth="32"/>
+                                        <ColumnDefinition Width="*" MinWidth="32"/>
+                                        <ColumnDefinition Width="*" MinWidth="32"/>
+                                        <ColumnDefinition Width="*" MinWidth="32"/>
+                                        <ColumnDefinition Width="*" MinWidth="32"/>
+                                        <ColumnDefinition Width="*" MinWidth="32"/>
                                     </Grid.ColumnDefinitions>
                                 </Grid>
-                                <Grid x:Name="PART_YearView" Visibility="Collapsed" HorizontalAlignment="Center" VerticalAlignment="Center">
+                                <Grid x:Name="PART_YearView" Visibility="Collapsed" HorizontalAlignment="Stretch" VerticalAlignment="Center">
                                     <Grid.RowDefinitions>
                                         <RowDefinition Height="48"/>
                                         <RowDefinition Height="48"/>
                                         <RowDefinition Height="48"/>
                                     </Grid.RowDefinitions>
                                     <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="56"/>
-                                        <ColumnDefinition Width="56"/>
-                                        <ColumnDefinition Width="56"/>
-                                        <ColumnDefinition Width="56"/>
+                                        <ColumnDefinition Width="*" MinWidth="56"/>
+                                        <ColumnDefinition Width="*" MinWidth="56"/>
+                                        <ColumnDefinition Width="*" MinWidth="56"/>
+                                        <ColumnDefinition Width="*" MinWidth="56"/>
                                     </Grid.ColumnDefinitions>
                                 </Grid>
                             </Grid>
@@ -203,6 +258,7 @@
     </Style>
 
     <Style x:Key="CastarCalendar" TargetType="Calendar">
+        <Setter Property="MinWidth" Value="280"/>
         <Setter Property="Background" Value="{DynamicResource Main.Background.lvl2}"/>
         <Setter Property="BorderBrush" Value="{DynamicResource Main.Background.lvl3}"/>
         <Setter Property="BorderThickness" Value="1"/>
@@ -221,13 +277,14 @@
             <Setter.Value>
                 <ControlTemplate TargetType="c:CastarDatePicker">
                     <Border x:Name="Field" Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}"
-                            BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="4">
+                            BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="6">
                         <Grid x:Name="PART_Root">
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition/>
                                 <ColumnDefinition Width="30"/>
                             </Grid.ColumnDefinitions>
-                            <TextBox x:Name="DateInput" MinHeight="30" Background="Transparent" AllowDrop="False"
+                            <TextBox x:Name="DateInput" MinHeight="34" Background="Transparent" AllowDrop="False"
+                                     BorderThickness="0" Padding="8,6"
                                      Foreground="{TemplateBinding Foreground}" AutomationProperties.Name="Дата"/>
                             <Button x:Name="PART_Button" Grid.Column="1" Focusable="False" Margin="0" Padding="4"
                                     Background="Transparent" AutomationProperties.Name="Открыть календарь"

@@ -19,8 +19,7 @@ internal sealed class ServerSettingsViewModel(CastarServerClient server, BudgetE
     private ServerSettingsDto? saved;
     private bool active;
     private bool requiresReload;
-    private bool saving;
-    private bool recheckAfterSave;
+    private bool refreshingInBackground;
     private bool pendingRefresh;
     private long? pendingRevision;
     private bool telegramEnabled;
@@ -41,9 +40,10 @@ internal sealed class ServerSettingsViewModel(CastarServerClient server, BudgetE
     public string BackupStatus { get => backupStatus; set => SetField(ref backupStatus, value); }
 
     public bool HasConnection => connection is not null;
+    internal bool HasSettings => saved is not null;
     public ServerUpdateViewModel Updates { get; } = new(server, events);
     public bool CanReload => active && HasConnection && request is null;
-    public bool CanEdit => CanReload && saved is not null;
+    public bool CanEdit => active && HasConnection && saved is not null && (request is null || refreshingInBackground);
     public bool SupportsCredentials => saved?.ReceiptAuthenticationProfiles is not null || saved?.NalogConfigured is not null;
     public bool SupportsManualCurrency => SavedManualCurrency is not null;
     public ManualCurrencySettingsDto? SavedManualCurrency => saved?.ManualCurrency;
@@ -80,7 +80,7 @@ internal sealed class ServerSettingsViewModel(CastarServerClient server, BudgetE
         }
     }
     public bool CanEditTelegram => CanEdit && (SupportsCredentials || saved?.TelegramConfigured == true || TelegramEnabled);
-    public bool CanSave => CanEdit && !requiresReload && !recheckAfterSave && saved is { } current
+    public bool CanSave => CanReload && CanEdit && !requiresReload && saved is { } current
         && ReceiptProviders.Any(provider => provider.Id == ReceiptProvider)
         && (!TelegramEnabled || current.TelegramConfigured || HasTelegramToken)
         && (telegramToken.Length == 0 || HasTelegramToken)
@@ -198,6 +198,24 @@ internal sealed class ServerSettingsViewModel(CastarServerClient server, BudgetE
         && first.DefaultCurrency == second.DefaultCurrency
         && first.Currencies.ToHashSet(StringComparer.Ordinal).SetEquals(second.Currencies);
 
+    private static bool SameSettingsSnapshot(ServerSettingsDto saved, ServerSettingsDto incoming) =>
+        saved with
+        {
+            ReceiptProviders = incoming.ReceiptProviders,
+            ManualCurrency = incoming.ManualCurrency,
+            ReceiptAuthenticationProfiles = incoming.ReceiptAuthenticationProfiles
+        } == incoming
+        && saved.ReceiptProviders.SequenceEqual(incoming.ReceiptProviders, StringComparer.Ordinal)
+        && SameCurrencySettings(saved.ManualCurrency, incoming.ManualCurrency)
+        && SameAuthenticationProfiles(saved.ReceiptAuthenticationProfiles, incoming.ReceiptAuthenticationProfiles);
+
+    private static bool SameAuthenticationProfiles(ReceiptAuthenticationProfileDto[]? saved,
+        ReceiptAuthenticationProfileDto[]? incoming) =>
+        ReferenceEquals(saved, incoming) || saved is not null && incoming is not null
+        && saved.Length == incoming.Length
+        && saved.Zip(incoming).All(pair => pair.First with { Fields = pair.Second.Fields } == pair.Second
+            && pair.First.Fields.SequenceEqual(pair.Second.Fields));
+
     public Task OpenAsync(string address, string? protectedKey)
     {
         active = true;
@@ -215,22 +233,8 @@ internal sealed class ServerSettingsViewModel(CastarServerClient server, BudgetE
         }
 
         NotifyActions();
-        var settings = saved is null || recheckAfterSave ? ReloadAsync() : RefreshAfterNotificationAsync();
+        var settings = saved is null ? ReloadAsync() : RefreshAfterNotificationAsync();
         return Task.WhenAll(settings, Updates.OpenAsync(address, protectedKey));
-    }
-
-    public void Close()
-    {
-        active = false;
-        Updates.Close();
-        // The server may have committed before the client stopped waiting for its response.
-        if (saving)
-            recheckAfterSave = true;
-        if (request is not null)
-            Status = "";
-        CancelRequest();
-        ClearCredentials();
-        NotifyActions();
     }
 
     public Task ReloadAsync() => CanReload
@@ -251,13 +255,7 @@ internal sealed class ServerSettingsViewModel(CastarServerClient server, BudgetE
     {
         if (!pendingRefresh || !CanReload)
             return Task.CompletedTask;
-        if (!HasDraft)
-            return ReloadAsync();
-
-        requiresReload = true;
-        Status = "Настройки изменились на сервере. Обновите их перед сохранением.";
-        NotifyActions();
-        return Task.CompletedTask;
+        return RunAsync(server.GetServerSettingsAsync, "Загрузка…", inBackground: saved is not null);
     }
 
     public Task SaveAsync()
@@ -281,35 +279,55 @@ internal sealed class ServerSettingsViewModel(CastarServerClient server, BudgetE
         return RunAsync(token => server.SaveServerSettingsAsync(update, token), "Сохранение…", isSave: true);
     }
 
-    private async Task RunAsync(Func<CancellationToken, Task<ServerSettingsDto>> operation, string progress, bool isSave = false)
+    private async Task RunAsync(Func<CancellationToken, Task<ServerSettingsDto>> operation, string progress,
+        bool isSave = false, bool inBackground = false)
     {
         using var current = new CancellationTokenSource();
         request = current;
-        saving = isSave;
+        refreshingInBackground = inBackground;
         pendingRefresh = false;
         pendingRevision = null;
-        Status = progress;
+        if (!inBackground)
+            Status = progress;
         NotifyActions();
         try
         {
             var result = await operation(current.Token);
             if (request == current)
             {
-                ApplySettings(result);
                 if (pendingRevision is { } version && result.Revision >= version)
                 {
                     pendingRefresh = false;
                     pendingRevision = null;
                 }
-                if (isSave)
-                    ClearCredentials();
-                Status = "";
+                if (inBackground && saved is { } existing && SameSettingsSnapshot(existing, result))
+                {
+                    if (!requiresReload)
+                        Status = "";
+                }
+                else if (inBackground && HasDraft)
+                {
+                    requiresReload = true;
+                    Status = "Настройки изменились на сервере. Загрузите их заново перед сохранением.";
+                }
+                else
+                {
+                    ApplySettings(result);
+                    if (isSave)
+                        ClearCredentials();
+                    Status = "";
+                }
             }
         }
         catch (Exception error) when (CastarServerClient.IsConnectionError(error))
         {
             if (request == current)
             {
+                if (error is HttpRequestException { StatusCode: HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden })
+                {
+                    ClearCredentials();
+                    ApplySettings(null);
+                }
                 if (error is HttpRequestException { StatusCode: HttpStatusCode.NotFound or HttpStatusCode.Conflict })
                     requiresReload = true;
                 Status = error is HttpRequestException { StatusCode: HttpStatusCode.NotFound }
@@ -322,7 +340,7 @@ internal sealed class ServerSettingsViewModel(CastarServerClient server, BudgetE
             if (request == current)
             {
                 request = null;
-                saving = false;
+                refreshingInBackground = false;
                 NotifyActions();
                 _ = RefreshAfterNotificationAsync();
             }
@@ -333,7 +351,7 @@ internal sealed class ServerSettingsViewModel(CastarServerClient server, BudgetE
     {
         var previous = request;
         request = null;
-        saving = false;
+        refreshingInBackground = false;
         previous?.Cancel();
     }
 
@@ -345,7 +363,6 @@ internal sealed class ServerSettingsViewModel(CastarServerClient server, BudgetE
         if (!SupportsCredentials)
             ClearCredentials();
         requiresReload = false;
-        recheckAfterSave = false;
         ManualCurrency = value?.ManualCurrency;
         TelegramPreferences = value?.TelegramPreferences;
         TelegramEnabled = value?.TelegramEnabled ?? false;
@@ -404,6 +421,8 @@ internal sealed class ServerSettingsViewModel(CastarServerClient server, BudgetE
         }
         ResetAuthenticationDraft();
     }
+
+    internal void ClearSensitiveDraft() => ClearCredentials();
 
     private void NotifyActions()
     {

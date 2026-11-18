@@ -6,6 +6,7 @@ using Castar.Settings;
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.Linq;
 using System.Net;
@@ -14,6 +15,8 @@ using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Controls.Primitives;
+using System.Windows.Data;
 using System.Windows.Input;
 using System.Windows.Media;
 
@@ -25,7 +28,9 @@ public partial class PurchasesContent : UserControl
     private readonly ClientSettings settings;
     private readonly HistoricalExchangeRates exchangeRates;
     private bool listeningForChanges;
-    private PurchaseRow[] purchases = [];
+    private readonly ObservableCollection<PurchaseRow> purchases = [];
+    private ICollectionView? purchaseView;
+    private string purchaseSearch = "";
     private CancellationTokenSource? activeRequest;
     private CancellationTokenSource? detailsRequest;
     private CancellationTokenSource? avatarRequest;
@@ -34,7 +39,25 @@ public partial class PurchasesContent : UserControl
     private bool hasLoaded;
     private bool refreshPending;
     private bool dataStale = true;
+    private bool applyingPurchases;
+    private PurchaseRow? detailsFor;
+    private PurchaseRow? loadingDetailsFor;
     private Guid? notificationTarget;
+    private SelectorRangeDates? periodSelector;
+    internal SelectorRangeDates Dates => periodSelector
+        ?? throw new InvalidOperationException("Период рабочего пространства ещё не подключён.");
+
+    internal void BindPeriodSelector(SelectorRangeDates selector)
+    {
+        ArgumentNullException.ThrowIfNull(selector);
+        if (ReferenceEquals(periodSelector, selector))
+            return;
+        if (periodSelector is not null)
+            periodSelector.DateRangeChanged -= Dates_DateRangeChanged;
+        periodSelector = selector;
+        selector.DateRangeChanged += Dates_DateRangeChanged;
+        dataStale = true;
+    }
 
     public PurchasesContent(CastarServerClient server, ClientSettings settings, HistoricalExchangeRates exchangeRates)
     {
@@ -42,8 +65,9 @@ public partial class PurchasesContent : UserControl
         this.settings = settings;
         this.exchangeRates = exchangeRates;
         InitializeComponent();
-        Dates.DisplayTimeZone = () => settings.DisplayTimeZone;
-        Dates.SetCurrentMonth();
+        purchaseView = CollectionViewSource.GetDefaultView(purchases);
+        purchaseView.Filter = PurchaseMatches;
+        PurchasesList.ItemsSource = purchaseView;
         server.ConnectionChanged += Server_ConnectionChanged;
         settings.PropertyChanged += Settings_PropertyChanged;
     }
@@ -62,14 +86,14 @@ public partial class PurchasesContent : UserControl
 
     private async Task StartListeningAsync()
     {
-        if (!IsVisible || listeningForChanges)
+        if (!IsVisible || listeningForChanges || periodSelector is null)
             return;
 
         listeningForChanges = true;
-        if (DetailsPanel.DataContext is PurchaseRow { Source.ItemsDeferred: true } && !dataStale)
-            await LoadSelectionAsync();
         if (dataStale)
             await RefreshAsync();
+        else
+            await LoadSelectionAsync();
     }
 
     private void StopListening()
@@ -78,15 +102,16 @@ public partial class PurchasesContent : UserControl
         CancelRefresh();
         Progress.IsLoading = false;
         purchaseAction?.Cancel();
-        detailsRequest?.Cancel();
+        CancelDetails();
     }
 
-    private async void Dates_DateRangeChanged(object sender, EventArgs e)
+    private async void Dates_DateRangeChanged(object? sender, EventArgs e)
     {
         dataStale = true;
         if (!listeningForChanges)
             return;
 
+        hasLoaded = false;
         ClearPurchases();
         await RefreshAsync();
     }
@@ -109,6 +134,7 @@ public partial class PurchasesContent : UserControl
             return;
 
         dataStale = true;
+        hasLoaded = false;
         if (listeningForChanges)
             await RefreshAsync();
     }
@@ -118,6 +144,7 @@ public partial class PurchasesContent : UserControl
         avatarRequest?.Cancel();
         hasLoaded = false;
         ShowPurchases([], "");
+        _ = LoadSelectionAsync();
         ShowStatus("");
         Progress.IsLoading = false;
     }
@@ -140,6 +167,12 @@ public partial class PurchasesContent : UserControl
 
         refreshPending = true;
         return Task.CompletedTask;
+    }
+
+    internal void ShowDay(DateOnly day)
+    {
+        notificationTarget = null;
+        Dates.RangeDate = new RangeDate(day.ToDateTime(TimeOnly.MinValue), day.ToDateTime(TimeOnly.MinValue));
     }
 
     private async Task RefreshAsync()
@@ -173,15 +206,18 @@ public partial class PurchasesContent : UserControl
             var views = rows.Select(row => new PurchaseRow(row, target, RateFor(row, target, rates), null)).ToArray();
             dataStale = false;
             ShowPurchases(views, target);
-            SelectNotificationTarget();
-            notificationTarget = null;
             hasLoaded = true;
             ShowStatus("");
             _ = RefreshOwnerAvatarsAsync(rows);
+            SelectNotificationTarget();
+            notificationTarget = null;
+            _ = LoadSelectionAsync();
         }
         catch (Exception error) when (CastarServerClient.IsConnectionError(error))
         {
-            if (request == activeRequest && !refreshPending)
+            if (request == activeRequest && IsAccessDenied(error))
+                ShowAccessDenied(error);
+            else if (request == activeRequest && !refreshPending && !hasLoaded)
                 ShowStatus(CastarServerClient.DescribeError(error));
         }
         finally
@@ -209,9 +245,9 @@ public partial class PurchasesContent : UserControl
             if (request != avatarRequest || request.IsCancellationRequested)
                 return;
             foreach (var row in purchases)
-                row.SetOwnerAvatar(images.GetValueOrDefault(row.Source.UserId));
+                ApplyAvatar(row, images);
             if (DetailsPanel.DataContext is PurchaseRow details)
-                details.SetOwnerAvatar(images.GetValueOrDefault(details.Source.UserId));
+                ApplyAvatar(details, images);
         }
         catch (OperationCanceledException) when (request.IsCancellationRequested)
         {
@@ -221,6 +257,14 @@ public partial class PurchasesContent : UserControl
             if (request == avatarRequest)
                 avatarRequest = null;
         }
+    }
+
+    private static void ApplyAvatar(PurchaseRow row, IReadOnlyDictionary<Guid, byte[]> images)
+    {
+        if (row.Source.Owner?.HasAvatar != true)
+            row.SetOwnerAvatar(null);
+        else if (images.TryGetValue(row.Source.UserId, out var image))
+            row.SetOwnerAvatar(image);
     }
 
     private async Task<IReadOnlyDictionary<Guid, byte[]>> LoadOwnerAvatarsAsync(PurchaseDto[] rows, CancellationToken token)
@@ -266,49 +310,126 @@ public partial class PurchasesContent : UserControl
         ExpenseTotalWarning.ToolTip = excludedCount > 0
             ? $"Покупок вне итога за период: {excludedCount} из {rows.Length}."
             : null;
-        if (purchases.Length == rows.Length && purchases.Zip(rows).All(pair => pair.First.EquivalentTo(pair.Second)))
+        UpdateEmptyPurchases();
+        if (purchases.Count == rows.Length && purchases.Zip(rows).All(pair => pair.First.EquivalentTo(pair.Second)))
             return;
 
         var selectedId = (PurchasesList.SelectedItem as PurchaseRow)?.Id;
-        purchases = rows;
-        PurchasesList.ItemsSource = rows;
-        PurchasesList.SelectedItem = rows.FirstOrDefault(purchase => purchase.Id == selectedId);
+        var current = purchases.ToDictionary(row => row.Id);
+        var receivedIds = rows.Select(row => row.Id).ToHashSet();
+        applyingPurchases = true;
+        try
+        {
+            for (var index = purchases.Count - 1; index >= 0; index--)
+                if (!receivedIds.Contains(purchases[index].Id))
+                    purchases.RemoveAt(index);
+
+            for (var index = 0; index < rows.Length; index++)
+            {
+                var row = rows[index];
+                if (!current.TryGetValue(row.Id, out var previous))
+                {
+                    purchases.Insert(index, row);
+                    continue;
+                }
+
+                if (!ReferenceEquals(purchases[index], previous))
+                    purchases.Move(purchases.IndexOf(previous), index);
+                if (previous.EquivalentTo(row))
+                    continue;
+                if (previous.Source.UserId == row.Source.UserId && row.Source.Owner?.HasAvatar == true)
+                    row.SetOwnerAvatar(previous.OwnerAvatar);
+                purchases[index] = row;
+            }
+
+            if ((PurchasesList.SelectedItem as PurchaseRow)?.Id != selectedId)
+                PurchasesList.SelectedItem = purchases.FirstOrDefault(purchase => purchase.Id == selectedId);
+        }
+        finally
+        {
+            applyingPurchases = false;
+            UpdateEmptyPurchases();
+        }
     }
 
     private void ShowStatus(string status)
     {
         StatusText.Text = status;
         StatusText.Visibility = status.Length == 0 ? Visibility.Collapsed : Visibility.Visible;
-        EmptyPurchases.Visibility = hasLoaded && purchases.Length == 0 && status.Length == 0
-            ? Visibility.Visible
-            : Visibility.Collapsed;
+        UpdateEmptyPurchases();
     }
 
-    private async void PurchasesList_SelectionChanged(object sender, SelectionChangedEventArgs e) => await LoadSelectionAsync();
+    private static bool IsAccessDenied(Exception error) =>
+        error is HttpRequestException { StatusCode: HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden };
 
-    private async Task LoadSelectionAsync()
+    private void ShowAccessDenied(Exception error)
+    {
+        dataStale = true;
+        CancelRefresh();
+        ClearPurchases();
+        ShowStatus(CastarServerClient.DescribeError(error));
+    }
+
+    private async void PurchasesList_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (!applyingPurchases)
+            await LoadSelectionAsync();
+    }
+
+    private void CancelDetails()
     {
         var previous = detailsRequest;
         detailsRequest = null;
+        loadingDetailsFor = null;
         previous?.Cancel();
+        if (DetailsPanel.Tag is DetailStatus { IsLoading: true })
+            DetailsPanel.Tag = null;
+    }
+
+    private async Task LoadSelectionAsync()
+    {
         var selected = PurchasesList.SelectedItem as PurchaseRow;
-        DetailsPanel.DataContext = selected;
+        if (selected is not null && (selected == detailsFor || selected == loadingDetailsFor))
+            return;
+
+        CancelDetails();
         DetailsPanel.Tag = null;
-        if (!listeningForChanges || selected is not { Source.ItemsDeferred: true })
+        if (selected is not { Source.ItemsDeferred: true })
+        {
+            detailsFor = selected;
+            DetailsPanel.DataContext = selected;
+            return;
+        }
+
+        if (DetailsPanel.DataContext is not PurchaseRow displayed || displayed.Id != selected.Id)
+        {
+            detailsFor = null;
+            DetailsPanel.DataContext = selected;
+        }
+        if (!listeningForChanges)
             return;
 
         using var request = new CancellationTokenSource();
         detailsRequest = request;
-        DetailsPanel.Tag = new DetailStatus(true, "");
+        loadingDetailsFor = selected;
+        if (detailsFor is null)
+            DetailsPanel.Tag = new DetailStatus(true, "");
         try
         {
             var detail = await server.GetPurchaseDetailsAsync(selected.Id, request.Token);
             if (request == detailsRequest && !request.IsCancellationRequested)
-                DetailsPanel.DataContext = selected.WithDetails(detail);
+            {
+                var row = selected.WithDetails(detail);
+                if (DetailsPanel.DataContext is not PurchaseRow rendered || !rendered.EquivalentTo(row))
+                    DetailsPanel.DataContext = row;
+                detailsFor = selected;
+            }
         }
         catch (Exception error) when (CastarServerClient.IsConnectionError(error))
         {
-            if (request == detailsRequest && !request.IsCancellationRequested)
+            if (request == detailsRequest && IsAccessDenied(error))
+                ShowAccessDenied(error);
+            else if (request == detailsRequest && !request.IsCancellationRequested && detailsFor is null)
                 DetailsPanel.Tag = new DetailStatus(false, CastarServerClient.DescribeError(error));
         }
         finally
@@ -316,6 +437,7 @@ public partial class PurchasesContent : UserControl
             if (request == detailsRequest)
             {
                 detailsRequest = null;
+                loadingDetailsFor = null;
                 if (DetailsPanel.Tag is DetailStatus { IsLoading: true })
                     DetailsPanel.Tag = null;
             }
@@ -336,59 +458,131 @@ public partial class PurchasesContent : UserControl
         if (notificationTarget is not { } id || purchases.FirstOrDefault(row => row.Id == id) is not { } selected)
             return false;
         notificationTarget = null;
+        PurchaseSearchBox.Clear();
         PurchasesList.SelectedItem = selected;
         PurchasesList.ScrollIntoView(selected);
         return true;
     }
 
-    private void PurchaseActionMenu_Opening(object sender, ContextMenuEventArgs e)
+    private void Purchases_ContextMenuOpening(object sender, ContextMenuEventArgs e) => e.Handled = true;
+
+    private void PurchaseActions_Click(object sender, RoutedEventArgs e)
     {
-        if (purchaseAction is not null || sender is ListViewItem item && item.DataContext is not
-            (PurchaseRow { CanDelete: true } or PurchaseRow { HasReceiptSource: true } or ItemRow { Revision: not null }))
-            e.Handled = true;
+        if (purchaseAction is not null || sender is not Button { ContextMenu: { } menu, Tag: { } row } button ||
+            row is not (PurchaseRow { CanDelete: true } or PurchaseRow { HasReceiptSource: true } or ItemRow { Revision: not null }))
+            return;
+        menu.DataContext = row;
+        menu.Tag = new ActionMenuSnapshot(row, connectionRevision);
+        menu.PlacementTarget = button;
+        menu.IsOpen = true;
+        e.Handled = true;
     }
 
-    private void PurchaseActionMenu_Opened(object sender, RoutedEventArgs e)
+    private T? GetMenuRow<T>(object sender) where T : class
     {
-        var menu = (ContextMenu)sender;
-        menu.DataContext = (menu.PlacementTarget as ListViewItem)?.DataContext;
-        menu.Tag = connectionRevision;
+        if (sender is not MenuItem { Parent: ContextMenu { Tag: ActionMenuSnapshot snapshot } menu } ||
+            snapshot.ConnectionRevision != connectionRevision)
+            return null;
+        menu.IsOpen = false;
+        return snapshot.Row as T;
     }
 
-    private T? GetMenuRow<T>(object sender) where T : class =>
-        sender is MenuItem { Parent: ContextMenu menu } && Equals(menu.Tag, connectionRevision)
-            ? menu.DataContext as T : null;
+    private sealed record ActionMenuSnapshot(object Row, long ConnectionRevision);
+
+    private void PurchaseSearch_TextChanged(object sender, TextChangedEventArgs e)
+    {
+        purchaseSearch = PurchaseSearchBox.Text.Trim();
+        if (PurchaseSearchPlaceholder is not null)
+            PurchaseSearchPlaceholder.Visibility = purchaseSearch.Length == 0 ? Visibility.Visible : Visibility.Collapsed;
+        purchaseView?.Refresh();
+        UpdateEmptyPurchases();
+    }
+
+    private bool PurchaseMatches(object item) => purchaseSearch.Length == 0 || item is PurchaseRow row &&
+        new[] { row.Name, row.OwnerName, row.RetailPlace, row.RetailPlaceAddress, row.Amount.Primary, row.Amount.Original,
+            row.AddedOn?.ToString("dd.MM.yyyy HH:mm") }.Any(value =>
+            value?.Contains(purchaseSearch, StringComparison.CurrentCultureIgnoreCase) == true);
+
+    private void UpdateEmptyPurchases()
+    {
+        if (EmptyPurchases is null)
+            return;
+        EmptyPurchases.Text = purchaseSearch.Length == 0 ? "Нет покупок" : "Ничего не найдено";
+        EmptyPurchases.Visibility = hasLoaded && StatusText.Text.Length == 0 && purchaseView?.IsEmpty == true
+            ? Visibility.Visible : Visibility.Collapsed;
+    }
+
+    private static bool IsActionElement(DependencyObject element)
+    {
+        for (DependencyObject? current = element; current is not null; current = current is Visual
+            ? VisualTreeHelper.GetParent(current) : LogicalTreeHelper.GetParent(current))
+            if (current is ButtonBase)
+                return true;
+        return false;
+    }
 
     private async void PurchaseRow_DoubleClick(object sender, MouseButtonEventArgs e)
     {
-        if (e.ChangedButton != MouseButton.Left || purchaseAction is not null ||
+        if (e.ChangedButton != MouseButton.Left || e.OriginalSource is DependencyObject origin && IsActionElement(origin) || purchaseAction is not null ||
             sender is not ListViewItem { DataContext: PurchaseRow { Source.Revision: { } revision } row })
             return;
 
         e.Handled = true;
-        await RunPurchaseActionAsync(async token =>
+        await EditPurchaseRowAsync(row);
+    }
+
+    private async void EditPurchaseMenu_Click(object sender, RoutedEventArgs e)
+    {
+        if (GetMenuRow<PurchaseRow>(sender) is { } row)
+            await EditPurchaseRowAsync(row, sender);
+    }
+
+    private Task EditPurchaseRowAsync(PurchaseRow row, object? source = null)
+    {
+        if (row.Source.Revision is not { } revision || purchaseAction is not null)
+            return Task.CompletedTask;
+        return RunPurchaseActionAsync(async token =>
         {
-            var currencies = row.Source.SupportsCurrencyEdit
-                ? (await server.GetServerSettingsAsync(token)).ManualCurrency?.Currencies
-                : null;
-            var owners = row.Source.Owner is not null ? await server.GetUsersAsync(token) : null;
-            token.ThrowIfCancellationRequested();
-            var editor = new PurchaseEditor(row.Source, currencies, owners);
+            PurchaseEditor? editor = null;
+            await ButtonLoading.RunAsync(source, async () =>
+            {
+                var currencies = row.Source.SupportsCurrencyEdit
+                    ? (await server.GetServerSettingsAsync(token)).ManualCurrency?.Currencies
+                    : null;
+                var owners = row.Source.Owner is not null ? await server.GetUsersAsync(token) : null;
+                token.ThrowIfCancellationRequested();
+                editor = new PurchaseEditor(row.Source, currencies, owners);
+            });
+            if (editor is null || token.IsCancellationRequested)
+                return;
             await ConfirmAndApplyAsync("Изменить покупку", editor, "Сохранить",
-                request => server.EditPurchaseAsync(row.Id, revision, editor.Result!, request), token, editor.Validate);
+                request => server.EditPurchaseAsync(row.Id, revision, editor.Result!, request), token, editor.Validate, source: source);
         });
     }
 
     private async void PurchaseItemRow_DoubleClick(object sender, MouseButtonEventArgs e)
     {
-        if (e.ChangedButton != MouseButton.Left || purchaseAction is not null ||
+        if (e.ChangedButton != MouseButton.Left || e.OriginalSource is DependencyObject origin && IsActionElement(origin) || purchaseAction is not null ||
             sender is not ListViewItem { DataContext: ItemRow { Revision: { } revision } row })
             return;
 
         e.Handled = true;
+        await EditPurchaseItemRowAsync(row);
+    }
+
+    private async void EditPurchaseItemMenu_Click(object sender, RoutedEventArgs e)
+    {
+        if (GetMenuRow<ItemRow>(sender) is { } row)
+            await EditPurchaseItemRowAsync(row, sender);
+    }
+
+    private Task EditPurchaseItemRowAsync(ItemRow row, object? source = null)
+    {
+        if (row.Revision is not { } revision || purchaseAction is not null)
+            return Task.CompletedTask;
         var editor = new PurchaseItemEditor(row.Source, row.Currency);
-        await ConfirmMutationAsync("Изменить товар", editor, "Сохранить",
-            token => server.EditPurchaseItemAsync(row.PurchaseId, row.Id, revision, editor.Result!, token), validate: editor.Validate);
+        return ConfirmMutationAsync("Изменить товар", editor, "Сохранить",
+            token => server.EditPurchaseItemAsync(row.PurchaseId, row.Id, revision, editor.Result!, token), validate: editor.Validate, source: source);
     }
 
     private async void DeletePurchase_Click(object sender, RoutedEventArgs e)
@@ -397,7 +591,7 @@ public partial class PurchasesContent : UserControl
             return;
 
         await ConfirmMutationAsync("Удалить покупку", $"«{row.Name}» и все её товары будут удалены.", "Удалить",
-            token => server.DeletePurchaseAsync(row.Id, revision, token), foreground: Brushes.OrangeRed);
+            token => server.DeletePurchaseAsync(row.Id, revision, token), foreground: Brushes.OrangeRed, source: sender);
     }
 
     private async void DeletePurchaseItem_Click(object sender, RoutedEventArgs e)
@@ -409,16 +603,16 @@ public partial class PurchasesContent : UserControl
         if (row.IsLast)
             message += " Итог покупки станет нулевым.";
         await ConfirmMutationAsync("Удалить товар", message, "Удалить",
-            token => server.DeletePurchaseItemAsync(row.PurchaseId, row.Id, revision, token), foreground: Brushes.OrangeRed);
+            token => server.DeletePurchaseItemAsync(row.PurchaseId, row.Id, revision, token), foreground: Brushes.OrangeRed, source: sender);
     }
 
     private Task ConfirmMutationAsync(string title, object content, string action, Func<CancellationToken, Task<bool>> mutate,
-        Func<ValidatePopupDialog>? validate = null, Brush? foreground = null) =>
-        RunPurchaseActionAsync(token => ConfirmAndApplyAsync(title, content, action, mutate, token, validate, foreground));
+        Func<ValidatePopupDialog>? validate = null, Brush? foreground = null, object? source = null) =>
+        RunPurchaseActionAsync(token => ConfirmAndApplyAsync(title, content, action, mutate, token, validate, foreground, source));
 
     private async Task ConfirmAndApplyAsync(string title, object content, string action,
         Func<CancellationToken, Task<bool>> mutate, CancellationToken token,
-        Func<ValidatePopupDialog>? validate = null, Brush? foreground = null)
+        Func<ValidatePopupDialog>? validate = null, Brush? foreground = null, object? source = null)
     {
         var accepted = await PopupDialog.Show(content, PopupDialog.TypeDialogEnum.Confirm, options =>
         {
@@ -432,9 +626,13 @@ public partial class PurchasesContent : UserControl
         if (accepted != true || token.IsCancellationRequested)
             return;
 
-        var updated = await mutate(token);
-        await RefreshAfterPurchaseMutationAsync(token);
-        if (!updated && !token.IsCancellationRequested)
+        bool? updated = null;
+        await ButtonLoading.RunAsync(source, async () =>
+        {
+            updated = await mutate(token);
+            await RefreshAfterPurchaseMutationAsync(token);
+        });
+        if (updated == false && !token.IsCancellationRequested)
             await ShowPurchaseActionMessageAsync("Покупка или позиция уже удалена.");
     }
 
@@ -452,11 +650,17 @@ public partial class PurchasesContent : UserControl
 
         await RunPurchaseActionAsync(async token =>
         {
-            var source = await server.GetPurchaseReceiptSourceAsync(row.Id, token);
-            token.ThrowIfCancellationRequested();
-            object content = source?.Content is { Length: > 0 } raw
-                ? new ReceiptSourcePanel(raw, source.IsLegacy)
-                : "Исходные данные для этой покупки недоступны.";
+            object? content = null;
+            await ButtonLoading.RunAsync(sender, async () =>
+            {
+                var source = await server.GetPurchaseReceiptSourceAsync(row.Id, token);
+                token.ThrowIfCancellationRequested();
+                content = source?.Content is { Length: > 0 } raw
+                    ? new ReceiptSourcePanel(raw, source.IsLegacy)
+                    : "Исходные данные для этой покупки недоступны.";
+            });
+            if (content is null || token.IsCancellationRequested)
+                return;
             await PopupDialog.Show(content, PopupDialog.TypeDialogEnum.Default, options =>
             {
                 options.Title = "Исходные данные";

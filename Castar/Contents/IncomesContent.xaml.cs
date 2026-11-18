@@ -8,6 +8,8 @@ using Castar.ServerConnection;
 using Castar.Settings;
 using System;
 using System.Collections.Generic;
+using System.Collections;
+using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.Linq;
 using System.Net;
@@ -16,8 +18,12 @@ using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Controls.Primitives;
+using System.Windows.Data;
+using System.Globalization;
 using System.Windows.Input;
 using System.Windows.Media;
+using System.Windows.Threading;
 
 namespace Castar.Contents;
 
@@ -29,20 +35,40 @@ public partial class IncomesContent : UserControl
     private readonly IncomesContext context = new();
     private bool listeningForChanges;
     private CancellationTokenSource? activeRequest;
+    private CancellationTokenSource? comparisonRequest;
     private bool refreshPending;
     private bool dataStale = true;
+    private (DateTime Start, DateTime Finish, string Currency, string TimeZone)? renderedQuery;
     private Guid? notificationTarget;
+    private readonly Dictionary<string, bool> expandedGroups = new(StringComparer.CurrentCultureIgnoreCase);
+    private string incomeSearch = "";
+    private long revealGeneration;
+    private long incomeConnectionRevision;
+    private SelectorRangeDates? periodSelector;
+    internal SelectorRangeDates SelectorRangeDatesElement => periodSelector
+        ?? throw new InvalidOperationException("Период рабочего пространства ещё не подключён.");
     private RangeDate Range => SelectorRangeDatesElement.RangeDate;
+
+    internal void BindPeriodSelector(SelectorRangeDates selector)
+    {
+        ArgumentNullException.ThrowIfNull(selector);
+        if (ReferenceEquals(periodSelector, selector))
+            return;
+        if (periodSelector is not null)
+            periodSelector.DateRangeChanged -= SelectorRangeDates_DateRangeChanged;
+        periodSelector = selector;
+        selector.DateRangeChanged += SelectorRangeDates_DateRangeChanged;
+        dataStale = true;
+    }
 
     public IncomesContent(CastarServerClient server, ClientSettings settings, HistoricalExchangeRates exchangeRates)
     {
         this.server = server;
         this.settings = settings;
         this.exchangeRates = exchangeRates;
+        context.SummaryCurrency = settings.DisplayCurrency;
         DataContext = context;
         InitializeComponent();
-        SelectorRangeDatesElement.DisplayTimeZone = () => settings.DisplayTimeZone;
-        SelectorRangeDatesElement.SetCurrentMonth();
         server.ConnectionChanged += Server_ConnectionChanged;
         settings.PropertyChanged += Settings_PropertyChanged;
         IsVisibleChanged += Incomes_IsVisibleChanged;
@@ -62,7 +88,7 @@ public partial class IncomesContent : UserControl
 
     private async Task StartListeningAsync()
     {
-        if (!IsVisible || listeningForChanges)
+        if (!IsVisible || listeningForChanges || periodSelector is null)
             return;
         listeningForChanges = true;
         if (dataStale)
@@ -71,6 +97,9 @@ public partial class IncomesContent : UserControl
 
     private void StopListening()
     {
+        if (comparisonRequest is not null)
+            dataStale = true;
+        revealGeneration++;
         listeningForChanges = false;
         CancelRefresh();
         context.IsLoading = false;
@@ -78,11 +107,15 @@ public partial class IncomesContent : UserControl
 
     private async void Server_ConnectionChanged(object? sender, EventArgs e)
     {
+        incomeConnectionRevision++;
         notificationTarget = null;
         CancelRefresh();
         dataStale = true;
+        renderedQuery = null;
         context.Incomes = [];
+        context.HasLoaded = false;
         context.Status = "";
+        context.SetComparison(null, settings.DisplayCurrency);
         if (listeningForChanges)
             await RefreshAsync();
     }
@@ -99,6 +132,7 @@ public partial class IncomesContent : UserControl
 
     private void CancelRefresh()
     {
+        comparisonRequest?.Cancel();
         refreshPending = false;
         var previous = activeRequest;
         activeRequest = null;
@@ -131,14 +165,24 @@ public partial class IncomesContent : UserControl
         }
         using var request = new CancellationTokenSource();
         activeRequest = request;
-        context.IsLoading = true;
+        var target = settings.DisplayCurrency;
+        var query = (start, finish, target, settings.DisplayTimeZoneId);
+        context.IsLoading = renderedQuery != query;
+        context.SummaryCurrency = target;
+        if (renderedQuery != query)
+        {
+            context.HasLoaded = false;
+            context.SetComparison(null, target);
+        }
         try
         {
-            var incomes = await server.GetIncomesAsync(start, finish, request.Token);
+            var previousAvatars = context.Incomes.Select(row => row.Income.User)
+                .Where(user => user.ImageRaw is { Length: > 0 }).DistinctBy(user => user.Id)
+                .ToDictionary(user => user.Id, user => user.ImageRaw!);
+            var incomes = await server.GetIncomesAsync(start, finish, previousAvatars, request.Token);
             if (request != activeRequest || refreshPending)
                 return;
 
-            var target = settings.DisplayCurrency;
             var rates = await exchangeRates.GetAsync(incomes.Select(income =>
                 (income.Currency, income.RateDate ?? BudgetTime.BelgradeDate(income.AddedOn))), target, request.Token);
             if (request != activeRequest || refreshPending)
@@ -146,7 +190,9 @@ public partial class IncomesContent : UserControl
 
             var rows = incomes.Select(income => CreateRow(income, target, rates)).ToArray();
             dataStale = false;
+            renderedQuery = query;
             UpdateRows(rows);
+            context.HasLoaded = true;
             SelectNotificationTarget();
             notificationTarget = null;
             var currencyStatus = rows.Any(row => !HistoricalExchangeRates.IsCurrencyCode(row.Income.Currency))
@@ -154,11 +200,21 @@ public partial class IncomesContent : UserControl
             var rateStatus = rows.Any(row => row.AggregateAmount is null && HistoricalExchangeRates.IsCurrencyCode(row.Income.Currency))
                 ? "Для части доходов нет курса." : "";
             context.Status = string.Join(' ', new[] { currencyStatus, rateStatus }.Where(status => status.Length > 0));
+            _ = RefreshComparisonAsync(rows, start, finish, target);
         }
         catch (Exception error) when (CastarServerClient.IsConnectionError(error))
         {
             if (request == activeRequest && !refreshPending)
-                context.Status = CastarServerClient.DescribeError(error);
+            {
+                if (error is HttpRequestException { StatusCode: HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden })
+                {
+                    renderedQuery = null;
+                    context.Incomes = [];
+                    context.HasLoaded = false;
+                }
+                if (renderedQuery != query)
+                    context.Status = CastarServerClient.DescribeError(error);
+            }
         }
         finally
         {
@@ -171,6 +227,72 @@ public partial class IncomesContent : UserControl
                     context.IsLoading = false;
             }
         }
+    }
+
+    private async Task RefreshComparisonAsync(IncomeDisplayRow[] rows, DateTime start, DateTime finish, string target)
+    {
+        comparisonRequest?.Cancel();
+        using var request = new CancellationTokenSource();
+        comparisonRequest = request;
+        context.IsComparisonLoading = true;
+        try
+        {
+            if (!HistoricalExchangeRates.IsCurrencyCode(target) || rows.Any(row => row.AggregateAmount is null))
+            {
+                context.SetComparison(null, target, "Для сравнения нужны валюта и курсы");
+                return;
+            }
+            if (PreviousIncomePeriod(start, finish) is not { } previous)
+            {
+                context.SetComparison(null, target, "Нет предыдущего периода");
+                return;
+            }
+
+            // Reuse the same HTTP, date/time and historical FX pipeline as the visible period.
+            // The comparison loads independently and never delays the list or its current total.
+            var incomes = await server.GetIncomeAmountsAsync(previous.StartDate, previous.EndDate, request.Token);
+            var rates = await exchangeRates.GetAsync(incomes.Select(income =>
+                (income.Currency, income.RateDate ?? BudgetTime.BelgradeDate(income.AddedOn))), target, request.Token);
+            if (request.IsCancellationRequested || comparisonRequest != request)
+                return;
+
+            var previousRows = incomes.Select(income => CreateRow(income, target, rates)).ToArray();
+            if (previousRows.Any(row => row.AggregateAmount is null))
+                context.SetComparison(null, target, "Для предыдущего периода нет валюты или курса");
+            else
+                context.SetComparison(rows.Sum(row => row.AggregateAmount!.Value) -
+                    previousRows.Sum(row => row.AggregateAmount!.Value), target);
+        }
+        catch (OperationCanceledException) when (request.IsCancellationRequested) { }
+        catch (Exception error) when (CastarServerClient.IsConnectionError(error) || error is OverflowException)
+        {
+            if (comparisonRequest == request && !request.IsCancellationRequested)
+                context.SetComparison(null, target, "Не удалось сравнить периоды");
+        }
+        finally
+        {
+            if (comparisonRequest == request)
+            {
+                comparisonRequest = null;
+                context.IsComparisonLoading = false;
+            }
+        }
+    }
+
+    internal static RangeDate? PreviousIncomePeriod(DateTime start, DateTime finish)
+    {
+        start = start.Date;
+        finish = finish.Date;
+        if (start > finish || start == DateTime.MinValue)
+            return null;
+        var months = (finish.Year - start.Year) * 12 + finish.Month - start.Month + 1;
+        if (start.Day == 1 && finish.Day == DateTime.DaysInMonth(finish.Year, finish.Month))
+        {
+            var monthsSinceMinimum = (start.Year - 1) * 12 + start.Month - 1;
+            return months > monthsSinceMinimum ? null : new RangeDate(start.AddMonths(-months), start.AddDays(-1));
+        }
+        var days = (finish - start).Days + 1;
+        return start.Ticks / TimeSpan.TicksPerDay < days ? null : new RangeDate(start.AddDays(-days), start.AddDays(-1));
     }
 
     private IncomeDisplayRow CreateRow(Income income, string target,
@@ -193,20 +315,34 @@ public partial class IncomesContent : UserControl
 
     private void UpdateRows(IncomeDisplayRow[] rows)
     {
-        if (context.Incomes.Count == rows.Length && context.Incomes.Zip(rows).All(pair =>
-            SameRow(pair.First, pair.Second)))
+        var previous = context.Incomes;
+        if (previous.Count == rows.Length && previous.Zip(rows).All(pair => SameRow(pair.First, pair.Second)))
             return;
 
         var selectedIds = IncomesListView.SelectedItems.Cast<IncomeDisplayRow>().Select(row => row.Income.Id).ToHashSet();
-        context.Incomes = rows;
-        foreach (var row in rows.Where(row => selectedIds.Contains(row.Income.Id)))
+        if (previous is ObservableCollection<IncomeDisplayRow> current && current.Count == rows.Length
+            && current.Zip(rows).All(pair => pair.First.Income.Id == pair.Second.Income.Id))
+        {
+            for (var index = 0; index < rows.Length; index++)
+            {
+                if (!SameRow(current[index], rows[index]))
+                    current[index] = rows[index];
+            }
+            context.OnPropertyChanged(nameof(IncomesContext.TotalSum));
+        }
+        else
+        {
+            context.Incomes = new ObservableCollection<IncomeDisplayRow>(rows);
+        }
+        foreach (var row in context.Incomes.Where(row => selectedIds.Contains(row.Income.Id)))
         {
             if (IncomesListView.SelectionMode == SelectionMode.Single)
             {
                 IncomesListView.SelectedItem = row;
                 break;
             }
-            IncomesListView.SelectedItems.Add(row);
+            if (!IncomesListView.SelectedItems.Contains(row))
+                IncomesListView.SelectedItems.Add(row);
         }
     }
 
@@ -222,10 +358,39 @@ public partial class IncomesContent : UserControl
         if (notificationTarget is not { } id || context.Incomes.FirstOrDefault(row => row.Income.Id == id) is not { } selected)
             return false;
         notificationTarget = null;
-        IncomesListView.SelectedItems.Clear();
+        IncomeSearchBox.Clear();
+        expandedGroups[selected.Income.Source ?? ""] = true;
+        IncomesListView.UpdateLayout();
+        foreach (var expander in VisualChildren<Expander>(IncomesListView))
+            if (expander.DataContext is CollectionViewGroup group &&
+                string.Equals(group.Name?.ToString(), selected.Income.Source, StringComparison.CurrentCultureIgnoreCase))
+                expander.IsExpanded = true;
+        IncomesListView.SelectedItem = null;
         IncomesListView.SelectedItem = selected;
         IncomesListView.ScrollIntoView(selected);
+        var reveal = ++revealGeneration;
+        Dispatcher.BeginInvoke(DispatcherPriority.Loaded, new Action(() => RevealLoadedIncome(selected, reveal)));
         return true;
+    }
+
+    private void RevealLoadedIncome(IncomeDisplayRow selected, long generation)
+    {
+        if (generation != revealGeneration || !listeningForChanges || !IsVisible ||
+            IncomesListView.SelectedItem is not IncomeDisplayRow current || current.Income.Id != selected.Income.Id)
+            return;
+
+        var index = IncomesListView.Items.IndexOf(current);
+        if (index < 0)
+            return;
+        VisualChildren<VirtualizingStackPanel>(IncomesListView).FirstOrDefault()?.BringIndexIntoViewPublic(index);
+        IncomesListView.UpdateLayout();
+        foreach (var expander in VisualChildren<Expander>(IncomesListView))
+            if (expander.DataContext is CollectionViewGroup group &&
+                string.Equals(group.Name?.ToString(), current.Income.Source, StringComparison.CurrentCultureIgnoreCase))
+                expander.IsExpanded = true;
+        IncomesListView.UpdateLayout();
+        IncomesListView.ScrollIntoView(current);
+        (IncomesListView.ItemContainerGenerator.ContainerFromItem(current) as FrameworkElement)?.BringIntoView();
     }
 
     private static bool SameRow(IncomeDisplayRow previous, IncomeDisplayRow next)
@@ -241,7 +406,7 @@ public partial class IncomesContent : UserControl
             && previous.AggregateAmount == next.AggregateAmount && previous.AggregateCurrency == next.AggregateCurrency;
     }
 
-    private async void SelectorRangeDates_DateRangeChanged(object sender, EventArgs e)
+    private async void SelectorRangeDates_DateRangeChanged(object? sender, EventArgs e)
     {
         dataStale = true;
         if (listeningForChanges && e is RangeDate range)
@@ -250,31 +415,53 @@ public partial class IncomesContent : UserControl
 
     private async void IncomesListView_MouseDoubleClick(object sender, MouseButtonEventArgs e)
     {
+        if (e.ChangedButton != MouseButton.Left || e.Handled)
+            return;
+        if (e.OriginalSource is DependencyObject original && IsActionElement(original))
+            return;
         if (sender is ListViewItem { IsSelected: true, DataContext: IncomeDisplayRow row })
-        {
-            var draft = row.Income.Clone<Income>();
-            draft.AddedOn = row.DisplayDate;
-            await EditIncomeAsync(draft, row.Income.AddedOn);
-        }
+            await EditIncomeRowAsync(row);
+    }
+
+    private Task EditIncomeRowAsync(IncomeDisplayRow row, object? source = null)
+    {
+        var draft = row.Income.Clone<Income>();
+        draft.AddedOn = row.DisplayDate;
+        return EditIncomeAsync(draft, row.Income.AddedOn, source);
+    }
+
+    private async void EditIncomeMenu_Click(object sender, RoutedEventArgs e)
+    {
+        if (GetIncomeMenuRow(sender) is { } row)
+            await EditIncomeRowAsync(row, sender);
     }
 
     private async void AddNewIncomeButton_Click(object sender, RoutedEventArgs e) =>
-        await EditIncomeAsync(new Income { AddedOn = BudgetTime.InZone(DateTime.UtcNow, settings.DisplayTimeZone) });
+        await EditIncomeAsync(new Income { AddedOn = BudgetTime.InZone(DateTime.UtcNow, settings.DisplayTimeZone) }, source: sender);
 
-    private async Task EditIncomeAsync(Income income, DateTime? instant = null)
+    private async Task EditIncomeAsync(Income income, DateTime? instant = null, object? source = null)
     {
         try
         {
+            var revision = incomeConnectionRevision;
             var initialDate = income.AddedOn;
             var isNew = income.Id == Guid.Empty;
-            var currencyTask = LoadManualCurrencyAsync();
-            var usersTask = server.GetUsersAsync();
-            await Task.WhenAll(currencyTask, usersTask);
-            var currency = await currencyTask;
-            if (isNew && currency is not null)
-                income.Currency = currency.DefaultCurrency;
+            IncomePanel? editor = null;
+            await ButtonLoading.RunAsync(source, async () =>
+            {
+                var currencyTask = LoadManualCurrencyAsync();
+                var usersTask = server.GetUsersAsync();
+                await Task.WhenAll(currencyTask, usersTask);
+                if (revision != incomeConnectionRevision)
+                    return;
+                var currency = await currencyTask;
+                if (isNew && currency is not null)
+                    income.Currency = currency.DefaultCurrency;
+                editor = new IncomePanel(income, currency?.Currencies) { Users = await usersTask };
+            });
+            if (editor is null || revision != incomeConnectionRevision)
+                return;
 
-            var editor = new IncomePanel(income, currency?.Currencies) { Users = await usersTask };
             var accepted = await PopupDialog.Show(editor, PopupDialog.TypeDialogEnum.Confirm, options =>
             {
                 options.Background = (SolidColorBrush)Application.Current.FindResource("Main.Background.lvl3");
@@ -283,14 +470,17 @@ public partial class IncomesContent : UserControl
                 options.Title = isNew ? "Новый доход" : "Изменить доход";
                 return options;
             }, () => ValidateIncome(income, editor));
-            if (accepted != true)
+            if (accepted != true || revision != incomeConnectionRevision)
                 return;
 
-            if (isNew)
-                await server.AddIncomeAsync(income);
-            else
-                await server.UpdateIncomeAsync(income, income.AddedOn == initialDate ? instant : null);
-            await RefreshAsync();
+            await ButtonLoading.RunAsync(source, async () =>
+            {
+                if (isNew)
+                    await server.AddIncomeAsync(income);
+                else
+                    await server.UpdateIncomeAsync(income, income.AddedOn == initialDate ? instant : null);
+                await RefreshAfterServerChangeAsync();
+            });
         }
         catch (Exception error) when (CastarServerClient.IsConnectionError(error))
         {
@@ -327,8 +517,7 @@ public partial class IncomesContent : UserControl
 
     private async void DeleteIncomeButton_Click(object sender, RoutedEventArgs e)
     {
-        if (sender is not MenuItem
-            { Parent: ContextMenu { PlacementTarget: ListViewItem { DataContext: IncomeDisplayRow row } } })
+        if (GetIncomeMenuRow(sender) is not { } row)
             return;
 
         var income = row.Income;
@@ -346,24 +535,143 @@ public partial class IncomesContent : UserControl
 
         try
         {
-            await server.DeleteIncomeAsync(income.Id);
+            await ButtonLoading.RunAsync(sender, async () =>
+            {
+                await server.DeleteIncomeAsync(income.Id);
+                await RefreshAfterServerChangeAsync();
+            });
         }
         catch (Exception error) when (CastarServerClient.IsConnectionError(error))
         {
             await PopupDialog.Show(CastarServerClient.DescribeError(error), PopupDialog.TypeDialogEnum.Default);
+            await RefreshAfterServerChangeAsync();
         }
-        await RefreshAsync();
+    }
+
+    private void Incomes_ContextMenuOpening(object sender, ContextMenuEventArgs e) => e.Handled = true;
+
+    private void IncomeActions_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is not Button { Tag: IncomeDisplayRow row, ContextMenu: { } menu } button)
+            return;
+        IncomesListView.SelectedItem = row;
+        menu.Tag = new IncomeMenuSnapshot(row, incomeConnectionRevision);
+        menu.PlacementTarget = button;
+        menu.Placement = PlacementMode.Bottom;
+        menu.IsOpen = true;
+        e.Handled = true;
+    }
+
+    private sealed record IncomeMenuSnapshot(IncomeDisplayRow Row, long ConnectionRevision);
+
+    private IncomeDisplayRow? GetIncomeMenuRow(object sender)
+    {
+        if (sender is not MenuItem { Parent: ContextMenu { Tag: IncomeMenuSnapshot snapshot } menu })
+            return null;
+        menu.IsOpen = false;
+        return snapshot.ConnectionRevision == incomeConnectionRevision ? snapshot.Row : null;
+    }
+
+    private void IncomeSearch_TextChanged(object sender, TextChangedEventArgs e)
+    {
+        incomeSearch = (sender as TextBox)?.Text.Trim() ?? "";
+        if (SearchPlaceholder is not null)
+            SearchPlaceholder.Visibility = incomeSearch.Length == 0 ? Visibility.Visible : Visibility.Collapsed;
+        if (Resources["IncomesSRC"] is CollectionViewSource { View: { } view })
+            view.Refresh();
+        if (EmptyIncomeText is not null)
+            EmptyIncomeText.Text = incomeSearch.Length == 0 ? "Нет доходов" : "Ничего не найдено";
+    }
+
+    private void Incomes_Filter(object sender, FilterEventArgs e)
+    {
+        if (e.Item is not IncomeDisplayRow row || incomeSearch.Length == 0)
+            return;
+        e.Accepted = new[] { row.Income.Source, row.Income.User.Name, row.Amount.Primary, row.Amount.Original,
+                row.DisplayDate.ToString("dd.MM.yyyy HH:mm", CultureInfo.CurrentCulture) }
+            .Any(value => value?.Contains(incomeSearch, StringComparison.CurrentCultureIgnoreCase) == true);
+    }
+
+    private void IncomeGroup_Loaded(object sender, RoutedEventArgs e)
+    {
+        if (sender is not Expander { DataContext: CollectionViewGroup group } expander)
+            return;
+        var key = group.Name?.ToString() ?? "";
+        if (!expandedGroups.TryGetValue(key, out var expanded))
+        {
+            expanded = (Resources["IncomesSRC"] as CollectionViewSource)?.View.Groups?.Cast<CollectionViewGroup>().FirstOrDefault() == group;
+            expandedGroups[key] = expanded;
+        }
+        expander.IsExpanded = expanded;
+    }
+
+    private void IncomeGroup_Expanded(object sender, RoutedEventArgs e) => RememberGroup(sender, true);
+    private void IncomeGroup_Collapsed(object sender, RoutedEventArgs e) => RememberGroup(sender, false);
+    private void RememberGroup(object sender, bool expanded)
+    {
+        if (sender is Expander { DataContext: CollectionViewGroup group })
+            expandedGroups[group.Name?.ToString() ?? ""] = expanded;
+    }
+
+    private static bool IsActionElement(DependencyObject element)
+    {
+        for (DependencyObject? current = element; current is not null; current = VisualTreeHelper.GetParent(current))
+            if (current is ButtonBase)
+                return true;
+        return false;
+    }
+
+    private static IEnumerable<T> VisualChildren<T>(DependencyObject root) where T : DependencyObject
+    {
+        for (var i = 0; i < VisualTreeHelper.GetChildrenCount(root); i++)
+        {
+            var child = VisualTreeHelper.GetChild(root, i);
+            if (child is T match) yield return match;
+            foreach (var nested in VisualChildren<T>(child)) yield return nested;
+        }
     }
 
     private sealed class IncomesContext : BaseSettingsModel
     {
         private bool isLoading;
+        private bool hasLoaded;
+        private bool isComparisonLoading;
+        private decimal? comparison;
+        private string comparisonText = "—";
+        private string comparisonHint = "К предыдущему периоду";
+        private string summaryCurrency = "";
         private string status = "";
         private IReadOnlyList<IncomeDisplayRow> incomes = [];
 
         public bool IsLoading { get => isLoading; set => SetField(ref isLoading, value); }
         public string Status { get => status; set => SetField(ref status, value); }
-        public string TotalSum => IncomeDisplayRow.FormatTotals(Incomes);
+        public bool HasLoaded
+        {
+            get => hasLoaded;
+            set { if (SetField(ref hasLoaded, value)) OnPropertyChanged(nameof(TotalSum)); }
+        }
+        public string TotalSum => !hasLoaded ? "—" : Incomes.Count == 0 ? HistoricalExchangeRates.Format(0, summaryCurrency) :
+            IncomeDisplayRow.FormatTotals(Incomes) is { Length: > 0 } total ? total : "—";
+        public string SummaryCurrency
+        {
+            get => summaryCurrency;
+            set { if (SetField(ref summaryCurrency, value)) OnPropertyChanged(nameof(TotalSum)); }
+        }
+        public bool IsComparisonLoading { get => isComparisonLoading; set => SetField(ref isComparisonLoading, value); }
+        public string ComparisonText { get => comparisonText; private set => SetField(ref comparisonText, value); }
+        public string ComparisonHint { get => comparisonHint; private set => SetField(ref comparisonHint, value); }
+        public bool ComparisonAvailable => comparison.HasValue;
+        public bool IsComparisonPositive => comparison > 0;
+        public bool IsComparisonNegative => comparison < 0;
+        internal void SetComparison(decimal? value, string currency, string hint = "К предыдущему периоду")
+        {
+            comparison = value;
+            ComparisonText = value is { } amount ? (amount > 0 ? "+" : "") + HistoricalExchangeRates.Format(amount, currency) : "—";
+            ComparisonHint = hint;
+            OnPropertyChanged(nameof(ComparisonAvailable));
+            OnPropertyChanged(nameof(IsComparisonPositive));
+            OnPropertyChanged(nameof(IsComparisonNegative));
+        }
         public IReadOnlyList<IncomeDisplayRow> Incomes
         {
             get => incomes;
@@ -381,4 +689,29 @@ internal sealed record IncomeDisplayRow(
 {
     internal static string FormatTotals(IEnumerable<IncomeDisplayRow> rows) => HistoricalExchangeRates.FormatTotals(rows
         .Where(row => row.AggregateAmount.HasValue).Select(row => (row.AggregateAmount!.Value, row.AggregateCurrency)));
+}
+
+public sealed class IncomeGroupPresentationConverter : IValueConverter, IMultiValueConverter
+{
+    public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
+    {
+        if (parameter?.ToString() == "prefix")
+            return value is decimal amount && amount > 0 ? "+" : "";
+        var count = value is int number ? number : 0;
+        var remainder = count % 100;
+        var suffix = remainder is >= 11 and <= 14 ? "записей" : (count % 10) switch { 1 => "запись", >= 2 and <= 4 => "записи", _ => "записей" };
+        return $"{count} {suffix}";
+    }
+
+    public object Convert(object[] values, Type targetType, object parameter, CultureInfo culture)
+    {
+        var rows = (values.FirstOrDefault() as IEnumerable)?.OfType<IncomeDisplayRow>().ToArray() ?? [];
+        if (parameter?.ToString() == "warning")
+            return rows.Any(row => row.AggregateAmount is null) ? Visibility.Visible : Visibility.Collapsed;
+        var total = IncomeDisplayRow.FormatTotals(rows);
+        return total.Length == 0 ? "—" : total;
+    }
+
+    public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture) => throw new NotSupportedException();
+    public object[] ConvertBack(object value, Type[] targetTypes, object parameter, CultureInfo culture) => throw new NotSupportedException();
 }

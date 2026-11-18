@@ -54,13 +54,15 @@ public sealed class HistoricalExchangeRates : IDisposable
         };
     }
 
-    internal async Task<IReadOnlyList<string>> GetCurrencyCatalogAsync(CancellationToken token)
+    internal async Task<IReadOnlyList<CurrencyCatalogEntry>> GetCurrencyCatalogAsync(CancellationToken token)
     {
         var currencies = await http.GetFromJsonAsync<CatalogCurrency?[]>("currencies", token).ConfigureAwait(false);
         var codes = (currencies ?? []).OfType<CatalogCurrency>()
             .Where(currency => currency is { Type: "currency", StartDate: not null, NumericCode.Length: 3 }
                 && currency.NumericCode.All(char.IsAsciiDigit) && IsCurrencyCode(currency.Code))
-            .Select(currency => currency.Code).Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal).ToArray();
+            .DistinctBy(currency => currency.Code, StringComparer.Ordinal)
+            .OrderBy(currency => currency.Code, StringComparer.Ordinal)
+            .Select(currency => new CurrencyCatalogEntry(currency.Code, currency.Name ?? currency.Code)).ToArray();
         if (codes.Length == 0)
             throw new JsonException("Справочник исторических валют пуст.");
         return codes;
@@ -198,6 +200,9 @@ public sealed class HistoricalExchangeRates : IDisposable
     private sealed record CatalogCurrency(
         [property: JsonPropertyName("iso_code")] string Code,
         [property: JsonPropertyName("iso_numeric")] string? NumericCode,
+        string? Name,
         string Type,
         [property: JsonPropertyName("start_date")] DateOnly? StartDate);
 }
+
+internal sealed record CurrencyCatalogEntry(string Code, string Name);

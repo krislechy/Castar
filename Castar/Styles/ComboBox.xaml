@@ -4,14 +4,14 @@
     <Style x:Key="CastarComboBoxItem" TargetType="{x:Type ComboBoxItem}">
         <Setter Property="Background" Value="Transparent"/>
         <Setter Property="Foreground" Value="{DynamicResource Foreground.White}"/>
-        <Setter Property="Padding" Value="8,5"/>
+        <Setter Property="Padding" Value="8,6"/>
         <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
         <Setter Property="VerticalContentAlignment" Value="Center"/>
         <Setter Property="Template">
             <Setter.Value>
                 <ControlTemplate TargetType="{x:Type ComboBoxItem}">
                     <Border x:Name="ItemBackground" Background="{TemplateBinding Background}"
-                            Padding="{TemplateBinding Padding}" CornerRadius="3" SnapsToDevicePixels="True">
+                            Padding="{TemplateBinding Padding}" CornerRadius="4" SnapsToDevicePixels="True">
                         <ContentPresenter HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"
                                           VerticalAlignment="{TemplateBinding VerticalContentAlignment}"/>
                     </Border>
@@ -36,8 +36,8 @@
         <Setter Property="Foreground" Value="{DynamicResource Foreground.White}"/>
         <Setter Property="BorderBrush" Value="{DynamicResource Main.Background.lvl3}"/>
         <Setter Property="BorderThickness" Value="1"/>
-        <Setter Property="Padding" Value="8,5"/>
-        <Setter Property="MinHeight" Value="28"/>
+        <Setter Property="Padding" Value="{DynamicResource InputPadding}"/>
+        <Setter Property="MinHeight" Value="{DynamicResource InputMinHeight}"/>
         <Setter Property="HorizontalContentAlignment" Value="Left"/>
         <Setter Property="VerticalContentAlignment" Value="Center"/>
         <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
@@ -51,7 +51,7 @@
                 <ControlTemplate TargetType="{x:Type ComboBox}">
                     <Grid>
                         <Border x:Name="Field" Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}"
-                                BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="4">
+                                BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="{DynamicResource InputCornerRadius}">
                             <Grid>
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition/>
@@ -87,6 +87,7 @@
                                     </ContentPresenter>
                                 </Grid>
                                 <TextBox x:Name="PART_EditableTextBox" Visibility="Collapsed" Background="Transparent"
+                                         MinHeight="0" BorderThickness="0"
                                          IsReadOnly="{TemplateBinding IsReadOnly}" Padding="{TemplateBinding Padding}"
                                          Foreground="{TemplateBinding Foreground}"
                                          HorizontalContentAlignment="{TemplateBinding HorizontalContentAlignment}"
@@ -97,7 +98,7 @@
                                PlacementTarget="{Binding RelativeSource={RelativeSource TemplatedParent}}"
                                IsOpen="{TemplateBinding IsDropDownOpen}">
                             <Border MinWidth="{TemplateBinding ActualWidth}" MaxHeight="{TemplateBinding MaxDropDownHeight}"
-                                    Margin="0,2,0,0" Padding="2" CornerRadius="4" BorderThickness="1"
+                                    Margin="0,4,0,0" Padding="4" CornerRadius="{DynamicResource InputCornerRadius}" BorderThickness="1"
                                     Background="{DynamicResource Main.Background.lvl2}"
                                     BorderBrush="{DynamicResource Main.Background.lvl3}">
                                 <ScrollViewer CanContentScroll="{TemplateBinding ScrollViewer.CanContentScroll}"

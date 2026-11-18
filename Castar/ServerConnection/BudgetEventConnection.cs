@@ -1,5 +1,6 @@
 using Castar.Api;
 using Castar.Settings;
+using Castar.Logger;
 using Microsoft.AspNetCore.Http.Connections.Client;
 using Microsoft.AspNetCore.SignalR;
 using Microsoft.AspNetCore.SignalR.Client;
@@ -14,6 +15,9 @@ namespace Castar.ServerConnection;
 
 public sealed class BudgetEventConnection(ClientSettings settings) : IDisposable
 {
+    private readonly ICLogger? logger;
+
+    public BudgetEventConnection(ClientSettings settings, ICLogger logger) : this(settings) => this.logger = logger;
     private static readonly TimeSpan MaximumRetryDelay = TimeSpan.FromSeconds(30);
     private readonly object gate = new();
     private CancellationTokenSource? session;
@@ -93,6 +97,9 @@ public sealed class BudgetEventConnection(ClientSettings settings) : IDisposable
                 try
                 {
                     await using var connection = new HubConnectionBuilder()
+                        // iPhone background scheduling can delay a server ping beyond the 30 s default.
+                        // Keep transport liveness separate from the deadlines of content HTTP requests.
+                        .WithServerTimeout(TimeSpan.FromSeconds(90))
                         .WithUrl(endpoint, options =>
                         {
                             options.AccessTokenProvider = () => Task.FromResult<string?>(key);
@@ -120,8 +127,10 @@ public sealed class BudgetEventConnection(ClientSettings settings) : IDisposable
                         });
                     }
 
-                    connection.Closed += _ =>
+                    connection.Closed += error =>
                     {
+                        if (!token.IsCancellationRequested)
+                            logger?.Log<BudgetEventConnection>($"Канал событий закрыт: {error?.GetBaseException().GetType().Name ?? "сервер закрыл соединение"}.", TypeLog.Warning);
                         closed.TrySetResult();
                         return Task.CompletedTask;
                     };
@@ -144,6 +153,7 @@ public sealed class BudgetEventConnection(ClientSettings settings) : IDisposable
                             throw new InvalidOperationException("The event connection closed before subscription completed.");
                     }
                     connected = true;
+                    logger?.Log<BudgetEventConnection>("Канал событий подключён.", TypeLog.Info);
                     Notify(() =>
                     {
                         IsSynchronized = true;
@@ -176,6 +186,7 @@ public sealed class BudgetEventConnection(ClientSettings settings) : IDisposable
                     AggregateException or NoTransportSupportedException or HubException)
                 {
                     // REST refresh still works when the server doesn't expose events yet.
+                    logger?.Log<BudgetEventConnection>($"Не удалось подключить канал событий: {error.GetBaseException().GetType().Name}.", TypeLog.Warning);
                 }
                 catch (OperationCanceledException) when (!token.IsCancellationRequested)
                 {

@@ -278,22 +278,67 @@ public static class CastarEndpoints
     }
 
     private static async Task<IResult> GetBudgetOperations(DateTime start, DateTime finish,
-        DateTimeOffset? startUtc, DateTimeOffset? finishUtc, CastarDbContext db, CancellationToken token)
+        DateTimeOffset? startUtc, DateTimeOffset? finishUtc, CastarDbContext db, HttpResponse response,
+        CancellationToken token, bool includeOpening = false)
     {
         if (!TryReadRange(start, finish, startUtc, finishUtc, out var first, out var last))
             return InvalidInput("Укажите допустимый период.");
 
+        await db.Database.OpenConnectionAsync(token);
+        await using var snapshot = ((SqliteConnection)db.Database.GetDbConnection()).BeginTransaction(deferred: true);
+        await using var transaction = await db.Database.UseTransactionAsync(snapshot, token);
         var incomes = await db.Incomes.AsNoTracking().Where(row => row.AddedOn >= first && row.AddedOn <= last)
             .Select(row => new { row.Currency, row.Sum, row.AddedOn, row.RateDate }).ToListAsync(token);
         var purchases = await db.Purchases.AsNoTracking().Where(row => row.AddedOn >= first && row.AddedOn <= last)
             .Select(row => new { row.Currency, row.TotalSum, row.AddedOn, row.RateDate, row.ReceiptDate }).ToListAsync(token);
-        return Results.Ok(incomes.Select(row => new BudgetOperationDto(true, row.Currency, row.Sum,
+        var operations = incomes.Select(row => new BudgetOperationDto(true, row.Currency, row.Sum,
                 BudgetTime.AsUtc(row.AddedOn), row.RateDate ?? DateOnly.FromDateTime(BudgetTime.InZone(row.AddedOn, BudgetTime.Belgrade))))
             .Concat(purchases.Select(row => new BudgetOperationDto(false, row.Currency, row.TotalSum,
                 row.AddedOn is { } date ? BudgetTime.AsUtc(date) : null,
                 row.RateDate ?? row.ReceiptDate ?? (row.AddedOn is { } instant
                     ? DateOnly.FromDateTime(BudgetTime.InZone(instant, BudgetTime.Belgrade)) : null),
-                row.ReceiptDate))).ToArray());
+                row.ReceiptDate)));
+        if (includeOpening)
+        {
+            operations = operations.Concat(await GetBudgetOpeningOperations(db, first, token));
+            response.Headers["X-Castar-Budget-Opening"] = "1";
+        }
+        return Results.Ok(operations.ToArray());
+    }
+
+    private static async Task<IEnumerable<BudgetOperationDto>> GetBudgetOpeningOperations(
+        CastarDbContext db, DateTime first, CancellationToken token)
+    {
+        // Keep equal native amounts together so historical FX still rounds each operation before counting it.
+        var incomes = await db.Incomes.AsNoTracking().Where(row => row.AddedOn < first && row.RateDate != null)
+            .GroupBy(row => new { row.Currency, row.RateDate, row.Sum })
+            .Select(group => new BudgetOperationDto(true, group.Key.Currency, group.Key.Sum, null, group.Key.RateDate)
+            {
+                IsOpening = true,
+                OpeningCount = group.LongCount()
+            }).ToListAsync(token);
+        var purchases = await db.Purchases.AsNoTracking()
+            .Where(row => row.AddedOn < first && (row.RateDate != null || row.ReceiptDate != null))
+            .GroupBy(row => new { row.Currency, Date = row.RateDate ?? row.ReceiptDate, row.TotalSum })
+            .Select(group => new BudgetOperationDto(false, group.Key.Currency, group.Key.TotalSum, null, group.Key.Date)
+            {
+                IsOpening = true,
+                OpeningCount = group.LongCount()
+            }).ToListAsync(token);
+
+        // Legacy rows need the Belgrade calendar day, including its historical UTC offset.
+        var legacyIncomes = await db.Incomes.AsNoTracking().Where(row => row.AddedOn < first && row.RateDate == null)
+            .Select(row => new { row.Currency, row.Sum, row.AddedOn }).ToListAsync(token);
+        var legacyPurchases = await db.Purchases.AsNoTracking()
+            .Where(row => row.AddedOn < first && row.RateDate == null && row.ReceiptDate == null)
+            .Select(row => new { row.Currency, row.TotalSum, row.AddedOn }).ToListAsync(token);
+        var legacy = legacyIncomes.Select(row => new BudgetOperationDto(true, row.Currency, row.Sum, null,
+                BudgetTime.BelgradeDate(row.AddedOn)))
+            .Concat(legacyPurchases.Select(row => new BudgetOperationDto(false, row.Currency, row.TotalSum, null,
+                BudgetTime.BelgradeDate(row.AddedOn!.Value))))
+            .GroupBy(row => new { row.IsIncome, row.Currency, row.RateDate, row.Amount })
+            .Select(group => group.First() with { IsOpening = true, OpeningCount = group.LongCount() });
+        return incomes.Concat(purchases).Concat(legacy);
     }
 
     private static async Task<IResult> GetPurchaseSummaries(DateTime start, DateTime finish,

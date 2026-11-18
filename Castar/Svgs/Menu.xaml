@@ -28,9 +28,7 @@
     <Viewbox x:Key="Svg.Menu.Settings" Stretch="Uniform" x:Shared="false">
         <Canvas Width="24" Height="24">
             <Path Style="{StaticResource MenuIconStroke}"
-                  Data="M4,6 H8 M12,6 H20 M10,4 A2,2 0 0 1 10,8 A2,2 0 0 1 10,4 Z
-                        M4,12 H14 M18,12 H20 M16,10 A2,2 0 0 1 16,14 A2,2 0 0 1 16,10 Z
-                        M4,18 H6 M10,18 H20 M8,16 A2,2 0 0 1 8,20 A2,2 0 0 1 8,16 Z"/>
+                  Data="M9,3 L15,3 15.6,5.4 17.2,6.3 19.6,5.6 22.6,10.8 20.8,12.5 20.8,14.3 22.6,16 19.6,21.2 17.2,20.5 15.6,21.4 15,23.8 9,23.8 8.4,21.4 6.8,20.5 4.4,21.2 1.4,16 3.2,14.3 3.2,12.5 1.4,10.8 4.4,5.6 6.8,6.3 8.4,5.4 Z M16,13.4 A4,4 0 1 1 8,13.4 A4,4 0 1 1 16,13.4 Z" RenderTransform="1,0,0,1,0,-1.4"/>
         </Canvas>
     </Viewbox>
 </ResourceDictionary>

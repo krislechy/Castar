@@ -4,10 +4,14 @@ using Castar.Domain.Models.SettingsModel;
 using Castar.ServerConnection;
 using System;
 using System.Collections.ObjectModel;
+using System.Collections.Generic;
+using System.ComponentModel;
+using System.Globalization;
 using System.Linq;
 using System.Threading;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Data;
 
 namespace Castar.Compontents;
 
@@ -50,8 +54,8 @@ public partial class ManualCurrencyPanel : UserControl
             if (loadingCatalog != request)
                 return;
 
-            foreach (var code in catalog)
-                editor.AddCurrency(code);
+            foreach (var currency in catalog)
+                editor.AddCurrency(currency.Code, name: currency.Name);
             editor.CatalogStatus = catalog.Count == 0 ? "Каталог валют недоступен." : "";
         }
         catch (Exception error) when (CastarServerClient.IsConnectionError(error))
@@ -79,16 +83,33 @@ public partial class ManualCurrencyPanel : UserControl
     {
         private string? defaultCurrency;
         private string catalogStatus = "";
+        private string searchText = "";
+        private static readonly IReadOnlyDictionary<string, string> CurrencyNames = CreateCurrencyNames();
 
         internal CurrencyEditor(ManualCurrencySettingsDto settings)
         {
+            FilteredCurrencies = CollectionViewSource.GetDefaultView(Currencies);
+            FilteredCurrencies.Filter = item => item is CurrencyChoice currency &&
+                (currency.Label.Contains(SearchText.Trim(), StringComparison.CurrentCultureIgnoreCase) ||
+                 currency.CatalogName.Contains(SearchText.Trim(), StringComparison.OrdinalIgnoreCase));
             foreach (var code in settings.Currencies)
                 AddCurrency(code, included: true);
             defaultCurrency = settings.DefaultCurrency;
         }
 
         public ObservableCollection<CurrencyChoice> Currencies { get; } = [];
+        public ICollectionView FilteredCurrencies { get; }
         public ObservableCollection<string> EnabledCurrencies { get; } = [];
+
+        public string SearchText
+        {
+            get => searchText;
+            set
+            {
+                if (SetField(ref searchText, value))
+                    FilteredCurrencies.Refresh();
+            }
+        }
 
         public string? DefaultCurrency
         {
@@ -102,18 +123,42 @@ public partial class ManualCurrencyPanel : UserControl
             set => SetField(ref catalogStatus, value);
         }
 
-        internal void AddCurrency(string code, bool included = false)
+        internal void AddCurrency(string code, bool included = false, string? name = null)
         {
             var index = 0;
             while (index < Currencies.Count && string.CompareOrdinal(Currencies[index].Code, code) < 0)
                 index++;
             if (index < Currencies.Count && Currencies[index].Code == code)
+            {
+                if (name is not null)
+                {
+                    Currencies[index].CatalogName = name;
+                    FilteredCurrencies.Refresh();
+                }
                 return;
+            }
 
-            var choice = new CurrencyChoice(code, included, UpdateEnabledCurrencies);
+            var choice = new CurrencyChoice(code, CurrencyNames.GetValueOrDefault(code),
+                name ?? code, included, UpdateEnabledCurrencies);
             Currencies.Insert(index, choice);
             if (included)
                 UpdateEnabledCurrencies(code, included);
+        }
+
+        private static IReadOnlyDictionary<string, string> CreateCurrencyNames()
+        {
+            var names = new Dictionary<string, string>(StringComparer.Ordinal);
+            foreach (var culture in CultureInfo.GetCultures(CultureTypes.SpecificCultures))
+            {
+                try
+                {
+                    var region = new RegionInfo(culture.Name);
+                    var localized = new RegionInfo($"ru-{region.TwoLetterISORegionName}");
+                    names.TryAdd(localized.ISOCurrencySymbol, localized.CurrencyNativeName);
+                }
+                catch (ArgumentException) { }
+            }
+            return names;
         }
 
         private void UpdateEnabledCurrencies(string code, bool included)
@@ -131,10 +176,21 @@ public partial class ManualCurrencyPanel : UserControl
         }
     }
 
-    private sealed class CurrencyChoice(string code, bool included, Action<string, bool> changed) : BaseSettingsModel
+    private sealed class CurrencyChoice(string code, string? name, string catalogName, bool included, Action<string, bool> changed) : BaseSettingsModel
     {
         private bool isIncluded = included;
+        private string catalogNameValue = catalogName;
         public string Code { get; } = code;
+        public string Label => (name ?? CatalogName) == Code ? Code : $"{Code} — {name ?? CatalogName}";
+        public string CatalogName
+        {
+            get => catalogNameValue;
+            set
+            {
+                if (SetField(ref catalogNameValue, value))
+                    OnPropertyChanged(nameof(Label));
+            }
+        }
 
         public bool Included
         {

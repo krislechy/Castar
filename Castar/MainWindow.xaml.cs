@@ -18,6 +18,7 @@ using System.Windows.Data;
 using System.Windows.Documents;
 using System.Windows.Input;
 using System.Windows.Media;
+using System.Windows.Media.Animation;
 using System.Windows.Media.Imaging;
 using System.Windows.Navigation;
 using System.Windows.Shapes;
@@ -35,8 +36,22 @@ namespace Castar
         private readonly PurchasesContent purchasesContent;
         private readonly Lazy<StatisticsContent>? statisticsContent;
         private readonly ClientSettings settings;
+        private bool statisticsNavigationAttached;
         private (string Kind, Guid? Id, DateTime? AddedOn)? notificationTarget;
         private IInputElement? focusBeforeSettings;
+        private const double CollapsedNavigationWidth = 64;
+        private const double ExpandedNavigationWidth = 240;
+        private bool skipNavigationAnimation;
+
+        public static readonly DependencyProperty IsNavigationExpandedProperty = DependencyProperty.Register(
+            nameof(IsNavigationExpanded), typeof(bool), typeof(MainWindow),
+            new PropertyMetadata(false, (owner, _) => ((MainWindow)owner).UpdateNavigationState()));
+
+        public bool IsNavigationExpanded
+        {
+            get => (bool)GetValue(IsNavigationExpandedProperty);
+            set => SetValue(IsNavigationExpandedProperty, value);
+        }
         public MainWindow(SettingsContent settingsContent, ClientSettings settings, IncomesContent incomesContent,
             PurchasesContent purchasesContent, Lazy<StatisticsContent>? statisticsContent = null)
         {
@@ -46,6 +61,12 @@ namespace Castar
             this.purchasesContent = purchasesContent;
             this.statisticsContent = statisticsContent;
             InitializeComponent();
+            SharedPeriodSelector.DisplayTimeZone = () => settings.DisplayTimeZone;
+            SharedPeriodSelector.SetCurrentMonth();
+            incomesContent.BindPeriodSelector(SharedPeriodSelector);
+            purchasesContent.BindPeriodSelector(SharedPeriodSelector);
+            SettingsPresenter.Content = settingsContent;
+            settingsContent.CloseRequested += (_, _) => CloseSettings();
             StatisticsMenuButton.Visibility = statisticsContent is null ? Visibility.Collapsed : Visibility.Visible;
             MainDialog.IsVisibleChanged += (_, _) =>
             {
@@ -161,7 +182,9 @@ namespace Castar
                 .First(toggle => Equals(toggle.CommandParameter, section));
             button.IsChecked = true;
             ResetMenuToggleButtons(button);
-            SelectSection(section);
+            // Detach the previous page before changing the shared range, so it cannot
+            // request data for the target page's period while navigation is in progress.
+            MainContent.Content = null;
             if (entityId is { } id)
             {
                 if (kind == BudgetEvents.Purchase)
@@ -169,10 +192,12 @@ namespace Castar
                 else
                     incomesContent.RevealNotification(id, addedOn);
             }
+            SelectSection(section);
         }
 
         private void MenuSelectorCommandBinding_Executed(object sender, ExecutedRoutedEventArgs e)
         {
+            SetNavigationExpanded(false);
             if (e.Parameter is "Settings")
             {
                 if (SettingsOverlay.Visibility == Visibility.Visible)
@@ -188,17 +213,19 @@ namespace Castar
 
         private void ShowSettings()
         {
+            SetNavigationExpanded(false);
             if (SettingsOverlay.Visibility == Visibility.Visible)
                 return;
 
             focusBeforeSettings = Keyboard.FocusedElement;
-            SettingsPresenter.Content = settingsContent;
+            _ = settingsContent.RetryUnavailableDataAsync();
             SettingsMenuButton.IsChecked = true;
             SettingsOverlay.Visibility = Visibility.Visible;
+            _ = settingsContent.RefreshClientUpdateAsync();
             _ = Dispatcher.InvokeAsync(() =>
             {
                 if (SettingsOverlay.IsVisible && !MainDialog.IsVisible)
-                    SettingsOverlay.MoveFocus(new TraversalRequest(FocusNavigationDirection.First));
+                    settingsContent.FocusFirstSection();
             }, DispatcherPriority.Input);
         }
 
@@ -208,7 +235,7 @@ namespace Castar
                 return;
 
             SettingsOverlay.Visibility = Visibility.Collapsed;
-            SettingsPresenter.Content = null;
+            settingsContent.CloseScreen();
             SettingsMenuButton.IsChecked = false;
             var previous = focusBeforeSettings;
             focusBeforeSettings = null;
@@ -223,17 +250,38 @@ namespace Castar
             CloseSettings();
         }
 
+        private void SettingsPresenter_SizeChanged(object sender, SizeChangedEventArgs e)
+        {
+            var radius = SettingsShell.CornerRadius.TopLeft - SettingsShell.BorderThickness.Left;
+            SettingsPresenter.Clip = new RectangleGeometry(new Rect(e.NewSize), radius, radius);
+        }
+
         private void SettingsOverlay_PreviewKeyDown(object sender, KeyEventArgs e)
         {
             if (e.Key != Key.Escape || MainDialog.IsVisible)
                 return;
 
             e.Handled = true;
-            CloseSettings();
+            if (!settingsContent.TryCloseNestedPage())
+                CloseSettings();
+        }
+
+        private void MainWorkspace_PreviewGotKeyboardFocus(object sender, KeyboardFocusChangedEventArgs e)
+        {
+            if (SettingsOverlay.IsVisible)
+                e.Handled = true;
         }
 
         private void SelectSection(string section)
         {
+            SetNavigationExpanded(false);
+            var selectedNavigation = MenuToggleButtons.Children.OfType<ToggleButton>()
+                .FirstOrDefault(button => Equals(button.CommandParameter, section));
+            if (selectedNavigation is not null)
+            {
+                selectedNavigation.IsChecked = true;
+                ResetMenuToggleButtons(selectedNavigation);
+            }
             switch (section)
             {
                 case "Purchases":
@@ -243,6 +291,12 @@ namespace Castar
                     MainContent.Content = incomesContent;
                     break;
                 case "Statistics" when statisticsContent is not null:
+                    statisticsContent.Value.BindPeriodSelector(SharedPeriodSelector);
+                    if (!statisticsNavigationAttached)
+                    {
+                        statisticsContent.Value.ExpenseDayRequested += ShowExpenseDay;
+                        statisticsNavigationAttached = true;
+                    }
                     MainContent.Content = statisticsContent.Value;
                     break;
             }
@@ -256,6 +310,77 @@ namespace Castar
                 if (!currentToggleButton.Equals(toggleButton))
                     toggleButton.IsChecked = false;
             return true;
+        }
+        private void ShowExpenseDay(DateOnly day)
+        {
+            MainContent.Content = null;
+            purchasesContent.ShowDay(day);
+            var button = MenuToggleButtons.Children.OfType<ToggleButton>()
+                .First(item => Equals(item.CommandParameter, "Purchases"));
+            button.IsChecked = true;
+            ResetMenuToggleButtons(button);
+            SelectSection("Purchases");
+        }
+
+        internal void SetNavigationExpanded(bool expanded, bool animate = true)
+        {
+            skipNavigationAnimation = !animate;
+            try
+            {
+                if (IsNavigationExpanded == expanded)
+                {
+                    if (!animate) UpdateNavigationState();
+                    return;
+                }
+                IsNavigationExpanded = expanded;
+            }
+            finally { skipNavigationAnimation = false; }
+        }
+
+        private void NavigationDrawer_MouseEnter(object sender, MouseEventArgs e) =>
+            SetNavigationExpanded(true);
+
+        private void NavigationDrawer_MouseLeave(object sender, MouseEventArgs e) =>
+            SetNavigationExpanded(false);
+
+        private void NavigationDismiss_Click(object sender, MouseButtonEventArgs e)
+        {
+            e.Handled = true;
+            SetNavigationExpanded(false);
+        }
+
+        private void Navigation_PreviewKeyDown(object sender, KeyEventArgs e)
+        {
+            if (e.Key != Key.Escape || !IsNavigationExpanded) return;
+            e.Handled = true;
+            SetNavigationExpanded(false, animate: false);
+            MenuToggleButtons.Children.OfType<ToggleButton>().FirstOrDefault(button => button.IsChecked == true)?.Focus();
+        }
+
+        private void NavigationDrawer_SizeChanged(object sender, SizeChangedEventArgs e)
+        {
+            var width = IsNavigationExpanded ? ExpandedNavigationWidth : CollapsedNavigationWidth;
+            NavigationClip.BeginAnimation(RectangleGeometry.RectProperty, null);
+            NavigationClip.Rect = new Rect(0, 0, width, e.NewSize.Height);
+        }
+
+        private void UpdateNavigationState()
+        {
+            if (NavigationDrawer is null || NavigationClip is null) return;
+            NavigationDismissLayer.Visibility = IsNavigationExpanded ? Visibility.Visible : Visibility.Collapsed;
+            var current = NavigationClip.Rect;
+            var target = new Rect(0, 0, IsNavigationExpanded ? ExpandedNavigationWidth : CollapsedNavigationWidth,
+                Math.Max(0, NavigationDrawer.ActualHeight));
+            NavigationClip.BeginAnimation(RectangleGeometry.RectProperty, null);
+            NavigationClip.Rect = target;
+            if (skipNavigationAnimation || !IsLoaded || !SystemParameters.ClientAreaAnimation || current == target)
+                return;
+            // Fixed content rail: animate only the overlay clip, never the workspace layout.
+            var animation = new RectAnimationUsingKeyFrames { Duration = TimeSpan.FromMilliseconds(220), FillBehavior = FillBehavior.Stop };
+            animation.KeyFrames.Add(new DiscreteRectKeyFrame(current, KeyTime.FromTimeSpan(TimeSpan.Zero)));
+            animation.KeyFrames.Add(new SplineRectKeyFrame(target, KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(220)),
+                new KeySpline(0.32, 0.72, 0, 1)));
+            NavigationClip.BeginAnimation(RectangleGeometry.RectProperty, animation, HandoffBehavior.SnapshotAndReplace);
         }
         #endregion
     }

@@ -31,7 +31,23 @@
 #define SERVER_PLIST "/var/jb/usr/libexec/castar/org.castar.server.plist"
 #define HEALTH_PORT 5080
 
-enum { probe_interval = 5, recovery_interval = 30, failed_probes_before_recovery = 3 };
+enum {
+    healthy_probe_interval = 25000,
+    retry_probe_interval = 3000,
+    recovery_interval = 30000,
+    job_check_interval = 300000,
+    log_interval = 300000,
+    failed_probes_before_recovery = 3
+};
+
+struct supervision {
+    const char *state;
+    unsigned int failures;
+    int64_t next_probe;
+    int64_t recovery_at;
+    int64_t job_check_at;
+};
+
 extern char **environ;
 
 static int64_t monotonic_milliseconds(void)
@@ -87,9 +103,9 @@ static bool stop_server(void)
         service_job() == job_absent;
 }
 
-static bool start_server(void)
+static bool start_server(enum job_state job)
 {
-    switch (service_job()) {
+    switch (job) {
         case job_loaded: return launchctl("kickstart", "-k", SERVER_JOB) == 0;
         case job_absent: return launchctl("bootstrap", "system", SERVER_PLIST) == 0;
         default: return false;
@@ -266,8 +282,72 @@ static void limit_log(const char *path)
     close(log);
 }
 
-static void handle_client(int client, uid_t allowed_user, const char **state, int64_t *recovery_at,
-                          unsigned int *failures)
+static int check_server(struct supervision *service, int64_t now)
+{
+    if (access(APPLY_MARKER, F_OK) == 0) {
+        service->state = "starting\n";
+        service->failures = 0;
+        service->job_check_at = 0;
+        return retry_probe_interval;
+    }
+
+    struct stat marker;
+    if (lstat(DISABLED_FILE, &marker) == 0) {
+        const bool stopped = stop_server();
+        service->state = stopped ? "stopped\n" : "unavailable\n";
+        service->failures = 0;
+        service->job_check_at = 0;
+        return stopped ? healthy_probe_interval : retry_probe_interval;
+    }
+    if (errno != ENOENT) {
+        service->state = "unavailable\n";
+        service->failures = 0;
+        service->job_check_at = 0;
+        return retry_probe_interval;
+    }
+
+    enum job_state job = job_unknown;
+    bool job_checked = false;
+    if (health_ok(NULL)) {
+        if (now >= service->job_check_at) {
+            job = service_job();
+            job_checked = true;
+            if (job == job_loaded)
+                service->job_check_at = monotonic_milliseconds() + job_check_interval;
+        }
+        if (now < service->job_check_at) {
+            service->state = "running\n";
+            service->failures = 0;
+            return healthy_probe_interval;
+        }
+    }
+    service->job_check_at = 0;
+
+    if (service->failures < failed_probes_before_recovery)
+        ++service->failures;
+    if (strcmp(service->state, "running\n") == 0)
+        service->state = "unavailable\n";
+
+    if (now >= service->recovery_at &&
+        (service->failures == 1 || service->failures == failed_probes_before_recovery)) {
+        if (!job_checked)
+            job = service_job();
+        if (job == job_absent || service->failures == failed_probes_before_recovery) {
+            if (access(APPLY_MARKER, F_OK) == 0) {
+                service->state = "starting\n";
+                service->failures = 0;
+                return retry_probe_interval;
+            }
+            service->state = start_server(job) ? "starting\n" : "unavailable\n";
+            service->recovery_at = monotonic_milliseconds() + recovery_interval;
+            service->failures = 0;
+            fprintf(stderr, "Castar health recovery attempted: %s", service->state);
+        }
+    }
+    return retry_probe_interval;
+}
+
+static void handle_client(int client, uid_t allowed_user, struct supervision *service)
 {
     uid_t uid;
     gid_t gid;
@@ -288,7 +368,7 @@ static void handle_client(int client, uid_t allowed_user, const char **state, in
     }
     request[length] = '\0';
     if (strcmp(request, "status\n") == 0) {
-        send_text(client, *state);
+        send_text(client, service->state);
     } else if (strcmp(request, "logs\n") == 0) {
         send_log(client);
     } else if (strcmp(request, "update-status\n") == 0) {
@@ -300,13 +380,20 @@ static void handle_client(int client, uid_t allowed_user, const char **state, in
         send_text(client, "error\n");
     } else if (strcmp(request, "stop\n") == 0) {
         const bool stopped = save_stopped(true) && stop_server();
-        *state = stopped ? "stopped\n" : "unavailable\n";
+        service->state = stopped ? "stopped\n" : "unavailable\n";
+        service->next_probe = monotonic_milliseconds() +
+            (stopped ? healthy_probe_interval : retry_probe_interval);
+        service->failures = 0;
+        service->job_check_at = 0;
         send_text(client, stopped ? "ok\n" : "error\n");
     } else if (strcmp(request, "restart\n") == 0) {
-        const bool started = save_stopped(false) && start_server();
-        *state = started ? "starting\n" : "unavailable\n";
-        *recovery_at = monotonic_milliseconds() + recovery_interval * 1000;
-        *failures = 0;
+        const bool started = save_stopped(false) && start_server(service_job());
+        const int64_t now = monotonic_milliseconds();
+        service->state = started ? "starting\n" : "unavailable\n";
+        service->next_probe = now + retry_probe_interval;
+        service->recovery_at = now + recovery_interval;
+        service->failures = 0;
+        service->job_check_at = 0;
         send_text(client, started ? "ok\n" : "error\n");
     } else {
         send_text(client, "error\n");
@@ -345,53 +432,36 @@ int main(int argc, char **argv)
     }
     fcntl(listener, F_SETFD, FD_CLOEXEC);
 
-    const char *state = "starting\n";
-    unsigned int failures = 0;
-    int64_t next_probe = 0;
-    int64_t recovery_at = 0;
+    struct supervision service = {.state = "starting\n"};
+    int64_t next_log_check = 0;
     for (;;) {
-        const int64_t now = monotonic_milliseconds();
-        if (now >= next_probe) {
+        if (monotonic_milliseconds() >= next_log_check) {
             limit_log(SERVER_LOG);
             limit_log(WATCHDOG_LOG);
-            struct stat marker;
-            if (access(APPLY_MARKER, F_OK) == 0) {
-                state = "starting\n";
-                failures = 0;
-            } else if (lstat(DISABLED_FILE, &marker) == 0) {
-                state = stop_server() ? "stopped\n" : "unavailable\n";
-                failures = 0;
-            } else if (errno != ENOENT) {
-                state = "unavailable\n";
-            } else {
-                const enum job_state job = service_job();
-                if (job == job_loaded && health_ok(NULL)) {
-                    state = "running\n";
-                    failures = 0;
-                } else if ((job == job_absent || ++failures >= failed_probes_before_recovery) &&
-                           now >= recovery_at) {
-                    state = start_server() ? "starting\n" : "unavailable\n";
-                    recovery_at = now + recovery_interval * 1000;
-                    failures = 0;
-                    fprintf(stderr, "Castar health recovery attempted: %s", state);
-                } else if (strcmp(state, "running\n") == 0) {
-                    state = "unavailable\n";
-                }
-            }
-            next_probe = monotonic_milliseconds() + probe_interval * 1000;
+            next_log_check = monotonic_milliseconds() + log_interval;
+        }
+        const int64_t now = monotonic_milliseconds();
+        if (now >= service.next_probe) {
+            const int interval = check_server(&service, now);
+            service.next_probe = monotonic_milliseconds() + interval;
         }
 
+        const int64_t next = service.next_probe < next_log_check ? service.next_probe : next_log_check;
+        const int64_t remaining = next - monotonic_milliseconds();
         struct pollfd event = {.fd = listener, .events = POLLIN};
-        const int ready = poll(&event, 1, 1000);
+        const int ready = poll(&event, 1, remaining > 0 ? (int)remaining : 0);
         if (ready > 0 && (event.revents & POLLIN)) {
             const int client = accept(listener, NULL, NULL);
             if (client >= 0) {
                 fcntl(client, F_SETFD, FD_CLOEXEC);
-                handle_client(client, allowed_user, &state, &recovery_at, &failures);
+                handle_client(client, allowed_user, &service);
                 close(client);
             }
         } else if (ready < 0 && errno != EINTR) {
             perror("Castar control poll");
+            return 1;
+        } else if (ready > 0) {
+            fprintf(stderr, "Castar control socket unavailable\n");
             return 1;
         }
     }

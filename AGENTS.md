@@ -31,7 +31,7 @@
 
 - [`software-architect`](agents/software-architect.md) — архитектор
 - [`wpf-mvvm-developer`](agents/wpf-mvvm-developer.md) — разработчик wpf/mvvm
-- [`xaml-ui-specialist`](agents/xaml-ui-specialist.md) — специалист по xaml/ui
+- [`xaml-ui-specialist`](agents/xaml-ui-specialist.md) — WPF UI/UX и Motion Designer; обязательно привлекай для каждой задачи по дизайну и передавай ему указанный в профиле пользовательский промпт
 - [`database-engineer`](agents/database-engineer.md) — инженер баз данных
 - [`data-access-specialist`](agents/data-access-specialist.md) — специалист по доступу к данным
 - [`csharp-developer`](agents/csharp-developer.md) — разработчик c#
@@ -127,6 +127,8 @@
 Применяй [правила общих выпадающих списков и диалоговых окон](agents/xaml-ui-specialist.md#порядок-работы). Для интеграций чеков применяй [правило общего контракта провайдеров](agents/integration-engineer.md#порядок-работы).
 
 Для проверок используй сборку, тесты и программный вызов команд WPF без управления курсором.
+
+После проверки изменений клиента закрой остальные экземпляры Castar и запусти одну локальную демонстрационную копию с отдельным профилем.
 
 Обновляй данные от сервера по [событиям и явным действиям пользователя](agents/wpf-mvvm-developer.md#порядок-работы). Для обмена между клиентом и сервером применяй [правило событийной синхронизации](agents/integration-engineer.md#порядок-работы).
 

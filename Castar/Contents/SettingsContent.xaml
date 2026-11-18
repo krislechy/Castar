@@ -2,258 +2,358 @@
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:c="clr-namespace:Castar.Compontents"
-             xmlns:local="clr-namespace:Castar.Contents"
              xmlns:converters="clr-namespace:Castar.Converters"
              xmlns:settings="clr-namespace:Castar.Settings"
-             Name="Настройки" Loaded="Settings_Loaded" Unloaded="Settings_Unloaded"
-             IsVisibleChanged="Settings_IsVisibleChanged">
+             Name="Настройки" UseLayoutRounding="True" SnapsToDevicePixels="True" FontSize="14">
     <UserControl.Resources>
-        <BooleanToVisibilityConverter x:Key="ServerConnectionVisibility"/>
-        <converters:SexConverter x:Key="UserSex"/>
-        <Style x:Key="SettingsSectionButton" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
-            <Setter Property="HorizontalContentAlignment" Value="Left"/>
-            <Setter Property="Padding" Value="12,8"/>
-            <Setter Property="Margin" Value="6,3"/>
-            <Setter Property="ContentTemplate">
-                <Setter.Value>
-                    <DataTemplate>
-                        <DockPanel>
-                            <ContentPresenter Content="{Binding CommandParameter, RelativeSource={RelativeSource AncestorType=Button}}"
-                                              VerticalAlignment="Center" Margin="0,0,10,0"/>
-                            <TextBlock Text="{Binding}" VerticalAlignment="Center"/>
-                        </DockPanel>
-                    </DataTemplate>
-                </Setter.Value>
-            </Setter>
-        </Style>
-        <Style x:Key="SettingsCard" TargetType="c:IslandPanel">
-            <Setter Property="Margin" Value="6"/>
-            <Setter Property="ShowTitle" Value="False"/>
-        </Style>
+        <ResourceDictionary>
+            <ResourceDictionary.MergedDictionaries>
+                <ResourceDictionary Source="../Styles/Settings.xaml"/>
+            </ResourceDictionary.MergedDictionaries>
+            <BooleanToVisibilityConverter x:Key="ServerConnectionVisibility"/>
+            <converters:SexConverter x:Key="UserSex"/>
+            <Style TargetType="TextBox" BasedOn="{StaticResource {x:Type TextBox}}">
+                <Setter Property="Background" Value="{DynamicResource Main.Background.lvl1}"/>
+            </Style>
+            <Style TargetType="PasswordBox" BasedOn="{StaticResource {x:Type PasswordBox}}">
+                <Setter Property="Background" Value="{DynamicResource Main.Background.lvl1}"/>
+            </Style>
+        </ResourceDictionary>
     </UserControl.Resources>
     <Grid>
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto"/>
-            <RowDefinition/>
+            <RowDefinition Height="*"/>
         </Grid.RowDefinitions>
-        <Border Style="{StaticResource BudgetHeaderSurface}">
-          <DockPanel Margin="4,0">
-            <Button x:Name="BackToSections" Content="{DynamicResource Svg.LeftArrow}" Click="BackToSections_Click"
-                    Visibility="Collapsed" DockPanel.Dock="Left" VerticalAlignment="Center"
-                    Width="36" Height="36" AutomationProperties.Name="Назад"/>
-            <TextBlock x:Name="SettingsTitle" Text="Настройки" Style="{StaticResource BudgetHeaderTitle}"
-                       Padding="0,10"/>
-          </DockPanel>
+        <Border Background="{DynamicResource Main.Background.lvl2}" BorderBrush="{DynamicResource Main.Top.Panel}"
+                BorderThickness="0,0,0,1">
+            <DockPanel Margin="12,8" MinHeight="40">
+                <Button x:Name="BackToSections" DockPanel.Dock="Left" Visibility="Collapsed"
+                        Style="{StaticResource SettingsIconButton}"
+                        AutomationProperties.Name="Назад" Click="BackToSections_Click">
+                    <Path Width="16" Height="16" Stretch="Uniform" Data="M 14.5,8 H 2 M 8,2 L 2,8 L 8,14"
+                          Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
+                          StrokeThickness="1.5" StrokeStartLineCap="Round" StrokeEndLineCap="Round"
+                          StrokeLineJoin="Round"/>
+                </Button>
+                <Button x:Name="CloseSettingsButton" DockPanel.Dock="Right"
+                        Content="{DynamicResource Svg.Close}" Style="{StaticResource SettingsIconButton}"
+                        AutomationProperties.Name="Закрыть настройки" Click="CloseSettings_Click"/>
+                <TextBlock x:Name="SettingsTitle" Text="Настройки" Margin="8,0" VerticalAlignment="Center"
+                           FontSize="20" FontWeight="SemiBold" Foreground="{DynamicResource Foreground.White}"
+                           TextTrimming="CharacterEllipsis" AutomationProperties.HeadingLevel="Level1"/>
+            </DockPanel>
         </Border>
-        <ScrollViewer x:Name="SettingsScroll" Grid.Row="1" VerticalScrollBarVisibility="Auto">
-            <Grid>
-                <StackPanel x:Name="SectionMenu" Margin="0,6">
-                    <Button Content="{Binding Title, ElementName=ConnectionSection}" Tag="{Binding ElementName=ConnectionSection}"
-                            CommandParameter="{DynamicResource Svg.SettingsConnection}"
-                            Style="{StaticResource SettingsSectionButton}" Click="OpenSettingsSection_Click"/>
-                    <Button Content="{Binding Title, ElementName=ServerSection}" Tag="{Binding ElementName=ServerSection}"
-                            CommandParameter="{DynamicResource Svg.DataBase}"
-                            Visibility="{Binding ServerConfiguration.HasConnection, Converter={StaticResource ServerConnectionVisibility}}"
-                            Style="{StaticResource SettingsSectionButton}" Click="OpenSettingsSection_Click"/>
-                    <Button Content="{Binding Title, ElementName=ApplicationSection}" Tag="{Binding ElementName=ApplicationSection}"
-                            CommandParameter="{DynamicResource Svg.Tools}"
-                            Style="{StaticResource SettingsSectionButton}" Click="OpenSettingsSection_Click"/>
-                    <Button Content="{Binding Title, ElementName=UsersSection}" Tag="{Binding ElementName=UsersSection}"
-                            CommandParameter="{DynamicResource Svg.Users}"
-                            Visibility="{Binding UsersAvailable, Converter={StaticResource ServerConnectionVisibility}}"
-                            Style="{StaticResource SettingsSectionButton}" Click="OpenSettingsSection_Click"/>
-                    <Button Content="{Binding Title, ElementName=UpdatesSection}" Tag="{Binding ElementName=UpdatesSection}"
-                            CommandParameter="{DynamicResource Svg.SettingsUpdate}"
-                            Style="{StaticResource SettingsSectionButton}" Click="OpenSettingsSection_Click"/>
+        <ScrollViewer x:Name="SettingsScroll" Grid.Row="1"
+                      VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+            <Grid Margin="12">
+                <StackPanel x:Name="SectionMenu">
+                    <Border x:Name="ClientUpdateBanner" Style="{StaticResource SettingsUpdateBanner}"
+                            IsVisibleChanged="ClientUpdateBanner_IsVisibleChanged">
+                        <StackPanel>
+                            <DockPanel>
+                                <Button DockPanel.Dock="Right" Content="Обновить" Margin="12,0,0,0"
+                                        Style="{StaticResource FormAction}" IsEnabled="{Binding CanInstallClientUpdate}"
+                                        Click="CheckForUpdates_Click" AutomationProperties.Name="Обновить Castar"/>
+                                <TextBlock Text="{Binding UpdateStatus}" VerticalAlignment="Center" TextWrapping="Wrap"
+                                           AutomationProperties.LiveSetting="Polite"/>
+                            </DockPanel>
+                            <ProgressBar Minimum="0" Maximum="100" Value="{Binding UpdateDownloadPercent, Mode=OneWay}"
+                                         Margin="0,8,0,0" AutomationProperties.Name="Ход загрузки обновления"
+                                         Visibility="{Binding IsDownloadingUpdate, Converter={StaticResource ServerConnectionVisibility}}"/>
+                        </StackPanel>
+                    </Border>
+                    <Border Style="{StaticResource SettingsNavigationGroup}">
+                        <StackPanel>
+                            <Button x:Name="FirstSettingsSection" Content="Подключение" Tag="{Binding ElementName=ConnectionSection}"
+                                    CommandParameter="{DynamicResource Svg.SettingsConnection}"
+                                    Style="{StaticResource SettingsSectionButton}" Click="OpenSettingsSection_Click"/>
+                            <Button Content="Сервер" Tag="{Binding ElementName=ServerSection}"
+                                    CommandParameter="{DynamicResource Svg.DataBase}"
+                                    Visibility="{Binding ServerConfiguration.HasConnection, Converter={StaticResource ServerConnectionVisibility}}"
+                                    Style="{StaticResource SettingsSectionButton}" Click="OpenSettingsSection_Click"/>
+                            <Button Content="Пользователи" Tag="{Binding ElementName=UsersSection}"
+                                    CommandParameter="{DynamicResource Svg.Users}"
+                                    Visibility="{Binding UsersAvailable, Converter={StaticResource ServerConnectionVisibility}}"
+                                    Style="{StaticResource SettingsSectionButton}" Click="OpenSettingsSection_Click"/>
+                        </StackPanel>
+                    </Border>
+                    <Border Style="{StaticResource SettingsDivider}"/>
+                    <Border Style="{StaticResource SettingsNavigationGroup}">
+                        <StackPanel>
+                            <Button Content="Приложение" Tag="{Binding ElementName=ApplicationSection}"
+                                    CommandParameter="{DynamicResource Svg.Tools}"
+                                    Style="{StaticResource SettingsSectionButton}" Click="OpenSettingsSection_Click"/>
+                        </StackPanel>
+                    </Border>
                 </StackPanel>
                 <Grid Visibility="Collapsed">
-                <c:IslandPanel x:Name="ConnectionSection" Title="Подключение" Style="{StaticResource SettingsCard}"
-                               ImageSvg="{DynamicResource Svg.DataBase}">
-                    <StackPanel Width="330">
-                        <TextBlock Text="Адрес сервера" Style="{StaticResource FormFieldLabel}"/>
-                        <TextBox AutomationProperties.Name="Адрес сервера"
-                                 Text="{Binding ServerAddress, UpdateSourceTrigger=PropertyChanged}"/>
-                        <TextBlock Text="Ключ API" Style="{StaticResource FormFieldLabel}"/>
-                        <PasswordBox AutomationProperties.Name="Ключ API" PasswordChanged="ApiKey_PasswordChanged"/>
-                        <Button Content="Подключиться" Style="{StaticResource FormAction}"
-                                Click="SaveServerConnection_Click"/>
-                        <TextBlock Text="{Binding ConnectionStatus}" Style="{StaticResource ViewStatus}"
-                                   AutomationProperties.LiveSetting="Polite"/>
+                    <StackPanel x:Name="ConnectionSection">
+                        <Border Style="{StaticResource SettingsGroup}">
+                            <StackPanel>
+                                <TextBlock Text="Адрес сервера" Style="{StaticResource FormFieldLabel}"/>
+                                <TextBox AutomationProperties.Name="Адрес сервера"
+                                         IsReadOnly="{Binding HasSavedConnection}"
+                                         Text="{Binding ServerAddress, UpdateSourceTrigger=PropertyChanged}"/>
+                                <StackPanel>
+                                    <StackPanel.Style>
+                                        <Style TargetType="StackPanel">
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding HasSavedConnection}" Value="True">
+                                                    <Setter Property="Visibility" Value="Collapsed"/>
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </StackPanel.Style>
+                                    <Button x:Name="RevealApiKeyButton" Content="Установить ключ API" Click="RevealApiKey_Click">
+                                        <Button.Style>
+                                            <Style TargetType="Button" BasedOn="{StaticResource FormAction}">
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding IsApiKeyEditorVisible}" Value="True">
+                                                        <Setter Property="Visibility" Value="Collapsed"/>
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </Button.Style>
+                                    </Button>
+                                    <StackPanel Visibility="{Binding IsApiKeyEditorVisible, Converter={StaticResource ServerConnectionVisibility}}">
+                                        <TextBlock Text="Ключ API" Style="{StaticResource FormFieldLabel}"/>
+                                        <PasswordBox x:Name="ApiKeyInput" AutomationProperties.Name="Ключ API"
+                                                     PasswordChanged="ApiKey_PasswordChanged"/>
+                                        <Button Content="Подключиться" Style="{StaticResource FormAction}"
+                                                Click="SaveServerConnection_Click"/>
+                                    </StackPanel>
+                                </StackPanel>
+                                <Button x:Name="DisconnectServerButton" Content="Отключиться"
+                                        Style="{StaticResource SettingsDangerAction}" Click="DisconnectServer_Click"
+                                        Visibility="{Binding HasSavedConnection, Converter={StaticResource ServerConnectionVisibility}}"/>
+                                <TextBlock Text="{Binding ConnectionStatus}" Style="{StaticResource ViewStatus}"
+                                           AutomationProperties.LiveSetting="Polite"/>
+                            </StackPanel>
+                        </Border>
                     </StackPanel>
-                </c:IslandPanel>
                 </Grid>
                 <Grid Visibility="Collapsed">
-                <c:IslandPanel x:Name="ServerSection" Title="Сервер" Style="{StaticResource SettingsCard}" ImageSvg="{DynamicResource Svg.DataBase}"
-                               IsVisibleChanged="SettingsSection_IsVisibleChanged"
-                               DataContext="{Binding ServerConfiguration}"
-                               Visibility="{Binding HasConnection, Converter={StaticResource ServerConnectionVisibility}}">
-                    <StackPanel Width="330">
+                    <StackPanel x:Name="ServerSection" DataContext="{Binding ServerConfiguration}">
                         <StackPanel IsEnabled="{Binding CanEdit}">
-                            <CheckBox Content="Telegram-бот" IsChecked="{Binding TelegramEnabled}"
-                                      IsEnabled="{Binding CanEditTelegram}"/>
-                            <TextBlock Text="{Binding TelegramStatus}" Style="{StaticResource ViewStatus}"/>
-                            <StackPanel Visibility="{Binding SupportsCredentials, Converter={StaticResource ServerConnectionVisibility}}">
-                                <TextBlock Text="Токен Telegram" Style="{StaticResource FormFieldLabel}"/>
-                                <PasswordBox AutomationProperties.Name="Токен Telegram" PasswordChanged="TelegramToken_PasswordChanged"/>
-                            </StackPanel>
-                            <CheckBox Content="Обработка чеков" IsChecked="{Binding ReceiptsEnabled}"/>
-                            <Button Content="Настройки Telegram" Click="ConfigureTelegramPreferences_Click"
-                                    Style="{StaticResource FormAction}" IsEnabled="{Binding CanEdit}"
-                                    Visibility="{Binding SupportsTelegramPreferences, Converter={StaticResource ServerConnectionVisibility}}"/>
-                            <TextBlock Text="Поставщик чеков" Style="{StaticResource FormFieldLabel}"/>
-                            <c:CastarComboBox ItemsSource="{Binding ReceiptProviders}" DisplayMemberPath="Label"
-                                              SelectedValuePath="Id" SelectedValue="{Binding ReceiptProvider}"
-                                              AutomationProperties.Name="Поставщик чеков"/>
-                            <StackPanel Visibility="{Binding SupportsReceiptRetry, Converter={StaticResource ServerConnectionVisibility}}">
-                                <TextBlock Text="Повтор чека, мин" Style="{StaticResource FormFieldLabel}"/>
-                                <c:DecimalInput FractionDigits="0" AllowNegative="False"
-                                                Text="{Binding ReceiptRetryMinutesText, UpdateSourceTrigger=PropertyChanged}"
-                                                AutomationProperties.Name="Повтор чека, мин"/>
-                            </StackPanel>
-                            <CheckBox Content="Анонимная авторизация" IsChecked="{Binding UseAnonymous, Mode=TwoWay}"
-                                      IsEnabled="{Binding CanChooseAuthentication}"
-                                      Visibility="{Binding HasAuthenticationProfile, Converter={StaticResource ServerConnectionVisibility}}"/>
-                            <Button Content="Установить данные для входа" Style="{StaticResource FormAction}"
-                                    Click="ConfigureReceiptCredentials_Click"
-                                    Visibility="{Binding ShowReceiptCredentials, Converter={StaticResource ServerConnectionVisibility}}"/>
+                            <Border Style="{StaticResource SettingsGroup}">
+                                <StackPanel>
+                                    <TextBlock Text="Telegram" Style="{StaticResource SettingsGroupTitle}"/>
+                                    <CheckBox Style="{StaticResource SettingsSwitchRow}" Content="Telegram-бот" IsChecked="{Binding TelegramEnabled}"
+                                              IsEnabled="{Binding CanEditTelegram}"/>
+                                    <TextBlock Text="{Binding TelegramStatus}" Style="{StaticResource ViewStatus}"/>
+                                    <StackPanel Visibility="{Binding SupportsCredentials, Converter={StaticResource ServerConnectionVisibility}}">
+                                        <TextBlock Text="Токен Telegram" Style="{StaticResource FormFieldLabel}"/>
+                                        <PasswordBox AutomationProperties.Name="Токен Telegram" PasswordChanged="TelegramToken_PasswordChanged"/>
+                                    </StackPanel>
+                                    <Button Content="Настройки Telegram" Click="ConfigureTelegramPreferences_Click"
+                                            CommandParameter="{DynamicResource Svg.Telegram}"
+                                            Style="{StaticResource SettingsSubpageButton}"
+                                            Visibility="{Binding SupportsTelegramPreferences, Converter={StaticResource ServerConnectionVisibility}}"/>
+                                </StackPanel>
+                            </Border>
+                            <Border Style="{StaticResource SettingsDivider}"/>
+                            <Border Style="{StaticResource SettingsGroup}">
+                                <StackPanel>
+                                    <TextBlock Text="Чеки" Style="{StaticResource SettingsGroupTitle}"/>
+                                    <CheckBox Style="{StaticResource SettingsSwitchRow}" Content="Обработка чеков" IsChecked="{Binding ReceiptsEnabled}"/>
+
+                                    <TextBlock Text="Поставщик чеков" Style="{StaticResource FormFieldLabel}"/>
+                                    <c:CastarComboBox ItemsSource="{Binding ReceiptProviders}" DisplayMemberPath="Label"
+                                                      SelectedValuePath="Id" SelectedValue="{Binding ReceiptProvider}"
+                                                      AutomationProperties.Name="Поставщик чеков"/>
+                                    <StackPanel Visibility="{Binding SupportsReceiptRetry, Converter={StaticResource ServerConnectionVisibility}}">
+                                        <TextBlock Text="Повтор чека, мин" Style="{StaticResource FormFieldLabel}"/>
+                                        <c:DecimalInput FractionDigits="0" AllowNegative="False"
+                                                        Text="{Binding ReceiptRetryMinutesText, UpdateSourceTrigger=PropertyChanged}"
+                                                        AutomationProperties.Name="Повтор чека, мин"/>
+                                    </StackPanel>
+                                    <CheckBox Style="{StaticResource SettingsSwitchRow}" Content="Анонимная авторизация" IsChecked="{Binding UseAnonymous, Mode=TwoWay}"
+                                              IsEnabled="{Binding CanChooseAuthentication}"
+                                              Visibility="{Binding HasAuthenticationProfile, Converter={StaticResource ServerConnectionVisibility}}"/>
+                                    <Button Content="Данные для входа" Style="{StaticResource SettingsSubpageButton}"
+                                            CommandParameter="{DynamicResource Svg.SettingsCredentials}"
+                                            Click="ConfigureReceiptCredentials_Click"
+                                            Visibility="{Binding ShowReceiptCredentials, Converter={StaticResource ServerConnectionVisibility}}"/>
+                                </StackPanel>
+                            </Border>
                             <StackPanel Visibility="{Binding SupportsManualCurrency, Converter={StaticResource ServerConnectionVisibility}}">
-                                <TextBlock Text="{Binding ManualCurrency.DefaultCurrency, StringFormat='Валюта ручного добавления — {0}'}"
-                                           Style="{StaticResource FormFieldLabel}"/>
-                                <Button Content="Настроить валюты" Style="{StaticResource FormAction}"
-                                        Click="ConfigureManualCurrencies_Click"/>
+                                <Border Style="{StaticResource SettingsDivider}"/>
+                                <Border Style="{StaticResource SettingsGroup}">
+                                    <StackPanel>
+                                        <TextBlock Text="Валюты" Style="{StaticResource SettingsGroupTitle}"/>
+                                        <TextBlock Text="{Binding ManualCurrency.DefaultCurrency, StringFormat='Валюта ручного добавления — {0}'}"
+                                                   Style="{StaticResource FormFieldLabel}"/>
+                                        <Button Content="Настроить валюты" Style="{StaticResource SettingsSubpageButton}"
+                                                CommandParameter="{DynamicResource Svg.SettingsCurrencies}"
+                                                Click="ConfigureManualCurrencies_Click"/>
+                                    </StackPanel>
+                                </Border>
                             </StackPanel>
                         </StackPanel>
-                        <StackPanel Orientation="Horizontal">
-                            <Button Content="Сохранить" Style="{StaticResource FormAction}"
-                                    IsEnabled="{Binding CanSave}" Click="SaveServerSettings_Click"
-                                    AutomationProperties.Name="Сохранить настройки сервера"/>
-                            <Button Content="Обновить" Style="{StaticResource FormAction}"
-                                    Margin="8,8,0,0" IsEnabled="{Binding CanReload}" Click="ReloadServerSettings_Click"
-                                    AutomationProperties.Name="Обновить настройки сервера"/>
-                        </StackPanel>
-                        <TextBlock Text="{Binding Status}" Style="{StaticResource ViewStatus}"/>
-                        <Button Content="{Binding BackupActionLabel}" Style="{StaticResource FormAction}"
-                                Click="CreateDatabaseBackup_Click"/>
-                        <TextBlock Text="{Binding BackupStatus}" Style="{StaticResource ViewStatus}"
-                                   AutomationProperties.LiveSetting="Polite"/>
-                        <StackPanel DataContext="{Binding Updates}">
-                            <Button Content="Обновить сервер" Style="{StaticResource FormAction}"
-                                    IsEnabled="{Binding CanStart}" Click="UpdateServer_Click"/>
-                            <TextBlock Text="{Binding Status}" Style="{StaticResource ViewStatus}"
-                                       AutomationProperties.LiveSetting="Polite"/>
-                            <ProgressBar Minimum="0" Maximum="100" Value="{Binding Percent, Mode=OneWay}"
-                                         IsIndeterminate="{Binding IsIndeterminate, Mode=OneWay}"
-                                         Visibility="{Binding IsWorking, Converter={StaticResource ServerConnectionVisibility}}"
-                                         AutomationProperties.Name="Ход обновления сервера"/>
-                        </StackPanel>
+                        <Border Style="{StaticResource SettingsDivider}"/>
+                        <Border Style="{StaticResource SettingsGroup}">
+                            <StackPanel>
+                                <TextBlock Text="Конфигурация сервера" Style="{StaticResource SettingsGroupTitle}"/>
+                                <WrapPanel Margin="-4,0">
+                                    <Button Content="Сохранить настройки" Style="{StaticResource FormAction}"
+                                            Margin="4,0,4,4" IsEnabled="{Binding CanSave}" Click="SaveServerSettings_Click"/>
+                                    <Button Content="Перечитать настройки" Style="{StaticResource FormAction}"
+                                            Margin="4,0,4,4" IsEnabled="{Binding CanReload}" Click="ReloadServerSettings_Click"/>
+                                </WrapPanel>
+                                <TextBlock Text="{Binding Status}" Style="{StaticResource ViewStatus}"
+                                           AutomationProperties.LiveSetting="Polite"/>
+                            </StackPanel>
+                        </Border>
+                        <Border Style="{StaticResource SettingsDivider}"/>
+                        <Border Style="{StaticResource SettingsGroup}">
+                            <StackPanel>
+                                <TextBlock Text="Резервное копирование" Style="{StaticResource SettingsGroupTitle}"/>
+                                <Button Content="{Binding BackupActionLabel}" Style="{StaticResource FormAction}"
+                                        Click="CreateDatabaseBackup_Click"/>
+                                <TextBlock Text="{Binding BackupStatus}" Style="{StaticResource ViewStatus}"
+                                           AutomationProperties.LiveSetting="Polite"/>
+                            </StackPanel>
+                        </Border>
+                        <Border Style="{StaticResource SettingsDivider}"/>
+                        <Border Style="{StaticResource SettingsGroup}">
+                            <StackPanel>
+                                <TextBlock Text="Версия сервера" Style="{StaticResource SettingsGroupTitle}"/>
+                                <StackPanel DataContext="{Binding Updates}">
+                                    <Button Content="Обновить сервер" Style="{StaticResource FormAction}"
+                                            IsEnabled="{Binding CanStart}" Click="UpdateServer_Click"/>
+                                    <TextBlock Text="{Binding Status}" Style="{StaticResource ViewStatus}"
+                                               AutomationProperties.LiveSetting="Polite"/>
+                                    <ProgressBar Minimum="0" Maximum="100" Value="{Binding Percent, Mode=OneWay}"
+                                                 IsIndeterminate="{Binding IsIndeterminate, Mode=OneWay}"
+                                                 Visibility="{Binding IsWorking, Converter={StaticResource ServerConnectionVisibility}}"
+                                                 AutomationProperties.Name="Ход обновления сервера"/>
+                                </StackPanel>
+                            </StackPanel>
+                        </Border>
                     </StackPanel>
-                </c:IslandPanel>
                 </Grid>
                 <Grid Visibility="Collapsed">
-                <c:IslandPanel x:Name="ApplicationSection" Title="Приложение" Style="{StaticResource SettingsCard}" ImageSvg="{DynamicResource Svg.Tools}">
-                    <StackPanel>
-                        <CheckBox IsChecked="{Binding Settings.IsHideInTray}" Content="При закрытии сворачивать в трей"/>
-                        <CheckBox IsChecked="{Binding Settings.IsAutoRun}" Content="Запускать с Windows"/>
-                        <TextBlock Text="Отображаемая валюта" Style="{StaticResource FormFieldLabel}"/>
-                        <c:CastarComboBox ItemsSource="{Binding CurrencyOptions}" DisplayMemberPath="Label" SelectedValuePath="Code"
-                                          SelectedValue="{Binding Settings.DisplayCurrency, Mode=TwoWay}"
-                                          AutomationProperties.Name="Отображаемая валюта"/>
-                        <TextBlock Text="Часовой пояс" Style="{StaticResource FormFieldLabel}"/>
-                        <c:CastarComboBox ItemsSource="{Binding Settings.DisplayTimeZones}" DisplayMemberPath="Label"
-                                          SelectedValuePath="Id" SelectedValue="{Binding Settings.DisplayTimeZoneId, Mode=TwoWay}"
-                                          AutomationProperties.Name="Часовой пояс"/>
-                        <TextBlock Text="Уведомления" Style="{StaticResource FormFieldLabel}"/>
-                        <c:CastarComboBox ItemsSource="{Binding NotificationModes}" DisplayMemberPath="Label" SelectedValuePath="Value"
-                                          SelectedValue="{Binding Settings.NotificationMode, Mode=TwoWay}"
-                                          AutomationProperties.Name="Уведомления"/>
+                    <StackPanel x:Name="ApplicationSection">
+                        <Border Style="{StaticResource SettingsGroup}">
+                            <StackPanel>
+                                <TextBlock Text="Запуск" Style="{StaticResource SettingsGroupTitle}"/>
+                                <CheckBox Style="{StaticResource SettingsSwitchRow}" IsChecked="{Binding Settings.IsHideInTray}" Content="При закрытии сворачивать в трей"/>
+                                <CheckBox Style="{StaticResource SettingsSwitchRow}" IsChecked="{Binding Settings.IsAutoRun}" Content="Запускать с Windows"/>
+                            </StackPanel>
+                        </Border>
+                        <Border Style="{StaticResource SettingsDivider}"/>
+                        <Border Style="{StaticResource SettingsGroup}">
+                            <StackPanel>
+                                <TextBlock Text="Отображение" Style="{StaticResource SettingsGroupTitle}"/>
+                                <TextBlock Text="Отображаемая валюта" Style="{StaticResource FormFieldLabel}"/>
+                                <c:CastarComboBox ItemsSource="{Binding CurrencyOptions}" DisplayMemberPath="Label" SelectedValuePath="Code"
+                                                  SelectedValue="{Binding Settings.DisplayCurrency, Mode=TwoWay}"
+                                                  AutomationProperties.Name="Отображаемая валюта"/>
+                                <TextBlock Text="Часовой пояс" Style="{StaticResource FormFieldLabel}"/>
+                                <c:CastarComboBox ItemsSource="{Binding Settings.DisplayTimeZones}" DisplayMemberPath="Label"
+                                                  SelectedValuePath="Id" SelectedValue="{Binding Settings.DisplayTimeZoneId, Mode=TwoWay}"
+                                                  AutomationProperties.Name="Часовой пояс"/>
+                            </StackPanel>
+                        </Border>
+                        <Border Style="{StaticResource SettingsDivider}"/>
+                        <Border Style="{StaticResource SettingsGroup}">
+                            <StackPanel>
+                                <TextBlock Text="Уведомления" Style="{StaticResource SettingsGroupTitle}"/>
+                                <c:CastarComboBox ItemsSource="{Binding NotificationModes}" DisplayMemberPath="Label" SelectedValuePath="Value"
+                                                  SelectedValue="{Binding Settings.NotificationMode, Mode=TwoWay}"
+                                                  AutomationProperties.Name="Уведомления"/>
+                                <StackPanel>
+                                    <StackPanel.Style>
+                                        <Style TargetType="StackPanel">
+                                            <Setter Property="Visibility" Value="Collapsed"/>
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding Settings.NotificationMode}" Value="{x:Static settings:NotificationMode.Castar}">
+                                                    <Setter Property="Visibility" Value="Visible"/>
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </StackPanel.Style>
+                                    <TextBlock Text="Расположение" Style="{StaticResource FormFieldLabel}"/>
+                                    <c:CastarComboBox ItemsSource="{Binding NotificationCorners}" DisplayMemberPath="Label" SelectedValuePath="Value"
+                                                      SelectedValue="{Binding Settings.NotificationCorner, Mode=TwoWay}"
+                                                      AutomationProperties.Name="Расположение уведомлений"/>
+                                    <TextBlock Text="Количество уведомлений" Style="{StaticResource FormFieldLabel}"/>
+                                    <c:CastarComboBox ItemsSource="{Binding NotificationCounts}"
+                                                      SelectedItem="{Binding Settings.MaxVisibleNotifications, Mode=TwoWay}"
+                                                      AutomationProperties.Name="Количество уведомлений"/>
+                                </StackPanel>
+                            </StackPanel>
+                        </Border>
+                    </StackPanel>
+                </Grid>
+                <Grid Visibility="Collapsed">
+                    <StackPanel x:Name="UsersSection">
+                        <Border Style="{StaticResource SettingsGroup}">
+                            <StackPanel>
+                                <TextBlock Text="{Binding UsersStatus}" Style="{StaticResource ViewStatus}"
+                                           AutomationProperties.LiveSetting="Polite"/>
+                                <ListView Style="{StaticResource BudgetList}" MaxHeight="250" SelectionMode="Single"
+                                          AutomationProperties.Name="Пользователи" ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                                          ItemsSource="{Binding Users}" MouseDoubleClick="UsersListView_MouseDoubleClick">
+                                    <ListView.ItemContainerStyle>
+                                        <Style TargetType="ListViewItem" BasedOn="{StaticResource BudgetListItem}">
+                                            <Setter Property="AutomationProperties.ItemStatus" Value="Уведомления бота разрешены"/>
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding TelegramNotificationsEnabled}" Value="False">
+                                                    <Setter Property="AutomationProperties.ItemStatus" Value="Уведомления бота отключены"/>
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </ListView.ItemContainerStyle>
+                                    <ListView.ContextMenu>
+                                        <ContextMenu>
+                                            <MenuItem Header="Удалить" AutomationProperties.Name="Удалить пользователя"
+                                                      Icon="{StaticResource Svg.Remove}" Click="DeleteUserButton_Click"/>
+                                        </ContextMenu>
+                                    </ListView.ContextMenu>
+                                    <ListView.ItemTemplate>
+                                        <DataTemplate>
+                                            <DockPanel>
+                                                <Grid DockPanel.Dock="Right" Width="40" VerticalAlignment="Center" IsHitTestVisible="False">
+                                                    <Path Style="{StaticResource SettingsNotificationBell}"/>
+                                                </Grid>
+                                                <UniformGrid Columns="3">
+                                                    <Grid>
+                                                        <Grid.ColumnDefinitions>
+                                                            <ColumnDefinition Width="Auto"/>
+                                                            <ColumnDefinition/>
+                                                        </Grid.ColumnDefinitions>
+                                                        <c:UserAvatar Width="28" Height="28" Margin="0,0,8,0" VerticalAlignment="Center"
+                                                                      UserName="{Binding Name}"
+                                                                      Photo="{Binding ImageRaw, Converter={StaticResource UserAvatarImageConverter}}"/>
+                                                        <TextBlock Grid.Column="1" Text="{Binding Name}" Style="{StaticResource BudgetTableCell}"/>
+                                                    </Grid>
+                                                    <TextBlock Text="{Binding TelegramId}" Style="{StaticResource BudgetTableCell}"/>
+                                                    <TextBlock Text="{Binding Sex, Converter={StaticResource UserSex}}"
+                                                               Style="{StaticResource BudgetTableCell}"/>
+                                                </UniformGrid>
+                                            </DockPanel>
+                                        </DataTemplate>
+                                    </ListView.ItemTemplate>
+                                </ListView>
+                                <Button Content="Добавить" AutomationProperties.Name="Добавить пользователя"
+                                        IsEnabled="{Binding UsersAvailable}"
+                                        Style="{StaticResource FormAction}" Click="NewUserButton_Click"/>
+                            </StackPanel>
+                        </Border>
+                    </StackPanel>
+                </Grid>
+                <Grid x:Name="NestedSettingsPage" Visibility="Collapsed">
+                    <Border Style="{StaticResource SettingsGroup}">
                         <StackPanel>
-                            <StackPanel.Style>
-                                <Style TargetType="StackPanel">
-                                    <Setter Property="Visibility" Value="Collapsed"/>
-                                    <Style.Triggers>
-                                        <DataTrigger Binding="{Binding Settings.NotificationMode}" Value="{x:Static settings:NotificationMode.Castar}">
-                                            <Setter Property="Visibility" Value="Visible"/>
-                                        </DataTrigger>
-                                    </Style.Triggers>
-                                </Style>
-                            </StackPanel.Style>
-                            <TextBlock Text="Расположение" Style="{StaticResource FormFieldLabel}"/>
-                            <c:CastarComboBox ItemsSource="{Binding NotificationCorners}" DisplayMemberPath="Label" SelectedValuePath="Value"
-                                              SelectedValue="{Binding Settings.NotificationCorner, Mode=TwoWay}"
-                                              AutomationProperties.Name="Расположение уведомлений"/>
-                            <TextBlock Text="Количество уведомлений" Style="{StaticResource FormFieldLabel}"/>
-                            <c:CastarComboBox ItemsSource="{Binding NotificationCounts}"
-                                              SelectedItem="{Binding Settings.MaxVisibleNotifications, Mode=TwoWay}"
-                                              AutomationProperties.Name="Количество уведомлений"/>
+                            <ContentPresenter x:Name="NestedSettingsBody"/>
+                            <TextBlock x:Name="NestedSettingsStatus" Style="{StaticResource ViewStatus}"
+                                       AutomationProperties.LiveSetting="Polite"/>
+                            <Button x:Name="ApplyNestedSettingsButton" Content="Применить" HorizontalAlignment="Left"
+                                    Style="{StaticResource FormAction}" Click="ApplyNestedSettings_Click"/>
                         </StackPanel>
-                    </StackPanel>
-                </c:IslandPanel>
-                </Grid>
-                <Grid Visibility="Collapsed">
-                <c:IslandPanel x:Name="UsersSection" Title="Пользователи" Style="{StaticResource SettingsCard}" ImageSvg="{DynamicResource Svg.Users}"
-                               IsVisibleChanged="SettingsSection_IsVisibleChanged"
-                               Visibility="{Binding UsersAvailable, Converter={StaticResource ServerConnectionVisibility}}">
-                    <StackPanel Width="330">
-                        <UniformGrid Columns="3" Margin="7,0,7,0">
-                            <TextBlock Text="Имя" Style="{StaticResource BudgetTableHeader}"/>
-                            <TextBlock Text="Telegram ID" Style="{StaticResource BudgetTableHeader}"/>
-                            <TextBlock Text="Пол" Style="{StaticResource BudgetTableHeader}"/>
-                        </UniformGrid>
-                        <ListView Style="{StaticResource BudgetList}" MaxHeight="250" SelectionMode="Single"
-                                  AutomationProperties.Name="Пользователи" ScrollViewer.HorizontalScrollBarVisibility="Disabled"
-                                  ItemsSource="{Binding Users}" MouseDoubleClick="UsersListView_MouseDoubleClick">
-                            <ListView.ContextMenu>
-                                <ContextMenu>
-                                    <MenuItem Header="Удалить" AutomationProperties.Name="Удалить пользователя"
-                                              Icon="{StaticResource Svg.Remove}" Click="DeleteUserButton_Click"/>
-                                </ContextMenu>
-                            </ListView.ContextMenu>
-                            <ListView.ItemTemplate>
-                                <DataTemplate>
-                                    <UniformGrid Columns="3">
-                                        <Grid>
-                                            <Grid.ColumnDefinitions>
-                                                <ColumnDefinition Width="Auto"/>
-                                                <ColumnDefinition/>
-                                            </Grid.ColumnDefinitions>
-                                            <c:UserAvatar Width="24" Height="24" Margin="0,0,3,0" VerticalAlignment="Center"
-                                                          UserName="{Binding Name}"
-                                                          Photo="{Binding ImageRaw, Converter={StaticResource UserAvatarImageConverter}}"/>
-                                            <TextBlock Grid.Column="1" Text="{Binding Name}" Style="{StaticResource BudgetTableCell}"/>
-                                        </Grid>
-                                        <TextBlock Text="{Binding TelegramId}" Style="{StaticResource BudgetTableCell}"/>
-                                        <TextBlock Text="{Binding Sex, Converter={StaticResource UserSex}}"
-                                                   Style="{StaticResource BudgetTableCell}"/>
-                                    </UniformGrid>
-                                </DataTemplate>
-                            </ListView.ItemTemplate>
-                        </ListView>
-                        <Button Content="Добавить" AutomationProperties.Name="Добавить пользователя"
-                                Style="{StaticResource FormAction}" Click="NewUserButton_Click"/>
-                    </StackPanel>
-                </c:IslandPanel>
-                </Grid>
-                <Grid Visibility="Collapsed">
-                <c:IslandPanel x:Name="UpdatesSection" Title="Обновления" Style="{StaticResource SettingsCard}" ImageSvg="{DynamicResource Svg.Tools}">
-                    <StackPanel>
-                        <TextBlock Text="{Binding UpdateStatus}" Style="{StaticResource ViewStatus}"/>
-                        <ProgressBar Minimum="0" Maximum="100" Value="{Binding UpdateDownloadPercent, Mode=OneWay}"
-                                     AutomationProperties.Name="Ход загрузки обновления">
-                            <ProgressBar.Style>
-                                <Style TargetType="ProgressBar" BasedOn="{StaticResource {x:Type ProgressBar}}">
-                                    <Setter Property="Visibility" Value="Collapsed"/>
-                                    <Style.Triggers>
-                                        <DataTrigger Binding="{Binding IsDownloadingUpdate}" Value="True">
-                                            <Setter Property="Visibility" Value="Visible"/>
-                                        </DataTrigger>
-                                    </Style.Triggers>
-                                </Style>
-                            </ProgressBar.Style>
-                        </ProgressBar>
-                        <Button Content="Проверить" AutomationProperties.Name="Проверить обновления"
-                                Style="{StaticResource FormAction}" Click="CheckForUpdates_Click"/>
-                    </StackPanel>
-                </c:IslandPanel>
+                    </Border>
                 </Grid>
             </Grid>
         </ScrollViewer>

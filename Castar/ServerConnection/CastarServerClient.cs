@@ -1,6 +1,8 @@
 using Castar.Api;
 using Castar.Domain.Models.DataBase;
 using Castar.Settings;
+using Castar.Logger;
+using System.Diagnostics;
 using System;
 using System.Collections.Generic;
 using System.Collections.Concurrent;
@@ -21,12 +23,22 @@ namespace Castar.ServerConnection;
 
 public sealed class CastarServerClient(ClientSettings settings) : IDisposable
 {
+    private readonly ICLogger? logger;
+
+    public CastarServerClient(ClientSettings settings, ICLogger logger) : this(settings) => this.logger = logger;
     internal const string ConnectionNotEstablished = "Соединение с сервером не установлено.";
     private readonly HttpClient httpsClient = CreateHttpClient(useProxy: true);
     private readonly HttpClient localClient = CreateHttpClient(useProxy: false);
     private ConcurrentDictionary<(string Server, string Key, Guid Id), byte[]> avatars = new();
+    private long statisticsFinancialRevision;
 
     internal void ClearAvatarCache() => Interlocked.Exchange(ref avatars, new());
+
+    // An opaque cache partition; never expose the API credential in keys or diagnostics.
+    internal string StatisticsCacheScope => Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(
+        System.Text.Encoding.UTF8.GetBytes(settings.ServerUrl + "\n" + settings.ProtectedApiKey + "\n"
+            + settings.DisplayTimeZone.Id + "\n" + Interlocked.Read(ref statisticsFinancialRevision)
+                .ToString(CultureInfo.InvariantCulture))));
 
     internal event EventHandler? ConnectionChanged
     {
@@ -40,10 +52,11 @@ public sealed class CastarServerClient(ClientSettings settings) : IDisposable
         UseCookies = false,
         AutomaticDecompression = DecompressionMethods.GZip,
         UseProxy = useProxy,
+        ConnectTimeout = TimeSpan.FromSeconds(5),
         PooledConnectionLifetime = TimeSpan.FromMinutes(5)
     })
     {
-        Timeout = TimeSpan.FromSeconds(12),
+        Timeout = TimeSpan.FromSeconds(30),
         MaxResponseContentBufferSize = 32 * 1024 * 1024
     };
 
@@ -115,7 +128,7 @@ public sealed class CastarServerClient(ClientSettings settings) : IDisposable
     public async Task TestConnectionAsync(Uri server, string apiKey, CancellationToken cancellationToken = default)
     {
         using var request = CreateRequest(HttpMethod.Get, server, apiKey, "api/status");
-        using var response = await TransportFor(request).SendAsync(request, cancellationToken);
+        using var response = await SendRequestAsync(request, cancellationToken).ConfigureAwait(false);
         EnsureSuccess(response);
         var status = await ReadResponseAsync<ServerStatus>(response, cancellationToken);
         if (status.ApiVersion != 1)
@@ -206,8 +219,11 @@ public sealed class CastarServerClient(ClientSettings settings) : IDisposable
 
     public Task<bool> DeleteUserAsync(Guid id) => DeleteAsync($"api/users/{id:D}");
 
-    public async Task<ObservableCollection<Income>> GetIncomesAsync(DateTime start, DateTime finish,
-        CancellationToken cancellationToken = default)
+    public Task<ObservableCollection<Income>> GetIncomesAsync(DateTime start, DateTime finish,
+        CancellationToken cancellationToken = default) => GetIncomesAsync(start, finish, null, cancellationToken);
+
+    internal async Task<ObservableCollection<Income>> GetIncomesAsync(DateTime start, DateTime finish,
+        IReadOnlyDictionary<Guid, byte[]>? previousAvatars, CancellationToken cancellationToken)
     {
         var incomes = await GetIncomeRowsAsync(start, finish, cancellationToken);
         var users = incomes.Select(income => income.User).DistinctBy(user => user.Id).ToArray();
@@ -224,13 +240,21 @@ public sealed class CastarServerClient(ClientSettings settings) : IDisposable
             async (user, token) =>
             {
                 try { usersById[user.Id].ImageRaw = await GetUserAvatarAsync(user.Id, token); }
-                catch (Exception error) when (!token.IsCancellationRequested && IsConnectionError(error)) { }
+                catch (Exception error) when (!token.IsCancellationRequested && IsConnectionError(error))
+                {
+                    if (error is not HttpRequestException { StatusCode: HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden }
+                        && previousAvatars?.TryGetValue(user.Id, out var lastImage) == true)
+                        usersById[user.Id].ImageRaw = lastImage;
+                }
             });
         return new ObservableCollection<Income>(incomes.Select(income => ToIncome(income, usersById[income.UserId])));
     }
 
     internal Task<IncomeDto[]> GetIncomeRowsAsync(DateTime start, DateTime finish, CancellationToken cancellationToken) =>
         SendAsync<IncomeDto[]>(HttpMethod.Get, $"api/incomes?{DateQuery(start, finish)}", cancellationToken: cancellationToken);
+
+    internal async Task<Income[]> GetIncomeAmountsAsync(DateTime start, DateTime finish, CancellationToken token) =>
+        (await GetIncomeRowsAsync(start, finish, token).ConfigureAwait(false)).Select(row => ToIncome(row, null)).ToArray();
 
     public async Task<PurchaseDto[]> GetPurchasesAsync(DateTime start, DateTime finish, CancellationToken cancellationToken = default)
     {
@@ -256,25 +280,44 @@ public sealed class CastarServerClient(ClientSettings settings) : IDisposable
     internal async Task<PurchaseDto> GetPurchaseDetailsAsync(Guid id, CancellationToken token) =>
         DisplayPurchase(await SendAsync<PurchaseDto>(HttpMethod.Get, $"api/purchases/{id:D}", cancellationToken: token));
 
-    internal async Task<BudgetOperationDto[]> GetBudgetOperationsAsync(DateTime start, DateTime finish, CancellationToken token)
+    internal async Task<BudgetOperationDto[]> GetBudgetOperationsAsync(DateTime start, DateTime finish, CancellationToken token,
+        bool includeOpening = true)
     {
         try
         {
-            return await SendAsync<BudgetOperationDto[]>(HttpMethod.Get, $"api/budget/operations?{DateQuery(start, finish)}",
-                cancellationToken: token);
+            var includesOpening = false;
+            var rows = await SendAsync<BudgetOperationDto[]>(HttpMethod.Get,
+                $"api/budget/operations?{DateQuery(start, finish)}&includeOpening={includeOpening.ToString().ToLowerInvariant()}", cancellationToken: token,
+                observeResponse: response => includesOpening = response.Headers.TryGetValues("X-Castar-Budget-Opening", out var values)
+                    && values.Contains("1"));
+            if (!includeOpening || includesOpening || start == DateTime.MinValue)
+                return rows;
+
+            // Older servers ignore includeOpening. Their existing lightweight endpoint still supplies history.
+            var history = await SendAsync<BudgetOperationDto[]>(HttpMethod.Get,
+                $"api/budget/operations?{DateQuery(DateTime.MinValue, finish)}", cancellationToken: token);
+            return MarkOpening(history);
         }
         catch (HttpRequestException error) when (MissingRoute(error))
         {
-            var incomes = GetIncomeRowsAsync(start, finish, token);
-            var purchases = SendAsync<PurchaseDto[]>(HttpMethod.Get, $"api/purchases?{DateQuery(start, finish)}",
+            var historyStart = includeOpening ? DateTime.MinValue : start;
+            var incomes = GetIncomeRowsAsync(historyStart, finish, token);
+            var purchases = SendAsync<PurchaseDto[]>(HttpMethod.Get, $"api/purchases?{DateQuery(historyStart, finish)}",
                 cancellationToken: token);
             await Task.WhenAll(incomes, purchases);
-            return (await incomes).Select(row => new BudgetOperationDto(true, row.Currency, row.Sum,
+            return MarkOpening((await incomes).Select(row => new BudgetOperationDto(true, row.Currency, row.Sum,
                     row.AddedOnUtc ?? ReadLegacyDate(row.AddedOn), row.RateDate ?? DateOnly.FromDateTime(row.AddedOn)))
                 .Concat((await purchases).Select(row => new BudgetOperationDto(false, row.Currency, row.TotalSum,
                     row.AddedOnUtc ?? (row.AddedOn is { } date ? ReadLegacyDate(date) : null),
                     row.RateDate ?? row.ReceiptDate ?? (row.AddedOn is { } legacy ? DateOnly.FromDateTime(legacy) : null),
-                    row.ReceiptDate))).ToArray();
+                    row.ReceiptDate))).ToArray());
+        }
+
+        BudgetOperationDto[] MarkOpening(BudgetOperationDto[] rows)
+        {
+            var first = PeriodBoundary(start, 1);
+            return rows.Select(row => row.AddedOnUtc is { } instant && instant.UtcDateTime < first
+                ? row with { IsOpening = true, OpeningCount = 1 } : row).ToArray();
         }
     }
 
@@ -378,14 +421,36 @@ public sealed class CastarServerClient(ClientSettings settings) : IDisposable
     public Task<bool> DeleteIncomeAsync(Guid id) => DeleteAsync($"api/incomes/{id:D}");
 
     private async Task<T> SendAsync<T>(HttpMethod method, string path, object? payload = null,
-        CancellationToken cancellationToken = default, bool readProblemDetails = false) where T : class
+        CancellationToken cancellationToken = default, bool readProblemDetails = false,
+        Action<HttpResponseMessage>? observeResponse = null) where T : class
     {
         using var request = CreateRequest(method, ParseServerUrl(settings.ServerUrl), settings.ApiKey, path);
         if (payload is not null)
             request.Content = JsonContent.Create(payload);
-        using var response = await TransportFor(request).SendAsync(request, cancellationToken);
-        await EnsureSuccessAsync(response, readProblemDetails, cancellationToken);
-        return await ReadResponseAsync<T>(response, cancellationToken);
+        using var response = await SendRequestAsync(request, cancellationToken).ConfigureAwait(false);
+        await EnsureSuccessAsync(response, readProblemDetails, cancellationToken).ConfigureAwait(false);
+        MarkFinancialMutation(method, path);
+        observeResponse?.Invoke(response);
+        return await ReadResponseAsync<T>(response, cancellationToken).ConfigureAwait(false);
+    }
+
+    private async Task<HttpResponseMessage> SendRequestAsync(HttpRequestMessage request, CancellationToken token)
+    {
+        var elapsed = Stopwatch.StartNew();
+        try
+        {
+            var response = await TransportFor(request).SendAsync(request, token).ConfigureAwait(false);
+            if (elapsed.Elapsed >= TimeSpan.FromSeconds(2) || !response.IsSuccessStatusCode)
+                logger?.Log<CastarServerClient>($"HTTP {request.Method} {request.RequestUri!.AbsolutePath}: {(int)response.StatusCode}, {elapsed.ElapsedMilliseconds} мс.", TypeLog.Info);
+            return response;
+        }
+        catch (Exception error) when (IsConnectionError(error))
+        {
+            // Never log query strings, authorization headers, response content or financial data.
+            if (!token.IsCancellationRequested)
+                logger?.Log<CastarServerClient>($"HTTP {request.Method} {request.RequestUri!.AbsolutePath}: {error.GetBaseException().GetType().Name}, {elapsed.ElapsedMilliseconds} мс.", TypeLog.Warning);
+            throw;
+        }
     }
 
     private static async Task EnsureSuccessAsync(HttpResponseMessage response, bool readProblemDetails,
@@ -397,7 +462,7 @@ public sealed class CastarServerClient(ClientSettings settings) : IDisposable
             ServerSettingsProblem? problem = null;
             try
             {
-                problem = await response.Content.ReadFromJsonAsync<ServerSettingsProblem>(cancellationToken);
+                problem = await response.Content.ReadFromJsonAsync<ServerSettingsProblem>(cancellationToken).ConfigureAwait(false);
             }
             catch (JsonException)
             {
@@ -416,7 +481,7 @@ public sealed class CastarServerClient(ClientSettings settings) : IDisposable
     {
         try
         {
-            return await response.Content.ReadFromJsonAsync<T>(cancellationToken)
+            return await response.Content.ReadFromJsonAsync<T>(cancellationToken).ConfigureAwait(false)
                 ?? throw new HttpRequestException("Сервер вернул пустой ответ.", null, response.StatusCode);
         }
         catch (JsonException error)
@@ -434,11 +499,22 @@ public sealed class CastarServerClient(ClientSettings settings) : IDisposable
         using var request = CreateRequest(method, ParseServerUrl(settings.ServerUrl), settings.ApiKey, path);
         if (payload is not null)
             request.Content = JsonContent.Create(payload);
-        using var response = await TransportFor(request).SendAsync(request, cancellationToken);
+        using var response = await SendRequestAsync(request, cancellationToken).ConfigureAwait(false);
         if (response.StatusCode == HttpStatusCode.NotFound)
             return false;
-        await EnsureSuccessAsync(response, readProblemDetails: payload is not null, cancellationToken);
+        await EnsureSuccessAsync(response, readProblemDetails: payload is not null, cancellationToken).ConfigureAwait(false);
+        MarkFinancialMutation(method, path);
         return true;
+    }
+
+    private void MarkFinancialMutation(HttpMethod method, string path)
+    {
+        if (method != HttpMethod.Post && method != HttpMethod.Put && method != HttpMethod.Delete) return;
+        var route = path.Split('?', 2)[0];
+        if (route is "api/incomes" or "api/purchases"
+            || route.StartsWith("api/incomes/", StringComparison.Ordinal)
+            || route.StartsWith("api/purchases/", StringComparison.Ordinal))
+            Interlocked.Increment(ref statisticsFinancialRevision);
     }
 
     private static HttpRequestMessage CreateRequest(HttpMethod method, Uri server, string apiKey, string path)

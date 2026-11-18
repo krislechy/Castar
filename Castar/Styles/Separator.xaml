@@ -2,15 +2,15 @@
                     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
     
     <Style TargetType="{x:Type Separator}">
-        <Setter Property="Background" Value="{DynamicResource Background.Disabled}"/>
-        <Setter Property="Margin" Value="15,10,15,10"/>
+        <Setter Property="Background" Value="{DynamicResource Main.Background.lvl3}"/>
+        <Setter Property="Margin" Value="16,12"/>
         <Setter Property="Focusable" Value="false"/>
         <Setter Property="Template">
             <Setter.Value>
                 <ControlTemplate TargetType="{x:Type Separator}">
                     <Border Background="{TemplateBinding Background}" CornerRadius="0"
                             BorderBrush="{TemplateBinding BorderBrush}" 
-                            BorderThickness="{TemplateBinding BorderThickness}" Height="3" SnapsToDevicePixels="true"/>
+                            BorderThickness="{TemplateBinding BorderThickness}" Height="1" SnapsToDevicePixels="true"/>
                 </ControlTemplate>
             </Setter.Value>
         </Setter>

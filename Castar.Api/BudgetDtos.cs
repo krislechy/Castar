@@ -40,7 +40,13 @@ public sealed record PurchaseDto(Guid Id, Guid UserId, string Name, decimal Tota
 }
 
 public sealed record BudgetOperationDto(bool IsIncome, string? Currency, decimal Amount,
-    DateTimeOffset? AddedOnUtc, DateOnly? RateDate, DateOnly? ReceiptDate = null);
+    DateTimeOffset? AddedOnUtc, DateOnly? RateDate, DateOnly? ReceiptDate = null)
+{
+    [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingDefault)]
+    public bool IsOpening { get; init; }
+    [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingDefault)]
+    public long OpeningCount { get; init; }
+}
 
 public sealed record PurchaseOwnerDto(string Name, bool HasAvatar);
 

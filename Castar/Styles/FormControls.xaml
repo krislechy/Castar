@@ -2,16 +2,41 @@
                     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
     <Style x:Key="FormFieldLabel" TargetType="TextBlock">
         <Setter Property="Foreground" Value="{DynamicResource Foreground.White}"/>
-        <Setter Property="Margin" Value="0,6,0,4"/>
+        <Setter Property="Margin" Value="0,12,0,4"/>
+        <Setter Property="FontSize" Value="12"/>
+        <Setter Property="FontWeight" Value="SemiBold"/>
     </Style>
 
     <Style x:Key="FormAction" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
-        <Setter Property="Padding" Value="10,5"/>
+        <Setter Property="Padding" Value="12,8"/>
+        <Setter Property="MinHeight" Value="36"/>
         <Setter Property="Margin" Value="0,8,0,0"/>
     </Style>
 
+    <Style x:Key="BudgetAddButton" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
+        <Setter Property="Width" Value="36"/>
+        <Setter Property="Height" Value="36"/>
+        <Setter Property="Margin" Value="0,0,8,0"/>
+        <Setter Property="Padding" Value="0"/>
+        <Setter Property="VerticalAlignment" Value="Center"/>
+        <Setter Property="FocusVisualStyle">
+            <Setter.Value>
+                <Style TargetType="Control">
+                    <Setter Property="Template">
+                        <Setter.Value>
+                            <ControlTemplate TargetType="Control">
+                                <Border Margin="2" CornerRadius="4" BorderThickness="1"
+                                        BorderBrush="{DynamicResource Highlight}"/>
+                            </ControlTemplate>
+                        </Setter.Value>
+                    </Setter>
+                </Style>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
     <Style x:Key="BudgetPeriodBar" TargetType="WrapPanel">
-        <Setter Property="Margin" Value="8,4"/>
+        <Setter Property="Margin" Value="0,8"/>
         <Setter Property="MinHeight" Value="36"/>
         <Setter Property="HorizontalAlignment" Value="Center"/>
         <Setter Property="VerticalAlignment" Value="Center"/>
@@ -82,14 +107,16 @@
     <Style x:Key="BudgetHeaderSurface" TargetType="Border">
         <Setter Property="Background" Value="{DynamicResource Main.Background.lvl2}"/>
         <Setter Property="BorderBrush" Value="{DynamicResource Main.Top.Panel}"/>
-        <Setter Property="BorderThickness" Value="0,0,0,1"/>
+        <Setter Property="BorderThickness" Value="0"/>
+        <Setter Property="Padding" Value="24,20,24,12"/>
     </Style>
 
     <Style x:Key="BudgetHeaderTitle" TargetType="TextBlock">
-        <Setter Property="FontSize" Value="18"/>
+        <Setter Property="FontSize" Value="24"/>
+        <Setter Property="FontWeight" Value="SemiBold"/>
         <Setter Property="Foreground" Value="{DynamicResource Foreground.White}"/>
         <Setter Property="VerticalAlignment" Value="Center"/>
-        <Setter Property="Margin" Value="4,0,14,0"/>
+        <Setter Property="Margin" Value="0,0,24,0"/>
     </Style>
 
     <Style x:Key="BudgetOptionalText" TargetType="TextBlock">
@@ -117,8 +144,8 @@
         </Style.Triggers>
     </Style>
 
-    <Thickness x:Key="BudgetStatusMargin">12,0,12,8</Thickness>
-    <Thickness x:Key="BudgetContentMargin">8,0,8,8</Thickness>
+    <Thickness x:Key="BudgetStatusMargin">24,0,24,8</Thickness>
+    <Thickness x:Key="BudgetContentMargin">20,0,20,20</Thickness>
 
     <Style x:Key="ViewStatus" TargetType="TextBlock" BasedOn="{StaticResource GrayTextBlock}">
         <Setter Property="TextWrapping" Value="Wrap"/>

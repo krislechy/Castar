@@ -98,10 +98,16 @@ public sealed class CastarTelegramBotClient : ICastarTelegramBotClient
     {
         try
         {
-            using var httpClient = new HttpClient { Timeout = TimeSpan.FromSeconds(45) };
+            using var transport = new HttpClientHandler();
+            using var httpClient = new HttpClient(transport, disposeHandler: false) { Timeout = TimeSpan.FromSeconds(45) };
+            using var pollHttpClient = new HttpClient(transport, disposeHandler: false) { Timeout = TimeSpan.FromSeconds(65) };
             var bot = new TelegramBotClient(configuration.Token!, httpClient, cancellationToken);
+            // The polling loop applies RetryAfter and backoff. Other bot operations keep the SDK's policy.
+            var poller = new TelegramBotClient(new TelegramBotClientOptions(configuration.Token!) { RetryThreshold = 0 },
+                pollHttpClient, cancellationToken);
             var purchases = new PurchaseWizardSessions();
             int? offset = null;
+            var failures = 0;
             PublishStatus(configuration, "Подключение...");
             var menu = await BotMenu.ConfigureAsync(bot, cancellationToken);
             var nextMenuAttempt = DateTimeOffset.UtcNow.AddMinutes(1);
@@ -110,7 +116,7 @@ public sealed class CastarTelegramBotClient : ICastarTelegramBotClient
                 Update[] updates;
                 try
                 {
-                    updates = await bot.GetUpdates(offset, timeout: 30, allowedUpdates: AllowedUpdates,
+                    updates = await poller.GetUpdates(offset, timeout: 50, allowedUpdates: AllowedUpdates,
                         cancellationToken: cancellationToken);
                 }
                 catch (ApiRequestException ex) when (ex.ErrorCode is 401 or 404)
@@ -121,12 +127,16 @@ public sealed class CastarTelegramBotClient : ICastarTelegramBotClient
                 catch (Exception ex) when (!cancellationToken.IsCancellationRequested)
                 {
                     LogError(ex);
-                    PublishStatus(configuration, "Ошибка подключения к Telegram");
-                    var retryAfter = (ex as ApiRequestException)?.Parameters?.RetryAfter ?? 0;
-                    await Task.Delay(TimeSpan.FromSeconds(Math.Max(5, retryAfter)), cancellationToken);
+                    var apiError = ex as ApiRequestException;
+                    PublishStatus(configuration, apiError?.ErrorCode == 409
+                        ? "Конфликт подключения Telegram" : "Ошибка подключения к Telegram");
+                    var delay = PollRetryDelay(failures, apiError?.ErrorCode, apiError?.Parameters?.RetryAfter);
+                    failures = Math.Min(failures + 1, 5);
+                    await Task.Delay(delay, cancellationToken);
                     continue;
                 }
 
+                failures = 0;
                 PublishStatus(configuration, "Подключено");
                 if (!menu.Configured && DateTimeOffset.UtcNow >= nextMenuAttempt)
                 {
@@ -154,6 +164,14 @@ public sealed class CastarTelegramBotClient : ICastarTelegramBotClient
             LogError(ex);
             PublishStatus(configuration, "Ошибка подключения к Telegram");
         }
+    }
+
+    internal static TimeSpan PollRetryDelay(int failures, int? statusCode, int? retryAfterSeconds)
+    {
+        const int maximumSeconds = 300;
+        var baseSeconds = Math.Max(10 * (1 << Math.Min(failures, 5)), statusCode == 409 ? 60 : 0);
+        var localDelay = Math.Min(maximumSeconds, baseSeconds * (1 + Random.Shared.NextDouble() / 5));
+        return TimeSpan.FromSeconds(Math.Max(localDelay, retryAfterSeconds ?? 0));
     }
 
     private async Task HandleUpdateAsync(ITelegramBotClient client, Update update, PurchaseWizardSessions purchases,

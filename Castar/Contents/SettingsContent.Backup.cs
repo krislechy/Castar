@@ -1,3 +1,4 @@
+using Castar.Compontents;
 using Castar.ServerConnection;
 using Microsoft.Win32;
 using System;
@@ -35,6 +36,9 @@ public partial class SettingsContent
         backupRequest = request;
         viewModel.BackupActionLabel = "Отменить";
         viewModel.BackupStatus = "Создание резервной копии…";
+        var button = (System.Windows.Controls.Button)sender;
+        ButtonLoading.SetAllowInteractionWhileBusy(button, true);
+        ButtonLoading.SetIsBusy(button, true);
         try
         {
             await server.DownloadDatabaseBackupAsync(chooser.FileName, request.Token);
@@ -54,6 +58,7 @@ public partial class SettingsContent
         }
         finally
         {
+            ButtonLoading.SetIsBusy(button, false);
             backupRequest = null;
             viewModel.BackupActionLabel = label;
         }

@@ -12,24 +12,36 @@ public partial class PurchasesContent
     {
         await RunPurchaseActionAsync(async token =>
         {
-            var configuration = server.GetServerSettingsAsync(token);
-            var users = server.GetUsersAsync(token);
-            await Task.WhenAll(configuration, users);
-            if ((await configuration).ManualCurrency is not { } currencies)
+            ManualPurchaseEditor? editor = null;
+            string? message = null;
+            await ButtonLoading.RunAsync(sender, async () =>
             {
-                await ShowPurchaseActionMessageAsync("Обновите Castar Server для ручного добавления покупки.");
+                var configuration = server.GetServerSettingsAsync(token);
+                var users = server.GetUsersAsync(token);
+                await Task.WhenAll(configuration, users);
+                token.ThrowIfCancellationRequested();
+                if ((await configuration).ManualCurrency is not { } currencies)
+                {
+                    message = "Обновите Castar Server для ручного добавления покупки.";
+                    return;
+                }
+                if ((await users).Count == 0)
+                {
+                    message = "Добавьте пользователя в настройках.";
+                    return;
+                }
+                editor = new ManualPurchaseEditor(BudgetTime.InZone(DateTime.UtcNow, settings.DisplayTimeZone),
+                    currencies, await users);
+            });
+            if (message is not null)
+            {
+                await ShowPurchaseActionMessageAsync(message);
                 return;
             }
-            if ((await users).Count == 0)
-            {
-                await ShowPurchaseActionMessageAsync("Добавьте пользователя в настройках.");
+            if (editor is null || token.IsCancellationRequested)
                 return;
-            }
-
-            var editor = new ManualPurchaseEditor(BudgetTime.InZone(DateTime.UtcNow, settings.DisplayTimeZone),
-                currencies, await users);
             await ConfirmAndApplyAsync("Добавить покупку", editor, "Добавить",
-                request => server.CreatePurchaseAsync(editor.Result!, request), token, editor.Validate);
+                request => server.CreatePurchaseAsync(editor.Result!, request), token, editor.Validate, source: sender);
         });
     }
 
@@ -39,6 +51,6 @@ public partial class PurchasesContent
             return;
         var editor = new PurchaseItemEditor(new(Guid.Empty, "", null, 1, 0, 0), row.Source.Currency);
         await ConfirmMutationAsync("Добавить товар", editor, "Добавить",
-            token => server.AddPurchaseItemAsync(row.Id, revision, editor.Result!, token), validate: editor.Validate);
+            token => server.AddPurchaseItemAsync(row.Id, revision, editor.Result!, token), validate: editor.Validate, source: sender);
     }
 }

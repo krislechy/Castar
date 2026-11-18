@@ -108,7 +108,11 @@ namespace Castar.Compontents
 
             try
             {
-                var image = await Task.Run(() => UserAvatarEditor.ReadImage(chooser.FileName));
+                BitmapSource? image = null;
+                await ButtonLoading.RunAsync(sender, async () =>
+                    image = await Task.Run(() => UserAvatarEditor.ReadImage(chooser.FileName)));
+                if (image is null)
+                    return;
                 if (!IsVisible || !ReferenceEquals(DataContext, user))
                     return;
 

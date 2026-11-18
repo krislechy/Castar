@@ -34,6 +34,15 @@ namespace Castar.Compontents
     }
     public partial class SelectorRangeDates : UserControl
     {
+        public static readonly DependencyProperty UseLedgerStyleProperty = DependencyProperty.Register(
+            nameof(UseLedgerStyle), typeof(bool), typeof(SelectorRangeDates), new PropertyMetadata(false));
+
+        public bool UseLedgerStyle
+        {
+            get => (bool)GetValue(UseLedgerStyleProperty);
+            set => SetValue(UseLedgerStyleProperty, value);
+        }
+
         private enum TypeRange
         {
             month,

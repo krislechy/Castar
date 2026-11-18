@@ -1,6 +1,19 @@
-﻿<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
                     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                    xmlns:sys="clr-namespace:System;assembly=System.Runtime"
                     xmlns:converters="clr-namespace:Castar.Converters">
+    <!-- Shared visual scale; the original Castar color palette stays authoritative. -->
+    <FontFamily x:Key="Castar.FontFamily">Segoe UI</FontFamily>
+    <sys:Double x:Key="Castar.Font.Body">14</sys:Double>
+    <sys:Double x:Key="Castar.Font.Caption">12</sys:Double>
+    <sys:Double x:Key="Castar.Font.Heading">20</sys:Double>
+    <CornerRadius x:Key="Castar.Corner.Control">8</CornerRadius>
+    <CornerRadius x:Key="Castar.Corner.Panel">12</CornerRadius>
+    <Style x:Key="Castar.FocusVisual" TargetType="Control">
+        <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="Control">
+            <Border Margin="2" CornerRadius="6" BorderBrush="{DynamicResource Highlight}" BorderThickness="1"/>
+        </ControlTemplate></Setter.Value></Setter>
+    </Style>
     <converters:ImageBytesToBitmapConverter x:Key="UserAvatarImageConverter"/>
     <!--<SolidColorBrush x:Key="Menu.Highlight" Color="#25dbca"/>-->
     <SolidColorBrush x:Key="Highlight" Color="#14cfff"/>

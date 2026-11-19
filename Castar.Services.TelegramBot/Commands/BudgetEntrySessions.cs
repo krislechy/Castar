@@ -1,16 +1,16 @@
 namespace Castar.Services.TelegramBot.Commands;
 
-internal sealed class PurchaseWizardSessions
+internal sealed class BudgetEntrySessions
 {
     private static readonly TimeSpan Lifetime = TimeSpan.FromMinutes(15);
     private readonly Dictionary<Conversation, Draft> drafts = new();
 
-    public Draft Start(Conversation conversation)
+    public Draft Start(Conversation conversation, EntryKind kind)
     {
         var now = DateTime.UtcNow;
         foreach (var expired in drafts.Where(entry => entry.Value.Expires <= now).Select(entry => entry.Key).ToArray())
             drafts.Remove(expired);
-        var draft = new Draft(Guid.NewGuid(), now.Add(Lifetime));
+        var draft = new Draft(Guid.NewGuid(), now.Add(Lifetime), kind);
         drafts[conversation] = draft;
         return draft;
     }
@@ -29,7 +29,9 @@ internal sealed class PurchaseWizardSessions
 
     internal readonly record struct Conversation(long ChatId, long UserId, int? ThreadId);
 
-    internal sealed record Draft(Guid Id, DateTime Expires)
+    internal enum EntryKind { Purchase, Income }
+
+    internal sealed record Draft(Guid Id, DateTime Expires, EntryKind Kind)
     {
         public int PromptId { get; set; }
         public string? Name { get; set; }

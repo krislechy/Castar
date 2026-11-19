@@ -79,4 +79,4 @@ Castar Server использует SQLite. Если данные уже пере
 
 ## Сборка
 
-Установите [.NET SDK 11](https://dotnet.microsoft.com/en-us/download/dotnet/11.0) и выполните на Windows `dotnet build Castar.sln -c Release`. Публикация тега вида `vX.Y.Z`, совпадающего с `Version` клиента и сервера, запускает сборку установщика Windows, ZIP обновления и серверов Windows/Linux в черновик GitHub release. Перед публикацией добавляются TAR сервера и ZIP приложения iPhone из той же ревизии и `SHA256SUMS.txt` для всех семи пакетов. Текущий комплект — [Castar 0.11.1](https://github.com/krislechy/Castar/releases/tag/v0.11.1).
+Установите [.NET SDK 11](https://dotnet.microsoft.com/en-us/download/dotnet/11.0) и выполните на Windows `dotnet build Castar.sln -c Release`. Публикация тега вида `vX.Y.Z`, совпадающего с `Version` клиента и сервера, запускает сборку установщика Windows, ZIP обновления и серверов Windows/Linux в черновик GitHub release. Перед публикацией добавляются TAR сервера и ZIP приложения iPhone из той же ревизии и `SHA256SUMS.txt` для всех семи пакетов. Текущий комплект — [Castar 0.11.2](https://github.com/krislechy/Castar/releases/tag/v0.11.2).

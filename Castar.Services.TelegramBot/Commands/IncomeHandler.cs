@@ -75,9 +75,13 @@ public sealed partial class CommandHandler
     {
         if (ParseManualAmount(line, policy) is { } amount)
         {
-            var parts = amount.Description.Split([' ', '\t'], StringSplitOptions.RemoveEmptyEntries);
-            if (parts.Length == 2 && parts[0].Equals("/income", StringComparison.OrdinalIgnoreCase))
-                return (parts[1], amount.Sum, amount.Currency);
+            var command = BotMenu.FirstWord(amount.Description);
+            if (command.Equals("/" + BotMenu.Income, StringComparison.OrdinalIgnoreCase))
+            {
+                var source = amount.Description[command.Length..].Trim();
+                if (source.Length > 0)
+                    return (source, amount.Sum, amount.Currency);
+            }
         }
 
         throw new FormatException("Формат начисления: /income [источник] [сумма] [валюта по желанию].");

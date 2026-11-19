@@ -105,7 +105,7 @@ public sealed class CastarTelegramBotClient : ICastarTelegramBotClient
             // The polling loop applies RetryAfter and backoff. Other bot operations keep the SDK's policy.
             var poller = new TelegramBotClient(new TelegramBotClientOptions(configuration.Token!) { RetryThreshold = 0 },
                 pollHttpClient, cancellationToken);
-            var purchases = new PurchaseWizardSessions();
+            var entrySessions = new BudgetEntrySessions();
             int? offset = null;
             var failures = 0;
             PublishStatus(configuration, "Подключение...");
@@ -147,7 +147,7 @@ public sealed class CastarTelegramBotClient : ICastarTelegramBotClient
                 foreach (var update in updates)
                 {
                     cancellationToken.ThrowIfCancellationRequested();
-                    await HandleUpdateAsync(bot, update, purchases, menu.Username, cancellationToken);
+                    await HandleUpdateAsync(bot, update, entrySessions, menu.Username, cancellationToken);
                     offset = update.Id + 1;
                 }
             }
@@ -174,7 +174,7 @@ public sealed class CastarTelegramBotClient : ICastarTelegramBotClient
         return TimeSpan.FromSeconds(Math.Max(localDelay, retryAfterSeconds ?? 0));
     }
 
-    private async Task HandleUpdateAsync(ITelegramBotClient client, Update update, PurchaseWizardSessions purchases,
+    private async Task HandleUpdateAsync(ITelegramBotClient client, Update update, BudgetEntrySessions entrySessions,
         string? botUsername, CancellationToken cancellationToken)
     {
         var message = update.Message ?? update.EditedMessage;
@@ -185,7 +185,7 @@ public sealed class CastarTelegramBotClient : ICastarTelegramBotClient
         {
             await using var scope = scopeFactory.CreateAsyncScope();
             var handler = scope.ServiceProvider.GetRequiredService<CommandHandler>();
-            if (await handler.HandlePurchaseWizardAsync(client, update, purchases, botUsername, cancellationToken))
+            if (await handler.HandleBudgetEntryWizardAsync(client, update, entrySessions, botUsername, cancellationToken))
                 return;
             if (message is not null)
                 await handler.HandleAsync(client, message, update.EditedMessage is not null, cancellationToken, botUsername);

@@ -8,13 +8,10 @@
  </Style>
  <Style x:Key="ExpensePurchaseRow" TargetType="ListViewItem" BasedOn="{StaticResource LedgerCardRow}">
   <Setter Property="Margin" Value="0,0,0,4"/><Setter Property="Padding" Value="8,8"/><Setter Property="BorderThickness" Value="0,0,0,1"/><Setter Property="MinHeight" Value="60"/>
-  <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="ListViewItem">
-   <Border x:Name="Row" Background="Transparent" BorderBrush="{StaticResource LedgerBorder}" BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="6" Padding="{TemplateBinding Padding}"><ContentPresenter HorizontalAlignment="Stretch" VerticalAlignment="Center"/></Border>
-   <ControlTemplate.Triggers><Trigger Property="IsMouseOver" Value="True"><Setter TargetName="Row" Property="Background" Value="{DynamicResource Main.MouseOver}"/></Trigger></ControlTemplate.Triggers>
-  </ControlTemplate></Setter.Value></Setter>
+  <Setter Property="Border.CornerRadius" Value="6"/>
  </Style>
  <Style x:Key="ExpenseItemRow" TargetType="ListViewItem" BasedOn="{StaticResource ExpensePurchaseRow}">
-  <Setter Property="Margin" Value="0"/><Setter Property="Padding" Value="0,6"/><Setter Property="MinHeight" Value="40"/>
+  <Setter Property="Margin" Value="0"/><Setter Property="Padding" Value="8,6,0,6"/><Setter Property="MinHeight" Value="40"/>
  </Style>
  <Style x:Key="ExpenseRowActions" TargetType="Button" BasedOn="{StaticResource LedgerIconButton}">
   <Setter Property="MinHeight" Value="30"/><Setter Property="Height" Value="30"/><Setter Property="Width" Value="28"/><Setter Property="Padding" Value="5"/>

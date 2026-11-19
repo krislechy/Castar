@@ -34,29 +34,16 @@
   </ResourceDictionary>
  </UserControl.Resources>
  <Grid Background="{StaticResource LedgerCanvas}">
-  <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition/></Grid.RowDefinitions>
-  <Grid Margin="24,20,24,16">
-   <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
-   <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-    <Path Data="M 15,0 L 15,23 M 7,16 L 15,24 L 23,16 M 1,26 L 1,32 Q 1,36 5,36 L 25,36 Q 29,36 29,32 L 29,26"
-     Stroke="{DynamicResource Highlight}" StrokeThickness="2.5" StrokeStartLineCap="Round" StrokeEndLineCap="Round" Width="30" Height="36" Stretch="Uniform" Margin="0,0,18,0"/>
-    <TextBlock Text="Доходы" FontSize="24" FontWeight="SemiBold" Foreground="{DynamicResource Foreground.White}" VerticalAlignment="Center"/>
-   </StackPanel>
-   <Button x:Name="AddIncomeButton" Grid.Column="1" Style="{StaticResource LedgerActionButton}" Background="{DynamicResource Highlight}"
-    Foreground="{DynamicResource Main.Background.lvl1}" BorderBrush="{DynamicResource Highlight}" Click="AddNewIncomeButton_Click" AutomationProperties.Name="Добавить доход">
-    <StackPanel Orientation="Horizontal"><Path Data="M 0,7 L 14,7 M 7,0 L 7,14" Stroke="{DynamicResource Main.Background.lvl1}" StrokeThickness="1.8" Width="14" Height="14" Margin="0,0,10,0" VerticalAlignment="Center"/><TextBlock Text="Добавить доход" FontWeight="SemiBold"/></StackPanel>
-   </Button>
-  </Grid>
-  <Border x:Name="IncomeSummaryCard" Grid.Row="1" Margin="24,0,24,20" CornerRadius="12" BorderBrush="{DynamicResource Main.Background.lvl3}" Background="{DynamicResource Main.Background.lvl1}" BorderThickness="1" Padding="20,16" UseLayoutRounding="True" SnapsToDevicePixels="True" AutomationProperties.Name="Сводка доходов">
+  <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition/></Grid.RowDefinitions>
+  <Border x:Name="IncomeSummaryCard" Margin="24,20,24,20" CornerRadius="12" BorderBrush="{DynamicResource Main.Background.lvl3}" Background="{DynamicResource Main.Background.lvl1}" BorderThickness="1" Padding="20,16" UseLayoutRounding="True" SnapsToDevicePixels="True" AutomationProperties.Name="Сводка доходов">
    <Grid>
     <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
-    <Grid Width="64" Height="64" Margin="0,0,20,0" VerticalAlignment="Center">
-     <Ellipse Fill="{DynamicResource Main.Background.lvl3}" Stroke="{DynamicResource Main.Background.lvl3}" StrokeThickness="1"/>
+    <ContentControl Style="{StaticResource LedgerSummaryIcon}">
      <Viewbox Width="34" Height="34"><Canvas Width="34" Height="34">
       <Path Stroke="{DynamicResource Highlight}" StrokeThickness="1.8" StrokeStartLineCap="Round" StrokeEndLineCap="Round" Fill="Transparent"
        Data="M 9,8 C 9,2 32,2 32,8 C 32,14 9,14 9,8 M 32,8 L 32,19 C 32,23 28,25 24,25 M 24,14 C 24,8 1,8 1,14 C 1,20 24,20 24,14 M 1,14 L 1,27 C 1,33 24,33 24,27 L 24,14 M 1,20 C 1,26 24,26 24,20 M 1,25 C 1,31 24,31 24,25 M 25,17 C 28,17 31,16 32,14"/>
      </Canvas></Viewbox>
-    </Grid>
+    </ContentControl>
     <StackPanel Grid.Column="1" VerticalAlignment="Center" Margin="0,0,20,0">
      <TextBlock Text="Всего доходов" Foreground="{StaticResource LedgerMuted}" FontSize="14" Margin="0,0,0,4"/>
      <Viewbox Stretch="Uniform" StretchDirection="DownOnly" HorizontalAlignment="Left" MaxHeight="44">
@@ -89,20 +76,30 @@
     </StackPanel>
    </Grid>
   </Border>
-  <WrapPanel Grid.Row="2" Margin="24,0,24,16" VerticalAlignment="Center">
-   <Border Background="{StaticResource LedgerSurface}" CornerRadius="6" BorderBrush="{StaticResource LedgerBorder}" BorderThickness="1" Width="330" Margin="0" Padding="14,2">
+  <DockPanel Grid.Row="1" Margin="24,0,24,12">
+   <Button x:Name="AddIncomeButton" DockPanel.Dock="Right" Style="{StaticResource LedgerActionButton}" Background="{DynamicResource Highlight}"
+    Foreground="{DynamicResource Main.Background.lvl1}" BorderBrush="{DynamicResource Highlight}" Click="AddNewIncomeButton_Click" AutomationProperties.Name="Добавить доход" VerticalAlignment="Top" MinHeight="44">
+    <StackPanel Orientation="Horizontal"><Path Data="M 0,7 L 14,7 M 7,0 L 7,14" Stroke="{DynamicResource Main.Background.lvl1}" StrokeThickness="1.8" Width="14" Height="14" Margin="0,0,10,0" VerticalAlignment="Center"/><TextBlock Text="Добавить доход" FontWeight="SemiBold"/></StackPanel>
+   </Button>
+   <WrapPanel Margin="0,0,12,0" VerticalAlignment="Center">
+    <Border Background="{StaticResource LedgerSurface}" CornerRadius="6" BorderBrush="{StaticResource LedgerBorder}" BorderThickness="1" Width="330" Margin="0,0,12,4" Padding="14,2">
     <Grid>
      <Grid.ColumnDefinitions><ColumnDefinition Width="26"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
      <Path Data="M 11,6 A 5,5 0 1 1 1,6 A 5,5 0 1 1 11,6 M 10,10 L 15,15" Stroke="{StaticResource LedgerMuted}" StrokeThickness="1.8" Width="17" Height="17" Stretch="Uniform" VerticalAlignment="Center"/>
      <TextBox x:Name="IncomeSearchBox" Grid.Column="1" TextChanged="IncomeSearch_TextChanged" AutomationProperties.Name="Поиск по доходам" Background="Transparent" BorderThickness="0" Padding="4,8" MinHeight="38" FontSize="14"/>
      <TextBlock x:Name="SearchPlaceholder" Grid.Column="1" Text="Поиск по доходам…" Foreground="{StaticResource LedgerMuted}" Margin="4,0,0,0" VerticalAlignment="Center" IsHitTestVisible="False"/>
     </Grid>
-   </Border>  </WrapPanel>
-  <DockPanel Grid.Row="3" Margin="24,0,24,12">
+    </Border>
+    <Border x:Name="SelectionTotal" Style="{StaticResource LedgerSelectionTotal}" Margin="0,0,0,4">
+     <TextBlock x:Name="SelectionTotalText" Style="{StaticResource LedgerSelectionTotalText}"/>
+    </Border>
+   </WrapPanel>
+  </DockPanel>
+  <DockPanel Grid.Row="2" Margin="24,0,24,12">
    <TextBlock Text="{Binding Status}" Foreground="{StaticResource LedgerMuted}" TextWrapping="Wrap" FontSize="13"/>
   </DockPanel>
-  <Grid Grid.Row="4" Margin="24,0,24,20">
-   <ListView x:Name="IncomesListView" ItemsSource="{Binding Source={StaticResource IncomesSRC}}" SelectionMode="Single"
+  <Grid Grid.Row="3" Margin="24,0,24,20">
+   <ListView x:Name="IncomesListView" ItemsSource="{Binding Source={StaticResource IncomesSRC}}" SelectionMode="Extended" SelectionChanged="IncomeSelection_Changed"
     Style="{StaticResource BudgetList}" Background="Transparent" BorderThickness="0" Padding="0" ScrollViewer.HorizontalScrollBarVisibility="Disabled">
     <ListView.Resources><Style TargetType="ScrollViewer" BasedOn="{StaticResource LedgerScrollViewer}"/></ListView.Resources>
     <ListView.GroupStyle><GroupStyle><GroupStyle.ContainerStyle><Style TargetType="GroupItem">

@@ -42,6 +42,7 @@ public partial class IncomesContent : UserControl
     private Guid? notificationTarget;
     private readonly Dictionary<string, bool> expandedGroups = new(StringComparer.CurrentCultureIgnoreCase);
     private string incomeSearch = "";
+    private bool applyingIncomes;
     private long revealGeneration;
     private long incomeConnectionRevision;
     private SelectorRangeDates? periodSelector;
@@ -69,6 +70,7 @@ public partial class IncomesContent : UserControl
         context.SummaryCurrency = settings.DisplayCurrency;
         DataContext = context;
         InitializeComponent();
+        SelectionAmount.EnableSelectAll(IncomesListView);
         server.ConnectionChanged += Server_ConnectionChanged;
         settings.PropertyChanged += Settings_PropertyChanged;
         IsVisibleChanged += Incomes_IsVisibleChanged;
@@ -320,29 +322,31 @@ public partial class IncomesContent : UserControl
             return;
 
         var selectedIds = IncomesListView.SelectedItems.Cast<IncomeDisplayRow>().Select(row => row.Income.Id).ToHashSet();
-        if (previous is ObservableCollection<IncomeDisplayRow> current && current.Count == rows.Length
-            && current.Zip(rows).All(pair => pair.First.Income.Id == pair.Second.Income.Id))
+        applyingIncomes = true;
+        try
         {
-            for (var index = 0; index < rows.Length; index++)
+            if (previous is ObservableCollection<IncomeDisplayRow> current && current.Count == rows.Length
+                && current.Zip(rows).All(pair => pair.First.Income.Id == pair.Second.Income.Id))
             {
-                if (!SameRow(current[index], rows[index]))
-                    current[index] = rows[index];
+                for (var index = 0; index < rows.Length; index++)
+                    if (!SameRow(current[index], rows[index]))
+                        current[index] = rows[index];
+                context.OnPropertyChanged(nameof(IncomesContext.TotalSum));
             }
-            context.OnPropertyChanged(nameof(IncomesContext.TotalSum));
-        }
-        else
-        {
-            context.Incomes = new ObservableCollection<IncomeDisplayRow>(rows);
-        }
-        foreach (var row in context.Incomes.Where(row => selectedIds.Contains(row.Income.Id)))
-        {
-            if (IncomesListView.SelectionMode == SelectionMode.Single)
+            else
             {
-                IncomesListView.SelectedItem = row;
-                break;
+                context.Incomes = new ObservableCollection<IncomeDisplayRow>(rows);
             }
-            if (!IncomesListView.SelectedItems.Contains(row))
-                IncomesListView.SelectedItems.Add(row);
+
+            if (selectedIds.Count > 0)
+                foreach (var row in IncomesListView.Items.OfType<IncomeDisplayRow>().Where(row => selectedIds.Contains(row.Income.Id)))
+                    if (!IncomesListView.SelectedItems.Contains(row))
+                        IncomesListView.SelectedItems.Add(row);
+        }
+        finally
+        {
+            applyingIncomes = false;
+            UpdateIncomeSelection();
         }
     }
 
@@ -554,7 +558,6 @@ public partial class IncomesContent : UserControl
     {
         if (sender is not Button { Tag: IncomeDisplayRow row, ContextMenu: { } menu } button)
             return;
-        IncomesListView.SelectedItem = row;
         menu.Tag = new IncomeMenuSnapshot(row, incomeConnectionRevision);
         menu.PlacementTarget = button;
         menu.Placement = PlacementMode.Bottom;
@@ -563,6 +566,16 @@ public partial class IncomesContent : UserControl
     }
 
     private sealed record IncomeMenuSnapshot(IncomeDisplayRow Row, long ConnectionRevision);
+
+    private void IncomeSelection_Changed(object sender, SelectionChangedEventArgs e)
+    {
+        if (!applyingIncomes && ReferenceEquals(e.Source, sender))
+            UpdateIncomeSelection();
+    }
+
+    private void UpdateIncomeSelection() =>
+        SelectionAmount.Show(SelectionTotal, SelectionTotalText, IncomesListView.SelectedItems
+            .OfType<IncomeDisplayRow>().Select(row => (row.AggregateAmount, row.AggregateCurrency)));
 
     private IncomeDisplayRow? GetIncomeMenuRow(object sender)
     {

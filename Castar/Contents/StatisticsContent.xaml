@@ -22,21 +22,16 @@
             <Setter Property="Height" Value="240"/>
         </Style>
     </UserControl.Resources>
-    <Grid>
+    <Grid Margin="0,16,0,0">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto"/>
             <RowDefinition Height="Auto"/>
             <RowDefinition/>
         </Grid.RowDefinitions>
-        <Border Style="{StaticResource BudgetHeaderSurface}">
-          <DockPanel LastChildFill="False">
-            <TextBlock DockPanel.Dock="Left" Text="Статистика" Style="{StaticResource BudgetHeaderTitle}"/>
-            <c:CastarComboBox x:Name="CurrencyPicker" DockPanel.Dock="Right" MinWidth="88" Margin="12,0,0,0"
-                                VerticalAlignment="Center"
-                                Visibility="Collapsed" AutomationProperties.Name="Валюта статистики"
-                                SelectionChanged="CurrencyPicker_SelectionChanged"/>
-          </DockPanel>
-        </Border>
+        <c:CastarComboBox x:Name="CurrencyPicker" MinWidth="88" Margin="24,4,24,12"
+                          HorizontalAlignment="Right" VerticalAlignment="Center"
+                          Visibility="Collapsed" AutomationProperties.Name="Валюта статистики"
+                          SelectionChanged="CurrencyPicker_SelectionChanged"/>
         <TextBlock x:Name="MissingAmounts" Grid.Row="1" Margin="{StaticResource BudgetStatusMargin}"
                    Foreground="{DynamicResource Warning.Svg.Brush}" TextWrapping="Wrap"
                    AutomationProperties.LiveSetting="Polite" Visibility="Collapsed"/>

@@ -65,6 +65,8 @@ public partial class PurchasesContent : UserControl
         this.settings = settings;
         this.exchangeRates = exchangeRates;
         InitializeComponent();
+        SelectionAmount.EnableSelectAll(PurchasesList);
+        SelectionAmount.EnableSelectAll(ItemsList);
         purchaseView = CollectionViewSource.GetDefaultView(purchases);
         purchaseView.Filter = PurchaseMatches;
         PurchasesList.ItemsSource = purchaseView;
@@ -314,7 +316,7 @@ public partial class PurchasesContent : UserControl
         if (purchases.Count == rows.Length && purchases.Zip(rows).All(pair => pair.First.EquivalentTo(pair.Second)))
             return;
 
-        var selectedId = (PurchasesList.SelectedItem as PurchaseRow)?.Id;
+        var selectedIds = PurchasesList.SelectedItems.OfType<PurchaseRow>().Select(row => row.Id).ToHashSet();
         var current = purchases.ToDictionary(row => row.Id);
         var receivedIds = rows.Select(row => row.Id).ToHashSet();
         applyingPurchases = true;
@@ -342,12 +344,15 @@ public partial class PurchasesContent : UserControl
                 purchases[index] = row;
             }
 
-            if ((PurchasesList.SelectedItem as PurchaseRow)?.Id != selectedId)
-                PurchasesList.SelectedItem = purchases.FirstOrDefault(purchase => purchase.Id == selectedId);
+            if (selectedIds.Count > 0)
+                foreach (var row in PurchasesList.Items.OfType<PurchaseRow>().Where(row => selectedIds.Contains(row.Id)))
+                    if (!PurchasesList.SelectedItems.Contains(row))
+                        PurchasesList.SelectedItems.Add(row);
         }
         finally
         {
             applyingPurchases = false;
+            UpdatePurchaseSelection();
             UpdateEmptyPurchases();
         }
     }
@@ -372,8 +377,22 @@ public partial class PurchasesContent : UserControl
 
     private async void PurchasesList_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
-        if (!applyingPurchases)
-            await LoadSelectionAsync();
+        if (applyingPurchases || !ReferenceEquals(e.Source, sender))
+            return;
+        UpdatePurchaseSelection();
+        await LoadSelectionAsync();
+    }
+
+    private void UpdatePurchaseSelection() =>
+        SelectionAmount.Show(SelectionTotal, SelectionTotalText, PurchasesList.SelectedItems.OfType<PurchaseRow>()
+            .Select(row => (row.AmountWarning is null ? (decimal?)row.DisplayTotal : null, row.SelectionCurrency)));
+
+    private void ItemsSelection_Changed(object sender, SelectionChangedEventArgs e)
+    {
+        if (!ReferenceEquals(e.Source, sender))
+            return;
+        SelectionAmount.Show(GoodsSelectionTotal, GoodsSelectionTotalText, ItemsList.SelectedItems.OfType<ItemRow>()
+            .Select(row => (row.SelectionTotal, row.SelectionCurrency)));
     }
 
     private void CancelDetails()
@@ -727,11 +746,16 @@ public partial class PurchasesContent : UserControl
             ? HistoricalExchangeRates.ConvertAmount(Source.TotalSum, value) : Source.TotalSum;
         public MoneyAmountDisplay Amount { get; } = FormatAmount(source.TotalSum, source.Currency, target, rate);
         public string? AmountWarning { get; } = GetAmountWarning(source, target, rate);
+        public string? SelectionCurrency => Target.Length == 0 ? Source.Currency : Target;
 
         public ItemRow[] Items { get; } = source.Items.Select(item => new ItemRow(source.Id, item, source.Currency, source.Revision,
             source.Items.Count == 1,
             FormatAmount(item.Price, source.Currency, target, rate),
-            FormatAmount(item.Sum, source.Currency, target, rate))).ToArray();
+            FormatAmount(item.Sum, source.Currency, target, rate),
+            GetAmountWarning(source, target, rate) is null
+                ? (decimal?)(rate is { } value && source.Currency != target
+                    ? HistoricalExchangeRates.ConvertAmount(item.Sum, value) : item.Sum) : null,
+            target.Length == 0 ? source.Currency : target)).ToArray();
 
         public bool EquivalentTo(PurchaseRow other) => Target == other.Target && Rate == other.Rate
             && (Source with { Items = other.Source.Items }) == other.Source
@@ -765,7 +789,7 @@ public partial class PurchasesContent : UserControl
     }
 
     private sealed record ItemRow(Guid PurchaseId, PurchaseItemDto Source, string? Currency, long? Revision,
-        bool IsLast, MoneyAmountDisplay Price, MoneyAmountDisplay Sum)
+        bool IsLast, MoneyAmountDisplay Price, MoneyAmountDisplay Sum, decimal? SelectionTotal, string? SelectionCurrency)
     {
         public Guid Id => Source.Id;
         public string Name => Source.Name;

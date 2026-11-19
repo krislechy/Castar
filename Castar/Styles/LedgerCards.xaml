@@ -93,11 +93,43 @@
  </Style>
  <Style x:Key="LedgerCardRow" TargetType="ListViewItem" BasedOn="{StaticResource BudgetListItem}">
   <Setter Property="Margin" Value="0"/><Setter Property="Padding" Value="10,13"/><Setter Property="BorderThickness" Value="0,1,0,0"/>
-  <Setter Property="BorderBrush" Value="{StaticResource LedgerBorder}"/><Setter Property="Border.CornerRadius" Value="0"/><Setter Property="MinHeight" Value="70"/><Setter Property="ContextMenu" Value="{x:Null}"/>
+  <Setter Property="Background" Value="Transparent"/><Setter Property="BorderBrush" Value="{StaticResource LedgerBorder}"/><Setter Property="Border.CornerRadius" Value="0"/><Setter Property="MinHeight" Value="70"/><Setter Property="ContextMenu" Value="{x:Null}"/>
   <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="ListViewItem">
-   <Border x:Name="Row" Background="Transparent" Padding="{TemplateBinding Padding}" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}"><ContentPresenter HorizontalAlignment="Stretch" VerticalAlignment="Center"/></Border>
+   <Border Background="{TemplateBinding Background}" Padding="{TemplateBinding Padding}" BorderBrush="{TemplateBinding BorderBrush}"
+    BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="{TemplateBinding Border.CornerRadius}">
+    <ContentPresenter HorizontalAlignment="Stretch" VerticalAlignment="Center"/>
+   </Border>
   </ControlTemplate></Setter.Value></Setter>
-  <Style.Triggers><Trigger Property="IsKeyboardFocusWithin" Value="True"><Setter Property="BorderBrush" Value="{StaticResource LedgerBorder}"/></Trigger></Style.Triggers>
+  <Style.Triggers>
+   <Trigger Property="IsMouseOver" Value="True"><Setter Property="Background" Value="{DynamicResource Main.MouseOver}"/></Trigger>
+   <Trigger Property="IsSelected" Value="True"><Setter Property="Background" Value="{DynamicResource Main.MousePressed}"/></Trigger>
+  </Style.Triggers>
+ </Style>
+
+ <Style x:Key="LedgerSummaryIcon" TargetType="ContentControl">
+  <Setter Property="Width" Value="64"/><Setter Property="Height" Value="64"/>
+  <Setter Property="Margin" Value="0,0,20,0"/><Setter Property="VerticalAlignment" Value="Center"/>
+  <Setter Property="Foreground" Value="{DynamicResource Highlight}"/>
+  <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="ContentControl">
+   <Grid>
+    <Ellipse Fill="{DynamicResource Main.Background.lvl3}"/>
+    <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+   </Grid>
+  </ControlTemplate></Setter.Value></Setter>
+ </Style>
+
+ <Style x:Key="LedgerSelectionTotal" TargetType="Border">
+  <Setter Property="Background" Value="{StaticResource LedgerSurface}"/>
+  <Setter Property="BorderBrush" Value="{StaticResource LedgerBorder}"/>
+  <Setter Property="BorderThickness" Value="1"/><Setter Property="CornerRadius" Value="6"/>
+  <Setter Property="Padding" Value="12,8"/><Setter Property="VerticalAlignment" Value="Center"/>
+  <Setter Property="Visibility" Value="Collapsed"/>
+ </Style>
+ <Style x:Key="LedgerSelectionTotalText" TargetType="TextBlock">
+  <Setter Property="Foreground" Value="{DynamicResource Foreground.White}"/>
+  <Setter Property="FontWeight" Value="SemiBold"/>
+  <Setter Property="TextWrapping" Value="Wrap"/>
+  <Setter Property="AutomationProperties.LiveSetting" Value="Polite"/>
  </Style>
 
  <Style x:Key="LedgerContextMenu" TargetType="ContextMenu" BasedOn="{StaticResource {x:Type ContextMenu}}">

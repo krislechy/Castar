@@ -12,17 +12,21 @@ internal static class BotMenu
     public const string Income = "income";
     public const string Me = "me";
 
+    private static readonly BotCommand PurchaseCommand = new() { Command = Purchase, Description = "Добавить покупку" };
+    private static readonly BotCommand CancelCommand = new() { Command = Cancel, Description = "Отменить ввод" };
+    private static readonly BotCommand InfoCommand = new() { Command = Info, Description = "Команды и форматы ввода" };
+
     private static readonly BotCommand[] CommonCommands =
     [
-        new() { Command = Purchase, Description = "Добавить покупку" },
-        new() { Command = Cancel, Description = "Отменить ввод" },
-        new() { Command = Info, Description = "Команды и форматы ввода" }
+        PurchaseCommand, CancelCommand, InfoCommand
     ];
 
     private static readonly BotCommand[] PrivateCommands =
     [
-        .. CommonCommands,
+        PurchaseCommand,
         new() { Command = Income, Description = "Добавить доход" },
+        CancelCommand,
+        InfoCommand,
         new() { Command = Me, Description = "Показать мой Telegram ID" }
     ];
 

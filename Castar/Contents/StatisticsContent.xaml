@@ -6,21 +6,38 @@
              Loaded="Statistics_Loaded" Unloaded="Statistics_Unloaded"
              IsVisibleChanged="Statistics_IsVisibleChanged">
     <UserControl.Resources>
-        <Style x:Key="StatisticsChartSurface" TargetType="Border">
-            <Setter Property="Margin" Value="4"/>
-            <Setter Property="Padding" Value="16"/>
-            <Setter Property="CornerRadius" Value="12"/>
-            <Setter Property="Background" Value="{DynamicResource Main.Background.lvl1}"/>
-        </Style>
-        <Style x:Key="StatisticsChartTitle" TargetType="TextBlock" BasedOn="{StaticResource BudgetHeaderTitle}">
-            <Setter Property="Margin" Value="0,0,0,12"/>
-            <Setter Property="FontSize" Value="16"/>
-            <Setter Property="MinHeight" Value="32"/>
-            <Setter Property="VerticalAlignment" Value="Center"/>
-        </Style>
-        <Style x:Key="StatisticsChartPlot" TargetType="Grid">
-            <Setter Property="Height" Value="240"/>
-        </Style>
+        <ResourceDictionary>
+            <ResourceDictionary.MergedDictionaries>
+                <ResourceDictionary Source="/Castar;component/Styles/LedgerCards.xaml"/>
+            </ResourceDictionary.MergedDictionaries>
+            <Style x:Key="StatisticsChartSurface" TargetType="Border">
+                <Setter Property="Margin" Value="4"/>
+                <Setter Property="Padding" Value="16"/>
+                <Setter Property="CornerRadius" Value="12"/>
+                <Setter Property="Background" Value="{DynamicResource Main.Background.lvl1}"/>
+            </Style>
+            <Style x:Key="StatisticsChartTitle" TargetType="TextBlock" BasedOn="{StaticResource BudgetHeaderTitle}">
+                <Setter Property="Margin" Value="0"/>
+                <Setter Property="FontSize" Value="16"/>
+                <Setter Property="TextWrapping" Value="Wrap"/>
+            </Style>
+            <Style x:Key="StatisticsChartPlot" TargetType="Grid">
+                <Setter Property="Height" Value="240"/>
+            </Style>
+            <Style x:Key="StatisticsTotalAmount" TargetType="TextBlock">
+                <Setter Property="FontSize" Value="24"/>
+                <Setter Property="FontWeight" Value="SemiBold"/>
+                <Setter Property="Foreground" Value="{DynamicResource Foreground.White}"/>
+                <Style.Triggers>
+                    <DataTrigger Binding="{Binding Sign}" Value="1">
+                        <Setter Property="Foreground" Value="{DynamicResource Button.Foreground.Green}"/>
+                    </DataTrigger>
+                    <DataTrigger Binding="{Binding Sign}" Value="-1">
+                        <Setter Property="Foreground" Value="{DynamicResource Foreground.Negative}"/>
+                    </DataTrigger>
+                </Style.Triggers>
+            </Style>
+        </ResourceDictionary>
     </UserControl.Resources>
     <Grid Margin="0,16,0,0">
         <Grid.RowDefinitions>
@@ -65,8 +82,7 @@
                                         <TextBlock Text="{Binding Label}" Style="{StaticResource GrayTextBlock}" TextWrapping="Wrap"/>
                                     </DockPanel>
                                     <Viewbox Grid.Row="1" Stretch="Uniform" StretchDirection="DownOnly" HorizontalAlignment="Left" MaxHeight="32">
-                                        <TextBlock Text="{Binding Amount}" FontSize="24" FontWeight="SemiBold"
-                                                   Foreground="{DynamicResource Foreground.White}"/>
+                                        <TextBlock Text="{Binding Amount}" Style="{StaticResource StatisticsTotalAmount}"/>
                                     </Viewbox>
                                     <ProgressBar Grid.RowSpan="2" Height="2" VerticalAlignment="Bottom" IsIndeterminate="True">
                                         <ProgressBar.Style><Style TargetType="ProgressBar" BasedOn="{StaticResource {x:Type ProgressBar}}">
@@ -82,26 +98,29 @@
                 </Grid>
                 <Grid x:Name="Charts">
                     <Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition x:Name="RemainingColumn"/></Grid.ColumnDefinitions>
-                    <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
-                    <c:StatisticsChartCard x:Name="TimelinePanel" Title="Динамика за период">
-                        <c:StatisticsChartCard.HeaderAction>
-                            <c:CastarComboBox x:Name="TimelineSeriesPicker" SelectedIndex="0" MinWidth="132"
-                                AutomationProperties.Name="Ряды графика" SelectionChanged="TimelineSeriesPicker_SelectionChanged">
-                                <ComboBoxItem Content="Доходы и расходы"/>
-                                <ComboBoxItem x:Name="TimelineIncomesOnly" Content="Доходы"/>
-                                <ComboBoxItem x:Name="TimelineExpensesOnly" Content="Расходы"/>
-                            </c:CastarComboBox>
-                        </c:StatisticsChartCard.HeaderAction>
-                    </c:StatisticsChartCard>
-                    <c:StatisticsChartCard x:Name="RemainingPanel" Grid.Column="1" Title="Динамика остатка средств"/>
-                    <c:StatisticsChartCard x:Name="MonthlyPanel" Grid.Row="1" Title="Доходы и расходы по месяцам"/>
-                    <c:StatisticsChartCard x:Name="BurnPanel" Grid.Row="1" Grid.Column="1" Title="Скорость расходования бюджета">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                    </Grid.RowDefinitions>
+                    <c:StatisticsChartCard x:Name="RemainingPanel" Title="Динамика остатка средств"
+                                           HeaderIcon="M2,4 V19 H21 M3,16 L7,11 11,14 19,6 M14,6 H19 V11"
+                                           HeaderIconFill="M3,16 L7,11 11,14 19,6 V19 H3 Z"/>
+                    <c:StatisticsChartCard x:Name="BurnPanel" Grid.Column="1" Title="Скорость расходования бюджета"
+                                           HeaderIcon="M2,17 V14 A9,9 0 0 1 20,14 V17 M2,17 H5 M17,17 H20 M11,14 L16,9 M8,18 H14"
+                                           HeaderIconFill="M3,17 V14 A8,8 0 0 1 19,14 V17 Z">
                         <c:StatisticsChartCard.HeaderAction>
                             <c:CastarComboBox x:Name="BurnMonthPicker" MinWidth="110" DisplayMemberPath="Label"
                                 AutomationProperties.Name="Месяц расходования бюджета" SelectionChanged="BurnMonthPicker_SelectionChanged"/>
                         </c:StatisticsChartCard.HeaderAction>
                     </c:StatisticsChartCard>
-                    <c:StatisticsChartCard x:Name="HeatPanel" Grid.Row="2" Grid.ColumnSpan="2" Title="Тепловая карта расходов"/>
+                    <c:StatisticsChartCard x:Name="MonthlyPanel" Grid.Row="1" Title="Доходы и расходы по месяцам"
+                                           HeaderIcon="M2,19 H20 M4,19 V10 H7 V19 M10,19 V4 H13 V19 M16,19 V7 H19 V19"
+                                           HeaderIconFill="M4,10 H7 V19 H4 Z M10,4 H13 V19 H10 Z M16,7 H19 V19 H16 Z"/>
+                    <c:StatisticsChartCard x:Name="HeatPanel" Grid.Row="1" Grid.Column="1" Title="Тепловая карта расходов"
+                                           HeaderIcon="M6,2 V6 M16,2 V6 M2,8 H20 M5,4 H17 Q20,4 20,7 V17 Q20,20 17,20 H5 Q2,20 2,17 V7 Q2,4 5,4 Z M5.5,11 H9 V13 H5.5 Z M13,15 H16.5 V17 H13 Z"
+                                           HeaderIconFill="M5.5,11 H9 V13 H5.5 Z M13,10.5 H17 V13.5 H13 Z M5,14.5 H9.5 V17.5 H5 Z M13,15 H16.5 V17 H13 Z"/>
                 </Grid>
             </StackPanel>
           </ScrollViewer>

@@ -50,30 +50,7 @@
       <TextBlock x:Name="TotalIncomeAmountText" Text="{Binding TotalSum}" Foreground="{DynamicResource Foreground.White}" FontSize="30" FontWeight="SemiBold"/>
      </Viewbox>
     </StackPanel>
-    <StackPanel Grid.Column="2" VerticalAlignment="Center" HorizontalAlignment="Right" MaxWidth="300">
-     <Border x:Name="ComparisonBadge" CornerRadius="8" BorderThickness="1" Padding="12,5" HorizontalAlignment="Right">
-      <Border.Style><Style TargetType="Border">
-       <Setter Property="Background" Value="{DynamicResource Main.Background.lvl3}"/><Setter Property="BorderBrush" Value="{StaticResource LedgerBorder}"/>
-       <Style.Triggers>
-        <DataTrigger Binding="{Binding IsComparisonPositive}" Value="True"><Setter Property="Background" Value="{DynamicResource Main.Background.lvl3}"/><Setter Property="BorderBrush" Value="{DynamicResource Button.Foreground.Green}"/></DataTrigger>
-        <DataTrigger Binding="{Binding IsComparisonNegative}" Value="True"><Setter Property="Background" Value="{DynamicResource Main.Background.lvl3}"/><Setter Property="BorderBrush" Value="{DynamicResource Warning.Svg.Brush}"/></DataTrigger>
-        <DataTrigger Binding="{Binding ComparisonAvailable}" Value="False"><Setter Property="Background" Value="{DynamicResource Main.Background.lvl3}"/><Setter Property="BorderBrush" Value="{StaticResource LedgerBorder}"/></DataTrigger>
-        <DataTrigger Binding="{Binding IsComparisonLoading}" Value="True"><Setter Property="Opacity" Value="0.6"/></DataTrigger>
-       </Style.Triggers>
-      </Style></Border.Style>
-      <TextBlock x:Name="IncomeComparisonText" Text="{Binding ComparisonText}" FontSize="16" FontWeight="SemiBold" TextWrapping="Wrap" TextAlignment="Right">
-       <TextBlock.Style><Style TargetType="TextBlock">
-        <Setter Property="Foreground" Value="{StaticResource LedgerMuted}"/>
-        <Style.Triggers>
-         <DataTrigger Binding="{Binding IsComparisonPositive}" Value="True"><Setter Property="Foreground" Value="{StaticResource LedgerIncome}"/></DataTrigger>
-         <DataTrigger Binding="{Binding IsComparisonNegative}" Value="True"><Setter Property="Foreground" Value="{DynamicResource Warning.Svg.Brush}"/></DataTrigger>
-         <DataTrigger Binding="{Binding ComparisonAvailable}" Value="False"><Setter Property="Foreground" Value="{StaticResource LedgerMuted}"/></DataTrigger>
-        </Style.Triggers>
-       </Style></TextBlock.Style>
-      </TextBlock>
-     </Border>
-     <TextBlock x:Name="IncomeComparisonHint" Text="{Binding ComparisonHint}" Foreground="{StaticResource LedgerMuted}" FontSize="12" TextAlignment="Right" TextWrapping="Wrap" Margin="0,6,0,0"/>
-    </StackPanel>
+    <ContentControl Grid.Column="2" Style="{StaticResource LedgerPeriodComparison}"/>
    </Grid>
   </Border>
   <DockPanel Grid.Row="1" Margin="24,0,24,12">
@@ -107,7 +84,7 @@
       <Expander Style="{StaticResource LedgerGroupExpander}" Header="{Binding}" HeaderTemplate="{StaticResource IncomeGroupHeader}" Loaded="IncomeGroup_Loaded" Expanded="IncomeGroup_Expanded" Collapsed="IncomeGroup_Collapsed"><ItemsPresenter/></Expander>
      </ControlTemplate></Setter.Value></Setter>
     </Style></GroupStyle.ContainerStyle></GroupStyle></ListView.GroupStyle>
-    <ListView.ItemContainerStyle><Style TargetType="ListViewItem" BasedOn="{StaticResource LedgerCardRow}"><EventSetter Event="MouseDoubleClick" Handler="IncomesListView_MouseDoubleClick"/></Style></ListView.ItemContainerStyle>
+    <ListView.ItemContainerStyle><Style TargetType="ListViewItem" BasedOn="{StaticResource LedgerIncomeRow}"><EventSetter Event="MouseDoubleClick" Handler="IncomesListView_MouseDoubleClick"/></Style></ListView.ItemContainerStyle>
     <ListView.ItemTemplate><DataTemplate>
      <Grid>
       <Grid.ColumnDefinitions><ColumnDefinition Width="124"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="48"/></Grid.ColumnDefinitions>

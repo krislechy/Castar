@@ -32,6 +32,8 @@ public partial class PurchasesContent : UserControl
     private ICollectionView? purchaseView;
     private string purchaseSearch = "";
     private CancellationTokenSource? activeRequest;
+    private CancellationTokenSource? comparisonRequest;
+    private readonly PeriodComparison comparison = new(increaseIsFavorable: false);
     private CancellationTokenSource? detailsRequest;
     private CancellationTokenSource? avatarRequest;
     private CancellationTokenSource? purchaseAction;
@@ -65,6 +67,7 @@ public partial class PurchasesContent : UserControl
         this.settings = settings;
         this.exchangeRates = exchangeRates;
         InitializeComponent();
+        ExpenseComparison.DataContext = comparison;
         SelectionAmount.EnableSelectAll(PurchasesList);
         SelectionAmount.EnableSelectAll(ItemsList);
         purchaseView = CollectionViewSource.GetDefaultView(purchases);
@@ -101,6 +104,8 @@ public partial class PurchasesContent : UserControl
     private void StopListening()
     {
         listeningForChanges = false;
+        if (comparisonRequest is not null)
+            dataStale = true;
         CancelRefresh();
         Progress.IsLoading = false;
         purchaseAction?.Cancel();
@@ -146,6 +151,7 @@ public partial class PurchasesContent : UserControl
         avatarRequest?.Cancel();
         hasLoaded = false;
         ShowPurchases([], "");
+        comparison.SetComparison(null, settings.DisplayCurrency);
         _ = LoadSelectionAsync();
         ShowStatus("");
         Progress.IsLoading = false;
@@ -154,6 +160,7 @@ public partial class PurchasesContent : UserControl
     private void CancelRefresh()
     {
         refreshPending = false;
+        comparisonRequest?.Cancel();
         var previous = activeRequest;
         activeRequest = null;
         previous?.Cancel();
@@ -182,6 +189,9 @@ public partial class PurchasesContent : UserControl
         CancelRefresh();
         dataStale = true;
         var range = Dates.RangeDate;
+        var target = settings.DisplayCurrency;
+        if (!hasLoaded)
+            comparison.SetComparison(null, target);
         if (range.StartDate > range.EndDate)
         {
             ShowStatus("Дата начала позже даты окончания.");
@@ -200,14 +210,12 @@ public partial class PurchasesContent : UserControl
 
             rows = rows.OrderBy(purchase => purchase.AddedOnUtc?.UtcDateTime ?? purchase.AddedOn)
                 .ThenBy(purchase => purchase.Id).ToArray();
-            var target = settings.DisplayCurrency;
-            var dated = rows.Select(row => (row.Currency, Date: OperationDate(row))).Where(row => row.Date.HasValue);
-            var rates = await exchangeRates.GetAsync(dated.Select(row => (row.Currency, row.Date!.Value)), target, request.Token);
+            var views = await ConvertPurchasesAsync(rows, target, request.Token);
             if (request != activeRequest || refreshPending)
                 return;
-            var views = rows.Select(row => new PurchaseRow(row, target, RateFor(row, target, rates), null)).ToArray();
             dataStale = false;
             ShowPurchases(views, target);
+            _ = RefreshComparisonAsync(views, range, target);
             hasLoaded = true;
             ShowStatus("");
             _ = RefreshOwnerAvatarsAsync(rows);
@@ -231,6 +239,59 @@ public partial class PurchasesContent : UserControl
                     _ = RefreshAsync();
                 else
                     Progress.IsLoading = false;
+            }
+        }
+    }
+
+    private async Task<PurchaseRow[]> ConvertPurchasesAsync(PurchaseDto[] rows, string target, CancellationToken token)
+    {
+        var dated = rows.Select(row => (row.Currency, Date: OperationDate(row))).Where(row => row.Date.HasValue);
+        var rates = await exchangeRates.GetAsync(dated.Select(row => (row.Currency, row.Date!.Value)), target, token);
+        token.ThrowIfCancellationRequested();
+        return rows.Select(row => new PurchaseRow(row, target, RateFor(row, target, rates), null)).ToArray();
+    }
+
+    private async Task RefreshComparisonAsync(PurchaseRow[] rows, RangeDate range, string target)
+    {
+        comparisonRequest?.Cancel();
+        using var request = new CancellationTokenSource();
+        comparisonRequest = request;
+        comparison.IsComparisonLoading = true;
+        try
+        {
+            if (!HistoricalExchangeRates.IsCurrencyCode(target) || rows.Any(row => row.AmountWarning is not null))
+            {
+                comparison.SetComparison(null, target, "Для сравнения нужны валюта и курсы");
+                return;
+            }
+            if (PeriodComparison.PreviousPeriod(range.StartDate, range.EndDate) is not { } previous)
+            {
+                comparison.SetComparison(null, target, "Нет предыдущего периода");
+                return;
+            }
+
+            var summaries = await server.GetPurchaseSummariesAsync(previous.StartDate, previous.EndDate, request.Token);
+            var previousRows = await ConvertPurchasesAsync(summaries, target, request.Token);
+            if (request.IsCancellationRequested || comparisonRequest != request)
+                return;
+
+            if (previousRows.Any(row => row.AmountWarning is not null))
+                comparison.SetComparison(null, target, "Для предыдущего периода нет валюты или курса");
+            else
+                comparison.SetComparison(rows.Sum(row => row.DisplayTotal) - previousRows.Sum(row => row.DisplayTotal), target);
+        }
+        catch (OperationCanceledException) when (request.IsCancellationRequested) { }
+        catch (Exception error) when (CastarServerClient.IsConnectionError(error) || error is OverflowException)
+        {
+            if (comparisonRequest == request && !request.IsCancellationRequested)
+                comparison.SetComparison(null, target, "Не удалось сравнить периоды");
+        }
+        finally
+        {
+            if (comparisonRequest == request)
+            {
+                comparisonRequest = null;
+                comparison.IsComparisonLoading = false;
             }
         }
     }

@@ -25,6 +25,7 @@
     </Color>
     <SolidColorBrush x:Key="Foreground.Gray" Color="#8d939e"/>
     <SolidColorBrush x:Key="Foreground.White" Color="#f5f5f5"/>
+    <SolidColorBrush x:Key="Foreground.Negative" Color="#FFFF7777"/>
     <SolidColorBrush x:Key="Background.Disabled" Color="#338C8C8C"/>
     <SolidColorBrush x:Key="Main.Background.lvl1" Color="#18191d"/>
     <SolidColorBrush x:Key="Main.Background.lvl2" Color="#282e33"/>

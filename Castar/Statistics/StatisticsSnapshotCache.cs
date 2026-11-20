@@ -193,13 +193,12 @@ internal sealed class StatisticsSnapshotCache
     }
 
     private static long PointCount(StatisticsSnapshot snapshot) => snapshot.Currencies.Sum(row =>
-        (long)row.Points.Count + row.DailyPoints.Count + row.RemainingPoints.Count + row.MonthlyPoints.Count + 1);
+        (long)row.DailyPoints.Count + row.RemainingPoints.Count + row.MonthlyPoints.Count + 1);
 
     private static bool CanStore(StatisticsSnapshot snapshot) => snapshot.HasRecords
         && snapshot.UnconvertedIncomes == 0 && snapshot.UnconvertedExpenses == 0
         && snapshot.Currencies.Count > 0 && snapshot.Currencies.All(row => row.RemainingWarning.Length == 0
             && row.Income.HasValue && row.Expenses.HasValue && row.Balance.HasValue
-            && row.Points.All(point => point.Income.HasValue && point.Expenses.HasValue)
             && row.DailyPoints.All(point => point.Income.HasValue && point.Expenses.HasValue)
             && row.RemainingPoints.All(point => point.Amount.HasValue)
             && row.MonthlyPoints.All(point => point.Income.HasValue && point.Expenses.HasValue));

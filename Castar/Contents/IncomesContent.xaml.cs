@@ -244,7 +244,7 @@ public partial class IncomesContent : UserControl
                 context.SetComparison(null, target, "Для сравнения нужны валюта и курсы");
                 return;
             }
-            if (PreviousIncomePeriod(start, finish) is not { } previous)
+            if (PeriodComparison.PreviousPeriod(start, finish) is not { } previous)
             {
                 context.SetComparison(null, target, "Нет предыдущего периода");
                 return;
@@ -279,22 +279,6 @@ public partial class IncomesContent : UserControl
                 context.IsComparisonLoading = false;
             }
         }
-    }
-
-    internal static RangeDate? PreviousIncomePeriod(DateTime start, DateTime finish)
-    {
-        start = start.Date;
-        finish = finish.Date;
-        if (start > finish || start == DateTime.MinValue)
-            return null;
-        var months = (finish.Year - start.Year) * 12 + finish.Month - start.Month + 1;
-        if (start.Day == 1 && finish.Day == DateTime.DaysInMonth(finish.Year, finish.Month))
-        {
-            var monthsSinceMinimum = (start.Year - 1) * 12 + start.Month - 1;
-            return months > monthsSinceMinimum ? null : new RangeDate(start.AddMonths(-months), start.AddDays(-1));
-        }
-        var days = (finish - start).Days + 1;
-        return start.Ticks / TimeSpan.TicksPerDay < days ? null : new RangeDate(start.AddDays(-days), start.AddDays(-1));
     }
 
     private IncomeDisplayRow CreateRow(Income income, string target,
@@ -527,9 +511,10 @@ public partial class IncomesContent : UserControl
         var income = row.Income;
         var connection = (settings.ServerUrl, settings.ProtectedApiKey);
         var description = $"{income.Source} — {HistoricalExchangeRates.Format(income.Sum, income.Currency)}";
-        var accepted = await PopupDialog.Show($"Удалить доход?\n{description}", PopupDialog.TypeDialogEnum.Confirm,
+        var accepted = await PopupDialog.Show(description, PopupDialog.TypeDialogEnum.Confirm,
             options =>
             {
+                options.Title = "Удалить доход";
                 options.SuccessButton.SuccessConfirmButtonText = "Удалить";
                 options.SuccessButton.SuccessConfirmButtonForeground = Brushes.OrangeRed;
                 return options;
@@ -644,14 +629,10 @@ public partial class IncomesContent : UserControl
         }
     }
 
-    private sealed class IncomesContext : BaseSettingsModel
+    private sealed class IncomesContext : PeriodComparison
     {
         private bool isLoading;
         private bool hasLoaded;
-        private bool isComparisonLoading;
-        private decimal? comparison;
-        private string comparisonText = "—";
-        private string comparisonHint = "К предыдущему периоду";
         private string summaryCurrency = "";
         private string status = "";
         private IReadOnlyList<IncomeDisplayRow> incomes = [];
@@ -669,21 +650,6 @@ public partial class IncomesContent : UserControl
         {
             get => summaryCurrency;
             set { if (SetField(ref summaryCurrency, value)) OnPropertyChanged(nameof(TotalSum)); }
-        }
-        public bool IsComparisonLoading { get => isComparisonLoading; set => SetField(ref isComparisonLoading, value); }
-        public string ComparisonText { get => comparisonText; private set => SetField(ref comparisonText, value); }
-        public string ComparisonHint { get => comparisonHint; private set => SetField(ref comparisonHint, value); }
-        public bool ComparisonAvailable => comparison.HasValue;
-        public bool IsComparisonPositive => comparison > 0;
-        public bool IsComparisonNegative => comparison < 0;
-        internal void SetComparison(decimal? value, string currency, string hint = "К предыдущему периоду")
-        {
-            comparison = value;
-            ComparisonText = value is { } amount ? (amount > 0 ? "+" : "") + HistoricalExchangeRates.Format(amount, currency) : "—";
-            ComparisonHint = hint;
-            OnPropertyChanged(nameof(ComparisonAvailable));
-            OnPropertyChanged(nameof(IsComparisonPositive));
-            OnPropertyChanged(nameof(IsComparisonNegative));
         }
         public IReadOnlyList<IncomeDisplayRow> Incomes
         {

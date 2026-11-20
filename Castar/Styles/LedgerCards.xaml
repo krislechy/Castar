@@ -68,27 +68,29 @@
   <Setter Property="HorizontalContentAlignment" Value="Stretch"/><Setter Property="Margin" Value="0,0,0,16"/>
   <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="Expander">
    <Border x:Name="Surface" Background="{StaticResource LedgerSurface}" BorderBrush="{StaticResource LedgerBorder}" BorderThickness="1" CornerRadius="12" SnapsToDevicePixels="True" UseLayoutRounding="True">
-    <StackPanel>
-     <ToggleButton x:Name="HeaderToggle" IsChecked="{Binding IsExpanded, RelativeSource={RelativeSource TemplatedParent}, Mode=TwoWay}" Padding="16,12" HorizontalContentAlignment="Stretch" FocusVisualStyle="{x:Null}" AutomationProperties.Name="{Binding Header.Name, RelativeSource={RelativeSource TemplatedParent}}">
+    <Grid c:RoundedClip.Radius="11">
+     <StackPanel>
+      <ToggleButton x:Name="HeaderToggle" IsChecked="{Binding IsExpanded, RelativeSource={RelativeSource TemplatedParent}, Mode=TwoWay}" Padding="16,12" HorizontalContentAlignment="Stretch" FocusVisualStyle="{StaticResource Castar.FocusVisual}" AutomationProperties.Name="{Binding Header.Name, RelativeSource={RelativeSource TemplatedParent}}">
       <ToggleButton.Template><ControlTemplate TargetType="ToggleButton">
-       <Border x:Name="HeaderSurface" Padding="{TemplateBinding Padding}" Background="Transparent" CornerRadius="8">
+       <Border Padding="{TemplateBinding Padding}" Background="Transparent">
         <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="28"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
          <Path x:Name="Chevron" Data="M 0,0 L 8,8 L 0,16" Stroke="{DynamicResource Foreground.White}" StrokeThickness="2.5" StrokeStartLineCap="Round" StrokeEndLineCap="Round" Width="8" Height="16" Stretch="Uniform" HorizontalAlignment="Left" VerticalAlignment="Center" RenderTransformOrigin="0.5,0.5"/>
          <ContentPresenter Grid.Column="1" HorizontalAlignment="Stretch" VerticalAlignment="Center"/>
         </Grid>
        </Border>
        <ControlTemplate.Triggers>
-        <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="HeaderSurface" Property="Background" Value="{DynamicResource Main.MouseOver}"/></Trigger>
-        <Trigger Property="IsKeyboardFocused" Value="True"><Setter TargetName="HeaderSurface" Property="Background" Value="{DynamicResource Main.MouseOver}"/></Trigger>
         <Trigger Property="IsChecked" Value="True"><Setter TargetName="Chevron" Property="RenderTransform"><Setter.Value><RotateTransform Angle="90"/></Setter.Value></Setter></Trigger>
        </ControlTemplate.Triggers>
       </ControlTemplate></ToggleButton.Template>
       <ContentPresenter Content="{TemplateBinding Header}" ContentTemplate="{TemplateBinding HeaderTemplate}"/>
      </ToggleButton>
-     <Border x:Name="Body" Visibility="Collapsed" Padding="16,0,16,8" Background="Transparent"><ContentPresenter/></Border>
-    </StackPanel>
+     <Border x:Name="Body" Visibility="Collapsed" Background="Transparent"><ContentPresenter/></Border>
+     </StackPanel>
+    </Grid>
    </Border>
-   <ControlTemplate.Triggers><Trigger Property="IsExpanded" Value="True"><Setter TargetName="Body" Property="Visibility" Value="Visible"/></Trigger></ControlTemplate.Triggers>
+   <ControlTemplate.Triggers>
+    <Trigger Property="IsExpanded" Value="True"><Setter TargetName="Body" Property="Visibility" Value="Visible"/></Trigger>
+   </ControlTemplate.Triggers>
   </ControlTemplate></Setter.Value></Setter>
  </Style>
  <Style x:Key="LedgerCardRow" TargetType="ListViewItem" BasedOn="{StaticResource BudgetListItem}">
@@ -104,6 +106,45 @@
    <Trigger Property="IsMouseOver" Value="True"><Setter Property="Background" Value="{DynamicResource Main.MouseOver}"/></Trigger>
    <Trigger Property="IsSelected" Value="True"><Setter Property="Background" Value="{DynamicResource Main.MousePressed}"/></Trigger>
   </Style.Triggers>
+ </Style>
+
+ <Style x:Key="LedgerIncomeRow" TargetType="ListViewItem" BasedOn="{StaticResource LedgerCardRow}">
+  <Setter Property="Padding" Value="26,13"/>
+ </Style>
+
+ <Style x:Key="LedgerPeriodComparison" TargetType="ContentControl">
+  <Setter Property="VerticalAlignment" Value="Center"/>
+  <Setter Property="HorizontalAlignment" Value="Right"/>
+  <Setter Property="MaxWidth" Value="300"/>
+  <Setter Property="Focusable" Value="False"/>
+  <Setter Property="Template">
+   <Setter.Value>
+    <ControlTemplate TargetType="ContentControl">
+     <StackPanel>
+      <Border x:Name="Badge" Background="{DynamicResource Main.Background.lvl3}" BorderBrush="{StaticResource LedgerBorder}"
+              CornerRadius="8" BorderThickness="1" Padding="12,5" HorizontalAlignment="Right">
+       <TextBlock x:Name="Amount" Text="{Binding ComparisonText}" Foreground="{StaticResource LedgerMuted}" FontSize="16"
+                  FontWeight="SemiBold" TextWrapping="Wrap" TextAlignment="Right"/>
+      </Border>
+      <TextBlock Text="{Binding ComparisonHint}" Foreground="{StaticResource LedgerMuted}" FontSize="12"
+                 TextAlignment="Right" TextWrapping="Wrap" Margin="0,6,0,0"/>
+     </StackPanel>
+     <ControlTemplate.Triggers>
+      <DataTrigger Binding="{Binding IsComparisonFavorable}" Value="True">
+       <Setter TargetName="Badge" Property="BorderBrush" Value="{StaticResource LedgerIncome}"/>
+       <Setter TargetName="Amount" Property="Foreground" Value="{StaticResource LedgerIncome}"/>
+      </DataTrigger>
+      <DataTrigger Binding="{Binding IsComparisonUnfavorable}" Value="True">
+       <Setter TargetName="Badge" Property="BorderBrush" Value="{DynamicResource Warning.Svg.Brush}"/>
+       <Setter TargetName="Amount" Property="Foreground" Value="{DynamicResource Warning.Svg.Brush}"/>
+      </DataTrigger>
+      <DataTrigger Binding="{Binding IsComparisonLoading}" Value="True">
+       <Setter TargetName="Badge" Property="Opacity" Value="0.6"/>
+      </DataTrigger>
+     </ControlTemplate.Triggers>
+    </ControlTemplate>
+   </Setter.Value>
+  </Setter>
  </Style>
 
  <Style x:Key="LedgerSummaryIcon" TargetType="ContentControl">

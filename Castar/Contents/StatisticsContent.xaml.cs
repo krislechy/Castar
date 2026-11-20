@@ -5,10 +5,12 @@ using Castar.Settings;
 using Castar.Statistics;
 using LiveChartsCore;
 using LiveChartsCore.Defaults;
+using LiveChartsCore.Drawing;
 using LiveChartsCore.Measure;
 using LiveChartsCore.SkiaSharpView;
 using LiveChartsCore.SkiaSharpView.Painting;
 using LiveChartsCore.SkiaSharpView.Painting.Effects;
+using LiveChartsCore.SkiaSharpView.Painting.ImageFilters;
 using LiveChartsCore.SkiaSharpView.WPF;
 using SkiaSharp;
 using System;
@@ -30,7 +32,6 @@ public partial class StatisticsContent : UserControl
 {
     private readonly BudgetStatistics statistics;
     private readonly ClientSettings settings;
-    private readonly CartesianChart timelineChart;
     private readonly CartesianChart remainingChart;
     private readonly CartesianChart monthlyChart;
     private readonly CartesianChart burnChart;
@@ -50,10 +51,10 @@ public partial class StatisticsContent : UserControl
     private CancellationTokenSource? currentBalanceRequest;
     private int currentBalanceVersion;
     private string? currentBalanceError;
-    private StatisticsCurrency? renderedCurrency;
     private StatisticsCurrency? renderedRemaining;
     private StatisticsCurrency? renderedMonthly;
     private string? renderedBurnKey;
+    private Action<Chart>? updateBurnStroke;
     private string[] currencyCodes = [];
     private string? preferredCurrency;
     private bool updatingCurrencyPicker;
@@ -84,16 +85,16 @@ public partial class StatisticsContent : UserControl
         this.statistics = statistics;
         this.settings = settings;
         InitializeComponent();
-        timelineChart = CreateChart("График доходов и расходов за период", true);
         remainingChart = CreateChart("Динамика остатка средств");
         monthlyChart = CreateChart("Доходы и расходы по месяцам", true);
         burnChart = CreateChart("Скорость расходования бюджета", true);
+        burnChart.UpdateStarted += chart => updateBurnStroke?.Invoke(chart.CoreChart);
         HeatPanel.Plot.Height = double.NaN;
         server.ConnectionChanged += async (_, _) => { statistics.InvalidateCache(); InvalidateCurrentBalance(); await ResetAsync(); };
         settings.PropertyChanged += Settings_PropertyChanged;
     }
 
-    private StatisticsChartCard[] Cards => [TimelinePanel, RemainingPanel, MonthlyPanel, BurnPanel, HeatPanel];
+    private StatisticsChartCard[] Cards => [RemainingPanel, BurnPanel, MonthlyPanel, HeatPanel];
     private async void Statistics_Loaded(object sender, RoutedEventArgs e) => await StartAsync();
     private void Statistics_Unloaded(object sender, RoutedEventArgs e) => Stop();
     private async void Statistics_IsVisibleChanged(object sender, DependencyPropertyChangedEventArgs e)
@@ -125,12 +126,11 @@ public partial class StatisticsContent : UserControl
         var wide = BudgetContent.ActualWidth >= 1100;
         Totals.Tag = wide ? 4 : 2;
         RemainingColumn.Width = wide ? new GridLength(1, GridUnitType.Star) : new GridLength(0);
-        Grid.SetColumn(RemainingPanel, wide ? 1 : 0);
-        Grid.SetRow(RemainingPanel, wide ? 0 : 1);
-        Grid.SetRow(MonthlyPanel, wide ? 1 : 2);
         Grid.SetColumn(BurnPanel, wide ? 1 : 0);
-        Grid.SetRow(BurnPanel, wide ? 1 : 3);
-        Grid.SetRow(HeatPanel, wide ? 2 : 4);
+        Grid.SetRow(BurnPanel, wide ? 0 : 1);
+        Grid.SetRow(MonthlyPanel, wide ? 1 : 2);
+        Grid.SetColumn(HeatPanel, wide ? 1 : 0);
+        Grid.SetRow(HeatPanel, wide ? 1 : 3);
     }
     private async void Dates_DateRangeChanged(object? sender, EventArgs e)
     {
@@ -157,9 +157,9 @@ public partial class StatisticsContent : UserControl
         CancelRefresh();
         dataStale = true;
         snapshot = remainingSnapshot = baselineSnapshot = null;
-        renderedCurrency = renderedRemaining = renderedMonthly = null;
+        renderedRemaining = renderedMonthly = null;
         renderedBurnKey = null;
-        DrawTotals();
+        DrawPeriodTotals();
         foreach (var card in Cards) card.Reset();
         return listeningForChanges ? RefreshAsync() : Task.CompletedTask;
     }
@@ -241,7 +241,10 @@ public partial class StatisticsContent : UserControl
         {
             FormatTotal("Доходы", period?.Income, period?.Currency ?? code),
             FormatTotal("Расходы", period?.Expenses, period?.Currency ?? code),
-            FormatTotal("Разница", period?.Balance, period?.Currency ?? code),
+            FormatTotal("Итог за период", period?.Balance, period?.Currency ?? code) with
+            {
+                Sign = Math.Sign(period?.Balance ?? 0m)
+            },
             new StatisticsTotal("Текущий остаток", amount is { } balance
                 ? HistoricalExchangeRates.Format(balance, code) : "—", warning, currentBalanceRequest is not null)
         };
@@ -300,14 +303,13 @@ public partial class StatisticsContent : UserControl
         dataStale = true;
         UpdateBurnMonths();
         var currency = settings.DisplayCurrency;
-        periodTask = statistics.LoadPeriodAsync(range.StartDate, range.EndDate, currency, request.Token);
+        periodTask = LoadPeriodAsync(range, currency, request.Token);
         var remainingTask = statistics.LoadAsync(range.StartDate, range.EndDate, currency, request.Token);
         var period = periodTask;
         var tasks = new[]
         {
-            TimelinePanel.LoadAsync(period, result => { snapshot = result; UpdateCurrencyPicker(); DrawPeriod(); }, request.Token),
-            MonthlyPanel.LoadAsync(period, result => { snapshot = result; UpdateCurrencyPicker(); DrawMonthly(); }, request.Token),
-            HeatPanel.LoadAsync(period, result => { snapshot = result; UpdateCurrencyPicker(); DrawHeatmap(); }, request.Token),
+            MonthlyPanel.LoadAsync(period, _ => DrawMonthly(), request.Token),
+            HeatPanel.LoadAsync(period, _ => DrawHeatmap(), request.Token),
             RemainingPanel.LoadAsync(remainingTask, result => { remainingSnapshot = result; UpdateCurrencyPicker(); DrawRemainingSelected(); }, request.Token),
             LoadBurnAsync(period, request.Token),
             currentBalance
@@ -328,6 +330,16 @@ public partial class StatisticsContent : UserControl
             completion.TrySetResult();
         }
     }
+    private async Task<StatisticsSnapshot> LoadPeriodAsync(RangeDate range, string currency, CancellationToken token)
+    {
+        var result = await statistics.LoadPeriodAsync(range.StartDate, range.EndDate, currency, token);
+        token.ThrowIfCancellationRequested();
+        snapshot = result;
+        UpdateCurrencyPicker();
+        DrawPeriodTotals();
+        return result;
+    }
+
     private void UpdateCurrencyPicker()
     {
         var codes = (snapshot?.Currencies ?? []).Concat(remainingSnapshot?.Currencies ?? [])
@@ -343,8 +355,8 @@ public partial class StatisticsContent : UserControl
         updatingCurrencyPicker = false;
         if (previous != currency)
         {
-            renderedCurrency = renderedRemaining = null;
-            DrawPeriod();
+            renderedRemaining = null;
+            DrawTotals();
             DrawMonthly();
             DrawHeatmap();
             DrawBurn();
@@ -357,35 +369,20 @@ public partial class StatisticsContent : UserControl
     {
         if (updatingCurrencyPicker) return;
         preferredCurrency = SelectedCurrency;
-        renderedCurrency = renderedRemaining = null;
-        DrawPeriod(); DrawMonthly(); DrawHeatmap(); DrawRemainingSelected(); DrawBurn();
-        DrawTotals();
+        renderedRemaining = null;
+        DrawTotals(); DrawMonthly(); DrawHeatmap(); DrawRemainingSelected(); DrawBurn();
     }
-    private void DrawPeriod()
+    private void DrawPeriodTotals()
     {
-        var currency = PeriodCurrency;
         DrawTotals();
         MissingAmounts.Visibility = snapshot is { } data && data.UnconvertedIncomes + data.UnconvertedExpenses > 0
             ? Visibility.Visible : Visibility.Collapsed;
         if (snapshot is { } result)
             MissingAmounts.Text = $"Вне итогов из-за отсутствия валюты или курса — доходы ({result.UnconvertedIncomes}), расходы ({result.UnconvertedExpenses}).";
-        if (currency is null)
-        {
-            timelineChart.Series = [];
-            TimelinePanel.Message(snapshot?.HasRecords == true ? "Итоги недоступны." : "Нет операций за период.");
-            return;
-        }
-        if (SameCurrency(renderedCurrency, currency)) return;
-        renderedCurrency = currency;
-
-        Attach(TimelinePanel, timelineChart);
-        timelineChart.XAxes = [new Axis { Labels = currency.Points.Select(point => point.Label).ToArray(), MinStep = 1, LabelsPaint = Paint("Foreground.Gray") }];
-        timelineChart.YAxes = [AmountAxis()];
-        DrawTimelineSeries(currency);
     }
     private static bool SameCurrency(StatisticsCurrency? old, StatisticsCurrency current) => old is not null
         && old.Currency == current.Currency && old.Income == current.Income && old.Expenses == current.Expenses && old.Balance == current.Balance
-        && old.RemainingWarning == current.RemainingWarning && old.Points.SequenceEqual(current.Points)
+        && old.RemainingWarning == current.RemainingWarning
         && old.RemainingPoints.SequenceEqual(current.RemainingPoints) && old.DailyPoints.SequenceEqual(current.DailyPoints)
         && old.MonthlyPoints.SequenceEqual(current.MonthlyPoints);
     private void DrawRemainingSelected()
@@ -404,8 +401,13 @@ public partial class StatisticsContent : UserControl
         var values = points.Select((point, index) => (point, index)).Where(item => item.index % stride == 0 || item.index == points.Count - 1
             || item.index > 0 && points[item.index - 1].Amount.HasValue != item.point.Amount.HasValue)
             .Select(item => item.point.Amount is { } amount ? new ObservablePoint(item.index, (double)amount) : null).ToArray();
-        remainingChart.Series = [new LineSeries<ObservablePoint?> { Name = "Остаток", Values = values, Fill = null,
-            Stroke = Paint("Button.Foreground.Green", 2), GeometrySize = 0, EnableNullSplitting = true, LineSmoothness = 0,
+        var stroke = Paint("Button.Foreground.Green", 2);
+        var minimum = values.Min(point => point?.Y) ?? 0;
+        remainingChart.Series = [new LineSeries<ObservablePoint?> { Name = "Остаток", Values = values,
+            Fill = new LinearGradientPaint(stroke.Color.WithAlpha(64), stroke.Color.WithAlpha(0), new SKPoint(0, 0), new SKPoint(0, 1)),
+            // Keep the fill below the line even for a flat negative balance. LiveCharts clips it to the plot.
+            Pivot = Math.Min(0, minimum * 2),
+            Stroke = stroke, GeometrySize = 0, EnableNullSplitting = true, LineSmoothness = 0,
             XToolTipLabelFormatter = point => point.Model?.X is { } day ? first.AddDays((int)day).ToString("dd.MM.yyyy") : "",
             YToolTipLabelFormatter = point => point.Model?.X is { } day && points[(int)day].Amount is { } amount
                 ? HistoricalExchangeRates.Format(amount, currency.Currency) : "" }];
@@ -500,7 +502,7 @@ public partial class StatisticsContent : UserControl
         var currency = burnSnapshot?.Currencies.FirstOrDefault(row => row.Currency == SelectedCurrency);
         var month = selectedBurnMonth?.Month;
         if (month is null || baselineSnapshot is null || SelectedCurrency is null) return;
-        currency ??= new StatisticsCurrency(SelectedCurrency, 0, 0, 0, [])
+        currency ??= new StatisticsCurrency(SelectedCurrency, 0, 0, 0)
         {
             DailyPoints = Enumerable.Range(1, DateTime.DaysInMonth(month.Value.Year, month.Value.Month))
                 .Select(day => new StatisticsDailyPoint(new DateOnly(month.Value.Year, month.Value.Month, day), 0,
@@ -524,7 +526,7 @@ public partial class StatisticsContent : UserControl
         burnChart.YAxes = [AmountAxis()];
         var expected = DrawLine("Среднее за 3 месяца", "Foreground.Gray", baseline, currency.Currency, roundToCents: true);
         expected.Stroke = new SolidColorPaint(((SolidColorPaint)expected.Stroke!).Color, 2) { PathEffect = new DashEffect([5, 5]) };
-        burnChart.Series = [DrawLine("Расходы", "Highlight", actual, currency.Currency, roundToCents: true), expected];
+        burnChart.Series = [DrawActualExpenses(actual, baseline, currency.Currency), expected];
         BurnPanel.Message(missingHistory ? "Для среднего не хватает валюты или курса."
             : selected.Any(point => point.Date <= today && !point.Expenses.HasValue) ? "Часть расходов недоступна." : "");
     }
@@ -551,21 +553,130 @@ public partial class StatisticsContent : UserControl
         list.ItemTemplate = template;
         HeatPanel.Plot.Children.Clear(); HeatPanel.Plot.Children.Add(list);
     }
-    private void TimelineSeriesPicker_SelectionChanged(object sender, SelectionChangedEventArgs e)
-    {
-        if (renderedCurrency is { } currency) DrawTimelineSeries(currency);
-    }
-    private void DrawTimelineSeries(StatisticsCurrency currency)
-    {
-        var series = new List<ISeries>(2);
-        if (TimelineSeriesPicker.SelectedItem != TimelineExpensesOnly)
-            series.Add(DrawLine("Доходы", "Button.Foreground.Green", currency.Points.Select(point => point.Income), currency.Currency));
-        if (TimelineSeriesPicker.SelectedItem != TimelineIncomesOnly)
-            series.Add(DrawLine("Расходы", "Highlight", currency.Points.Select(point => point.Expenses), currency.Currency));
-        timelineChart.Series = series;
-    }
     private static StatisticsTotal FormatTotal(string label, decimal? amount, string currency) =>
         new(label, amount is { } value ? HistoricalExchangeRates.Format(value, currency) : "Недоступно");
+    private LineSeries<decimal?> DrawActualExpenses(decimal?[] actual, decimal?[] baseline, string currency)
+    {
+        var accent = Paint("Highlight").Color;
+        var blue = new SKColor(87, 134, 255);
+        var series = DrawLine("Расходы", "Highlight", actual, currency, roundToCents: true);
+        series.Fill = new LinearGradientPaint(
+            [accent.WithAlpha(32), blue.WithAlpha(16), blue.WithAlpha(0)],
+            new SKPoint(0, 0), new SKPoint(0.2f, 1), [0, 0.4f, 1]);
+        series.Pivot = Math.Min(0, 2 * (double)(actual.Min() ?? 0m));
+        var (colors, positions) = ExpenseComparisonStops(actual, baseline, accent);
+        series.Stroke = ExpenseStroke(colors, positions, accent, 0, 1);
+        updateBurnStroke = null;
+        if (colors.Distinct().Skip(1).Any())
+        {
+            var previousStart = 0f;
+            var previousEnd = 1f;
+            updateBurnStroke = core =>
+            {
+                var width = core.DrawMarginSize.Width;
+                if (width <= 0)
+                    return;
+
+                var left = core.DrawMarginLocation.X;
+                var start = (float)((burnChart.ScaleDataToPixels(new LvcPointD(0, 0)).X - left) / width);
+                var end = (float)((burnChart.ScaleDataToPixels(new LvcPointD(actual.Length - 1, 0)).X - left) / width);
+                if (!float.IsFinite(start) || !float.IsFinite(end) || start == end
+                    || (Math.Abs(start - previousStart) < 0.001f && Math.Abs(end - previousEnd) < 0.001f))
+                    return;
+
+                previousStart = start;
+                previousEnd = end;
+                series.Stroke = ExpenseStroke(colors, positions, accent, start, end);
+            };
+        }
+        series.GeometrySize = 6;
+        series.GeometryFill = Paint("Foreground.White");
+        series.GeometryStroke = new LinearGradientPaint(accent, blue)
+        {
+            StrokeThickness = 1.5f,
+            ImageFilter = new DropShadow(0, 0, 2, 2, blue.WithAlpha(120))
+        };
+
+        var firstPoint = Array.FindIndex(actual, amount => amount.HasValue);
+        var lastPoint = Array.FindLastIndex(actual, amount => amount.HasValue);
+        series.PointMeasured += point =>
+        {
+            if (point.Visual is not { } marker)
+                return;
+
+            var isLastPoint = point.Index == lastPoint;
+            marker.Opacity = isLastPoint || point.Index == firstPoint || (point.Index + 1) % 5 == 0 ? 1 : 0;
+            if (!isLastPoint)
+                return;
+
+            const float finalSize = 10;
+            marker.Width = finalSize;
+            marker.Height = finalSize;
+            marker.TranslateTransform = new LvcPoint(-finalSize / 2, -finalSize / 2);
+        };
+        return series;
+    }
+
+    private static LinearGradientPaint ExpenseStroke(SKColor[] colors, float[] positions, SKColor accent, float start, float end) =>
+        new(colors, new SKPoint(start, 0.5f), new SKPoint(end, 0.5f), positions)
+        {
+            StrokeThickness = 3,
+            StrokeCap = SKStrokeCap.Round,
+            StrokeJoin = SKStrokeJoin.Round,
+            ImageFilter = new DropShadow(0, 0, 2.5f, 2.5f, accent.WithAlpha(82))
+        };
+
+    private static (SKColor[] Colors, float[] Positions) ExpenseComparisonStops(decimal?[] actual, decimal?[] baseline, SKColor neutral)
+    {
+        var above = new SKColor(241, 126, 141);
+        var below = new SKColor(103, 221, 162);
+        var differences = actual.Select((value, index) => value is { } spent && baseline[index] is { } average
+            ? (double)spent - (double)average
+            : 0).ToArray();
+        var scale = differences.Select(Math.Abs).DefaultIfEmpty().Max();
+        if (scale == 0)
+            return ([neutral, neutral], [0, 1]);
+        if (differences.Length == 1)
+        {
+            var color = Color(differences[0]);
+            return ([color, color], [0, 1]);
+        }
+
+        var colors = new List<SKColor>();
+        var positions = new List<float>();
+        var previous = differences[0];
+        Add(0, Color(previous));
+        for (var index = 1; index < differences.Length; index++)
+        {
+            var current = differences[index];
+            if (previous != 0 && current != 0 && Math.Sign(previous) != Math.Sign(current))
+            {
+                var crossing = Math.Abs(previous) / (Math.Abs(previous) + Math.Abs(current));
+                Add(index - 1 + crossing, neutral);
+            }
+            Add(index, Color(current));
+            previous = current;
+        }
+        return ([.. colors], [.. positions]);
+
+        SKColor Color(double difference)
+        {
+            var intensity = Math.Abs(difference) / scale;
+            var target = difference > 0 ? above : below;
+            return new SKColor(
+                Blend(neutral.Red, target.Red, intensity),
+                Blend(neutral.Green, target.Green, intensity),
+                Blend(neutral.Blue, target.Blue, intensity));
+        }
+
+        static byte Blend(byte from, byte to, double fraction) => (byte)Math.Round(from + (to - from) * fraction);
+        void Add(double index, SKColor color)
+        {
+            positions.Add((float)(index / (differences.Length - 1)));
+            colors.Add(color);
+        }
+    }
+
     private LineSeries<decimal?> DrawLine(string name, string brush, IEnumerable<decimal?> values, string currency,
         bool roundToCents = false) => new()
     {
@@ -602,5 +713,8 @@ public partial class StatisticsContent : UserControl
     {
         public string Label => Month.ToString("MM.yyyy", CultureInfo.InvariantCulture);
     }
-    private sealed record StatisticsTotal(string Label, string Amount, string Warning = "", bool IsLoading = false);
+    private sealed record StatisticsTotal(string Label, string Amount, string Warning = "", bool IsLoading = false)
+    {
+        public int Sign { get; init; }
+    }
 }

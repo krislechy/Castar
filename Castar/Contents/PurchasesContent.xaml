@@ -22,11 +22,11 @@
   <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition/></Grid.RowDefinitions>
   <Border x:Name="ExpenseSummaryCard" Style="{StaticResource ExpenseCardSurface}" Margin="24,20,24,20" Padding="20,16">
    <Grid>
-    <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition/></Grid.ColumnDefinitions>
+    <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
     <ContentControl Style="{StaticResource LedgerSummaryIcon}">
      <ContentControl Content="{StaticResource Svg.Menu.Purchases}" Width="40" Height="40"/>
     </ContentControl>
-    <StackPanel Grid.Column="1" VerticalAlignment="Center">
+    <StackPanel Grid.Column="1" VerticalAlignment="Center" Margin="0,0,20,0">
      <TextBlock Text="Всего расходов" Foreground="{StaticResource LedgerMuted}" Margin="0,0,0,4"/>
      <Grid HorizontalAlignment="Left">
       <Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
@@ -36,6 +36,7 @@
       <ContentControl x:Name="ExpenseTotalWarning" Grid.Column="1" Style="{StaticResource ExpenseAmountWarning}"/>
      </Grid>
     </StackPanel>
+    <ContentControl x:Name="ExpenseComparison" Grid.Column="2" Style="{StaticResource LedgerPeriodComparison}"/>
    </Grid>
   </Border>
   <DockPanel Grid.Row="1" Margin="24,0,24,12">

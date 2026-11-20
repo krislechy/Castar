@@ -4,6 +4,7 @@
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              xmlns:local="clr-namespace:Castar.Compontents"
+             xmlns:system="clr-namespace:System;assembly=System.Runtime"
              mc:Ignorable="d"
              KeyboardNavigation.DirectionalNavigation="Contained"
              IsVisibleChanged="Dialog_IsVisibleChanged"
@@ -13,6 +14,19 @@
              MouseLeftButtonDown="ButtonOutsideClickEvent"
              d:DesignHeight="450" d:DesignWidth="800">
     <UserControl.Resources>
+        <Style x:Key="PopupDialogTitle" TargetType="TextBlock">
+            <Setter Property="Foreground" Value="{DynamicResource Foreground.White}"/>
+            <Setter Property="FontSize" Value="{StaticResource Castar.Font.Heading}"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="TextWrapping" Value="Wrap"/>
+        </Style>
+        <Style x:Key="PopupDialogDescription" TargetType="TextBlock">
+            <Setter Property="Foreground" Value="{DynamicResource Foreground.White}"/>
+            <Setter Property="Opacity" Value="0.82"/>
+            <Setter Property="FontSize" Value="{StaticResource Castar.Font.Body}"/>
+            <Setter Property="LineHeight" Value="22"/>
+            <Setter Property="TextWrapping" Value="Wrap"/>
+        </Style>
         <Style TargetType="local:PopupDialog">
             <Setter Property="Visibility" Value="Collapsed"/>
             <Setter Property="Panel.ZIndex" Value="999"/>
@@ -82,7 +96,7 @@
                             </Style.Triggers>
                         </Style>
                     </Grid.Style>
-                    <TextBlock Text="{Binding ActiveDialog.Title,RelativeSource={RelativeSource AncestorType=local:PopupDialog}}" FontSize="20" FontWeight="SemiBold" TextWrapping="Wrap"/>
+                    <TextBlock Text="{Binding ActiveDialog.Title,RelativeSource={RelativeSource AncestorType=local:PopupDialog}}" Style="{StaticResource PopupDialogTitle}"/>
                 </Grid>
                 <Border Grid.Row="1" Padding="24,16,24,20">
                     <Grid>
@@ -96,6 +110,9 @@
                                     <Style TargetType="TextBlock">
                                         <Setter Property="TextWrapping" Value="Wrap"/>
                                     </Style>
+                                    <DataTemplate DataType="{x:Type system:String}">
+                                        <TextBlock Text="{Binding}" Style="{StaticResource PopupDialogDescription}"/>
+                                    </DataTemplate>
                                 </ContentPresenter.Resources>
                             </ContentPresenter>
                         </ScrollViewer>

@@ -11,8 +11,7 @@ namespace Castar.Statistics;
 internal sealed record StatisticsSnapshot(bool HasRecords, int UnconvertedIncomes, int UnconvertedExpenses,
     IReadOnlyList<StatisticsCurrency> Currencies);
 
-internal sealed record StatisticsCurrency(string Currency, decimal? Income, decimal? Expenses, decimal? Balance,
-    IReadOnlyList<StatisticsPoint> Points)
+internal sealed record StatisticsCurrency(string Currency, decimal? Income, decimal? Expenses, decimal? Balance)
 {
     public IReadOnlyList<StatisticsRemainingPoint> RemainingPoints { get; init; } = [];
     public string RemainingWarning { get; init; } = "";
@@ -86,7 +85,6 @@ internal sealed class BudgetStatistics(CastarServerClient server, HistoricalExch
         var converted = entries.Select(entry => Convert(entry, displayCurrency, rates)).ToArray();
         var omitted = converted.Where(entry => entry.Currency is null).ToArray();
         var convertedMode = displayCurrency.Length > 0;
-        var buckets = PeriodBuckets(start, finish).ToArray();
         var groups = converted.Where(entry => entry.Currency is not null)
             .GroupBy(entry => entry.Currency!, StringComparer.Ordinal)
             .OrderBy(group => group.Key, StringComparer.Ordinal)
@@ -98,7 +96,7 @@ internal sealed class BudgetStatistics(CastarServerClient server, HistoricalExch
             var missing = convertedMode ? omitted : omitted.Where(entry => entry.Original.Currency == group.Currency
                 || !HistoricalExchangeRates.IsCurrencyCode(entry.Original.Currency)).ToArray();
             var summary = Summarize(group.Currency, group.Entries.Where(entry => !entry.Original.IsOpening).ToArray(),
-                convertedMode ? omitted.Where(entry => !entry.Original.IsOpening).ToArray() : [], buckets);
+                convertedMode ? omitted.Where(entry => !entry.Original.IsOpening).ToArray() : []);
             var periodRows = group.Entries.Concat(missing).Where(entry => !entry.Original.IsOpening).ToArray();
             var dailyPoints = Daily(periodRows, start, finish);
             return summary with
@@ -185,31 +183,12 @@ internal sealed class BudgetStatistics(CastarServerClient server, HistoricalExch
         return new ConvertedEntry(entry, null, null);
     }
 
-    private static StatisticsCurrency Summarize(string currency, ConvertedEntry[] converted, ConvertedEntry[] omitted,
-        PeriodBucket[] buckets)
+    private static StatisticsCurrency Summarize(string currency, ConvertedEntry[] converted, ConvertedEntry[] omitted)
     {
         var all = converted.Concat(omitted).ToArray();
         var income = Total(all, isIncome: true);
         var expenses = Total(all, isIncome: false);
-        var byDate = all.Where(entry => entry.Original.ReportDate.HasValue)
-            .OrderBy(entry => entry.Original.ReportDate).ToArray();
-        var points = new List<StatisticsPoint>(buckets.Length);
-        var first = 0;
-        foreach (var bucket in buckets)
-        {
-            while (first < byDate.Length && byDate[first].Original.ReportDate < bucket.Start)
-                first++;
-            var last = first;
-            while (last < byDate.Length && byDate[last].Original.ReportDate <= bucket.End)
-                last++;
-
-            var rows = byDate.AsSpan(first, last - first);
-            points.Add(new StatisticsPoint(bucket.Label, Total(rows, isIncome: true), Total(rows, isIncome: false)));
-            first = last;
-        }
-
-        return new StatisticsCurrency(currency, income, expenses, omitted.Length == 0 ? income - expenses : null,
-            points);
+        return new StatisticsCurrency(currency, income, expenses, omitted.Length == 0 ? income - expenses : null);
     }
 
     private static decimal? Total(ReadOnlySpan<ConvertedEntry> rows, bool isIncome, bool requireComplete = false)
@@ -232,39 +211,6 @@ internal sealed class BudgetStatistics(CastarServerClient server, HistoricalExch
         return omitted && (requireComplete || !converted) ? null : sum;
     }
 
-    private static IEnumerable<PeriodBucket> PeriodBuckets(DateOnly start, DateOnly end)
-    {
-        var days = end.DayNumber - start.DayNumber + 1;
-        if (days <= 224)
-        {
-            var step = days <= 45 ? 1 : 7;
-            for (var first = start.DayNumber; first <= end.DayNumber; first += step)
-            {
-                var last = Math.Min(first + step - 1, end.DayNumber);
-                var beginning = DateOnly.FromDayNumber(first);
-                var finish = DateOnly.FromDayNumber(last);
-                yield return new PeriodBucket(beginning, finish, step == 1 ? $"{beginning:dd.MM}" : $"{beginning:dd.MM}–{finish:dd.MM}");
-            }
-            yield break;
-        }
-
-        var startMonth = (start.Year - 1) * 12 + start.Month - 1;
-        var endMonth = (end.Year - 1) * 12 + end.Month - 1;
-        var months = endMonth - startMonth + 1;
-        var stepMonths = months <= 120 ? 1 : ((months + 119) / 120 + 11) / 12 * 12;
-        for (var first = startMonth; first <= endMonth; first += stepMonths)
-        {
-            var last = Math.Min(first + stepMonths - 1, endMonth);
-            var firstMonth = new DateOnly(first / 12 + 1, first % 12 + 1, 1);
-            var lastYear = last / 12 + 1;
-            var lastMonth = last % 12 + 1;
-            var lastDate = new DateOnly(lastYear, lastMonth, DateTime.DaysInMonth(lastYear, lastMonth));
-            var label = stepMonths == 1 ? $"{firstMonth:MM.yyyy}"
-                : firstMonth.Year == lastYear ? $"{firstMonth.Year}" : $"{firstMonth.Year}–{lastYear}";
-            yield return new PeriodBucket(firstMonth < start ? start : firstMonth, lastDate > end ? end : lastDate, label);
-        }
-    }
-
     private sealed record Entry(bool IsIncome, string? Currency, decimal Amount, DateOnly? ReportDate,
         DateOnly? RateDate, bool IsOpening = false, long OpeningCount = 1);
 
@@ -273,6 +219,4 @@ internal sealed class BudgetStatistics(CastarServerClient server, HistoricalExch
         public decimal ConvertAmount(decimal amount) =>
             (Rate is { } rate ? HistoricalExchangeRates.ConvertAmount(amount, rate) : amount) * Original.OpeningCount;
     }
-
-    private sealed record PeriodBucket(DateOnly Start, DateOnly End, string Label);
 }

@@ -208,8 +208,8 @@ public partial class PurchasesContent : UserControl
             if (request != activeRequest || refreshPending)
                 return;
 
-            rows = rows.OrderBy(purchase => purchase.AddedOnUtc?.UtcDateTime ?? purchase.AddedOn)
-                .ThenBy(purchase => purchase.Id).ToArray();
+            rows = rows.OrderByDescending(purchase => purchase.AddedOnUtc?.UtcDateTime ?? purchase.AddedOn)
+                .ThenByDescending(purchase => purchase.Id).ToArray();
             var views = await ConvertPurchasesAsync(rows, target, request.Token);
             if (request != activeRequest || refreshPending)
                 return;

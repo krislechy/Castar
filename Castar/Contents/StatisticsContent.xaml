@@ -111,8 +111,12 @@
                                            HeaderIcon="M2,17 V14 A9,9 0 0 1 20,14 V17 M2,17 H5 M17,17 H20 M11,14 L16,9 M8,18 H14"
                                            HeaderIconFill="M3,17 V14 A8,8 0 0 1 19,14 V17 Z">
                         <c:StatisticsChartCard.HeaderAction>
-                            <c:CastarComboBox x:Name="BurnMonthPicker" MinWidth="110" DisplayMemberPath="Label"
-                                AutomationProperties.Name="Месяц расходования бюджета" SelectionChanged="BurnMonthPicker_SelectionChanged"/>
+                            <StackPanel Orientation="Horizontal">
+                                <c:CastarComboBox x:Name="BurnMonthPicker" MinWidth="110" Margin="0,0,8,0" DisplayMemberPath="Label"
+                                    AutomationProperties.Name="Месяц расходования бюджета" SelectionChanged="BurnMonthPicker_SelectionChanged"/>
+                                <c:CastarComboBox x:Name="BurnHistoryPicker" MinWidth="112" DisplayMemberPath="Value" SelectedValuePath="Key"
+                                    AutomationProperties.Name="Период сравнения расходов" SelectionChanged="BurnHistoryPicker_SelectionChanged"/>
+                            </StackPanel>
                         </c:StatisticsChartCard.HeaderAction>
                     </c:StatisticsChartCard>
                     <c:StatisticsChartCard x:Name="MonthlyPanel" Grid.Row="1" Title="Доходы и расходы по месяцам"

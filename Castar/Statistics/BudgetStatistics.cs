@@ -138,6 +138,30 @@ internal sealed class BudgetStatistics(CastarServerClient server, HistoricalExch
                 month.Any(point => point.Expenses is null) ? null : month.Sum(point => point.Expenses!.Value)))
             .ToArray();
 
+    internal static decimal?[] AverageAccumulatedExpenses(DateOnly month, int historyMonths,
+        IReadOnlyList<StatisticsDailyPoint> history)
+    {
+        var dayCount = DateTime.DaysInMonth(month.Year, month.Month);
+        var dailyExpenses = history.ToDictionary(point => point.Date, point => point.Expenses);
+        var averages = new decimal?[dayCount];
+        Array.Fill(averages, 0m);
+        for (var offset = historyMonths; offset > 0; offset--)
+        {
+            var previous = month.AddMonths(-offset);
+            var previousDayCount = DateTime.DaysInMonth(previous.Year, previous.Month);
+            decimal? accumulated = 0m;
+            for (var day = 0; day < dayCount; day++)
+            {
+                if (day < previousDayCount)
+                    accumulated += dailyExpenses.GetValueOrDefault(previous.AddDays(day), 0m);
+                averages[day] += accumulated;
+            }
+        }
+        for (var day = 0; day < dayCount; day++)
+            averages[day] /= historyMonths;
+        return averages;
+    }
+
     private static IReadOnlyList<StatisticsRemainingPoint> Remaining(ConvertedEntry[] rows, DateOnly start, DateOnly finish)
     {
         var unknownDate = rows.Any(row => !row.Original.IsOpening && row.Original.ReportDate is null);

@@ -60,6 +60,9 @@ public partial class StatisticsContent : UserControl
     private bool updatingCurrencyPicker;
     private bool updatingBurnPicker;
     private MonthChoice? selectedBurnMonth;
+    private static readonly KeyValuePair<int, string>[] BurnHistoryPeriods =
+        [new(1, "1 месяц"), new(3, "3 месяца"), new(6, "6 месяцев"), new(12, "12 месяцев")];
+    private int burnHistoryMonths = 3;
     private Task<StatisticsSnapshot>? periodTask;
     internal event Action<DateOnly>? ExpenseDayRequested;
     private SelectorRangeDates? periodSelector;
@@ -85,6 +88,8 @@ public partial class StatisticsContent : UserControl
         this.statistics = statistics;
         this.settings = settings;
         InitializeComponent();
+        BurnHistoryPicker.ItemsSource = BurnHistoryPeriods;
+        BurnHistoryPicker.SelectedValue = burnHistoryMonths;
         remainingChart = CreateChart("Динамика остатка средств");
         monthlyChart = CreateChart("Доходы и расходы по месяцам", true);
         burnChart = CreateChart("Скорость расходования бюджета", true);
@@ -116,6 +121,7 @@ public partial class StatisticsContent : UserControl
     private void Stop()
     {
         listeningForChanges = false;
+        if (burnRequest is not null) dataStale = true;
         if (currentBalanceRequest is not null) InvalidateCurrentBalance();
         CancelRefresh();
         foreach (var card in Cards) card.Stop();
@@ -246,7 +252,8 @@ public partial class StatisticsContent : UserControl
                 Sign = Math.Sign(period?.Balance ?? 0m)
             },
             new StatisticsTotal("Текущий остаток", amount is { } balance
-                ? HistoricalExchangeRates.Format(balance, code) : "—", warning, currentBalanceRequest is not null)
+                ? HistoricalExchangeRates.Format(decimal.Round(balance, 2, MidpointRounding.AwayFromZero), code)
+                : "—", warning, currentBalanceRequest is not null)
         };
     }
     internal Task RefreshAfterServerChangeAsync()
@@ -453,23 +460,35 @@ public partial class StatisticsContent : UserControl
     {
         if (updatingBurnPicker || periodTask is null || !listeningForChanges) return;
         selectedBurnMonth = BurnMonthPicker.SelectedItem as MonthChoice;
-        baselineSnapshot = null;
         await LoadBurnAsync(periodTask, activeRequest?.Token ?? CancellationToken.None);
     }
+
+    private async void BurnHistoryPicker_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (BurnHistoryPicker.SelectedValue is not int months || months == burnHistoryMonths) return;
+        burnHistoryMonths = months;
+        if (periodTask is not null && listeningForChanges)
+            await LoadBurnAsync(periodTask, activeRequest?.Token ?? CancellationToken.None);
+    }
+
     private async Task LoadBurnAsync(Task<StatisticsSnapshot> period, CancellationToken token)
     {
         burnRequest?.Cancel();
+        baselineSnapshot = null;
         using var request = CancellationTokenSource.CreateLinkedTokenSource(token);
         burnRequest = request;
         var month = selectedBurnMonth?.Month;
         if (month is null) { burnRequest = null; return; }
-        if (month.Value.Year == 1 && month.Value.Month <= 3)
+        var historyMonths = burnHistoryMonths;
+        if ((month.Value.Year - 1) * 12 + month.Value.Month <= historyMonths)
         {
+            BurnPanel.Reset();
+            renderedBurnKey = null;
             BurnPanel.Message("Недостаточно предыдущих месяцев.");
             burnRequest = null;
             return;
         }
-        var start = month.Value.AddMonths(-3).ToDateTime(TimeOnly.MinValue);
+        var start = month.Value.AddMonths(-historyMonths).ToDateTime(TimeOnly.MinValue);
         var finish = month.Value.ToDateTime(TimeOnly.MinValue).AddTicks(-1);
         var history = statistics.LoadPeriodAsync(start, finish, settings.DisplayCurrency, request.Token);
         var monthStart = month.Value.ToDateTime(TimeOnly.MinValue);
@@ -509,26 +528,26 @@ public partial class StatisticsContent : UserControl
                     burnSnapshot?.UnconvertedExpenses > 0 ? null : 0)).ToArray()
         };
         var history = baselineSnapshot.Currencies.FirstOrDefault(row => row.Currency == currency.Currency);
-        var daysInMonth = DateTime.DaysInMonth(month.Value.Year, month.Value.Month);
         var selected = currency.DailyPoints.Where(point => point.Date.Year == month.Value.Year && point.Date.Month == month.Value.Month).ToArray();
         var today = DateOnly.FromDateTime(TimeZoneInfo.ConvertTime(DateTimeOffset.UtcNow, settings.DisplayTimeZone).DateTime);
-        var missingHistory = baselineSnapshot.UnconvertedExpenses > 0 || history?.DailyPoints.Any(point => !point.Expenses.HasValue) == true;
-        var average = history?.Expenses is { } amount ? amount / 3m : 0m;
         decimal? spent = 0;
         var actual = selected.Select(point => { spent = spent.HasValue && point.Expenses.HasValue ? spent.Value + point.Expenses : null;
             return point.Date > today ? null : spent; }).ToArray();
-        var baseline = selected.Select(point => missingHistory ? (decimal?)null : average * point.Date.Day / daysInMonth).ToArray();
-        var key = currency.Currency + month + string.Join("|", actual) + "/" + string.Join("|", baseline);
+        var baseline = history is null && baselineSnapshot.UnconvertedExpenses > 0
+            ? new decimal?[selected.Length]
+            : BudgetStatistics.AverageAccumulatedExpenses(month.Value, burnHistoryMonths, history?.DailyPoints ?? []);
+        BurnPanel.Message(baseline.Any(amount => amount is null) ? "Для среднего не хватает валюты или курса."
+            : selected.Any(point => point.Date <= today && !point.Expenses.HasValue) ? "Часть расходов недоступна." : "");
+        var key = $"{currency.Currency}/{month}/{burnHistoryMonths}/{string.Join("|", actual)}/{string.Join("|", baseline)}";
         if (key == renderedBurnKey) return;
         renderedBurnKey = key;
         Attach(BurnPanel, burnChart);
         burnChart.XAxes = [new Axis { Labels = selected.Select(point => point.Date.ToString("dd.MM")).ToArray(), MinStep = 1, LabelsPaint = Paint("Foreground.Gray") }];
         burnChart.YAxes = [AmountAxis()];
-        var expected = DrawLine("Среднее за 3 месяца", "Foreground.Gray", baseline, currency.Currency, roundToCents: true);
+        var historyLabel = BurnHistoryPeriods.First(option => option.Key == burnHistoryMonths).Value;
+        var expected = DrawLine($"Среднее за {historyLabel}", "Foreground.Gray", baseline, currency.Currency, roundToCents: true);
         expected.Stroke = new SolidColorPaint(((SolidColorPaint)expected.Stroke!).Color, 2) { PathEffect = new DashEffect([5, 5]) };
         burnChart.Series = [DrawActualExpenses(actual, baseline, currency.Currency), expected];
-        BurnPanel.Message(missingHistory ? "Для среднего не хватает валюты или курса."
-            : selected.Any(point => point.Date <= today && !point.Expenses.HasValue) ? "Часть расходов недоступна." : "");
     }
     private void DrawHeatmap()
     {

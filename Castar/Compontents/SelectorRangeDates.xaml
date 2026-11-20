@@ -42,6 +42,8 @@
             <ColumnDefinition Width="auto"/>
             <ColumnDefinition Width="auto"/>
             <ColumnDefinition Width="auto"/>
+            <ColumnDefinition Width="auto"/>
+            <ColumnDefinition Width="auto"/>
         </Grid.ColumnDefinitions>
         <Button Content="{DynamicResource Svg.LeftDoubleArrow}" Grid.Column="0" Click="OffsetYearButton_Click"
                             Width="{Binding ActualHeight,RelativeSource={RelativeSource Mode=Self}}"
@@ -49,7 +51,7 @@
         <Button Content="{DynamicResource Svg.LeftArrow}" Grid.Column="1" Click="OffsetMonthButton_Click"
                             Width="{Binding ActualHeight,RelativeSource={RelativeSource Mode=Self}}"
                             CommandParameter="-1" ToolTip="Предыдущий месяц" AutomationProperties.Name="Предыдущий месяц"/>
-        <local:CastarDatePicker Grid.Column="2" SelectedDate="{Binding RangeDate.StartDate.Date,RelativeSource={RelativeSource AncestorType=UserControl},Mode=OneWay}"
+        <local:CastarDatePicker x:Name="StartDatePicker" Grid.Column="2" SelectedDate="{Binding RangeDate.StartDate.Date,RelativeSource={RelativeSource AncestorType=UserControl},Mode=OneWay}"
                                SelectedDateChanged="DatePicker_SelectedStartDateChanged" AutomationProperties.Name="Начало периода"/>
         <TextBlock Grid.Column="3" Text="—" Margin="8,0"
                                VerticalAlignment="Center"
@@ -63,7 +65,29 @@
         <Button Content="{DynamicResource Svg.RightDoubleArrow}" Grid.Column="6" Click="OffsetYearButton_Click"
                             Width="{Binding ActualHeight,RelativeSource={RelativeSource Mode=Self}}"
                             CommandParameter="1" ToolTip="Следующий год" AutomationProperties.Name="Следующий год" Cursor="Hand"/>
-        <Button Grid.Column="7" Content="{DynamicResource Svg.CurrentMonth}" Click="CurrentMonth_Click"
+        <Separator x:Name="MonthPickerDivider" Grid.Column="7" Width="24" Margin="5,0"
+                   VerticalAlignment="Center" IsHitTestVisible="False">
+            <Separator.LayoutTransform>
+                <RotateTransform Angle="90"/>
+            </Separator.LayoutTransform>
+        </Separator>
+        <Button x:Name="MonthPickerButton" Grid.Column="8" Click="MonthPickerButton_Click"
+                AutomationProperties.Name="Выбрать месяц">
+            <StackPanel Orientation="Horizontal">
+                <TextBlock Text="Месяц" VerticalAlignment="Center"/>
+                <Path Data="M1,1 L5,5 L9,1" Stroke="{Binding Foreground, ElementName=MonthPickerButton}"
+                      StrokeThickness="1.5" StrokeStartLineCap="Round" StrokeEndLineCap="Round"
+                      Margin="8,0,0,0" VerticalAlignment="Center"/>
+            </StackPanel>
+        </Button>
+        <Popup x:Name="MonthPopup" Grid.Column="8" PlacementTarget="{Binding ElementName=MonthPickerButton}"
+               Placement="Bottom" AllowsTransparency="True" StaysOpen="False" Opened="MonthPopup_Opened">
+            <Calendar x:Name="MonthCalendar" DisplayMode="Year" Language="ru-RU"
+                      Style="{Binding CalendarStyle, ElementName=StartDatePicker}"
+                      AutomationProperties.Name="Месяц периода"
+                      DisplayModeChanged="MonthCalendar_DisplayModeChanged" PreviewKeyDown="MonthCalendar_PreviewKeyDown"/>
+        </Popup>
+        <Button Grid.Column="9" Content="{DynamicResource Svg.CurrentMonth}" Click="CurrentMonth_Click"
                 Width="{Binding ActualHeight, RelativeSource={RelativeSource Self}}"
                 AutomationProperties.Name="Текущий месяц" ToolTip="Текущий месяц"/>
     </Grid>

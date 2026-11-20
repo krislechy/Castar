@@ -9,7 +9,10 @@ using System.Threading.Tasks;
 namespace Castar.Statistics;
 
 internal sealed record StatisticsSnapshot(bool HasRecords, int UnconvertedIncomes, int UnconvertedExpenses,
-    IReadOnlyList<StatisticsCurrency> Currencies);
+    IReadOnlyList<StatisticsCurrency> Currencies)
+{
+    public DateOnly? EarliestOperationDate { get; init; }
+}
 
 internal sealed record StatisticsCurrency(string Currency, decimal? Income, decimal? Expenses, decimal? Balance)
 {
@@ -25,6 +28,7 @@ internal sealed record StatisticsDailyPoint(DateOnly Date, decimal? Income, deci
 
 internal sealed class BudgetStatistics(CastarServerClient server, HistoricalExchangeRates exchangeRates)
 {
+    internal const int MaxReserveHistoryMonths = 12;
     private readonly StatisticsSnapshotCache cache = new();
 
     internal void InvalidateCache() => cache.Invalidate();
@@ -55,7 +59,8 @@ internal sealed class BudgetStatistics(CastarServerClient server, HistoricalExch
         string displayCurrency, CancellationToken token)
     {
         var localNow = TimeZoneInfo.ConvertTime(asOfUtc, displayTimeZone).DateTime;
-        return LoadCoreAsync(localNow.Date, localNow, displayCurrency, token, includeOpening: true, asOfUtc: asOfUtc);
+        var historyStart = new DateTime(localNow.Year, localNow.Month, 1).AddMonths(-MaxReserveHistoryMonths);
+        return LoadCoreAsync(historyStart, localNow, displayCurrency, token, includeOpening: true, asOfUtc: asOfUtc);
     }
 
     private async Task<StatisticsSnapshot> LoadCoreAsync(DateTime start, DateTime finish, string displayCurrency,
@@ -109,7 +114,10 @@ internal sealed class BudgetStatistics(CastarServerClient server, HistoricalExch
         }).ToArray();
         return new StatisticsSnapshot(entries.Length != 0,
             omitted.Count(entry => !entry.Original.IsOpening && entry.Original.IsIncome),
-            omitted.Count(entry => !entry.Original.IsOpening && !entry.Original.IsIncome), currencies);
+            omitted.Count(entry => !entry.Original.IsOpening && !entry.Original.IsIncome), currencies)
+        {
+            EarliestOperationDate = entries.Any(entry => entry.IsOpening) ? start : entries.Min(entry => entry.ReportDate)
+        };
     }
 
     private static IReadOnlyList<StatisticsDailyPoint> Daily(ConvertedEntry[] rows, DateOnly start, DateOnly finish)

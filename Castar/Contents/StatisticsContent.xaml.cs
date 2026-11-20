@@ -47,6 +47,7 @@ public partial class StatisticsContent : UserControl
     private StatisticsSnapshot? remainingSnapshot;
     private StatisticsSnapshot? baselineSnapshot;
     private StatisticsSnapshot? currentBalanceSnapshot;
+    private DateOnly? currentBalanceDate;
     private Task? currentBalanceTask;
     private CancellationTokenSource? currentBalanceRequest;
     private int currentBalanceVersion;
@@ -61,8 +62,10 @@ public partial class StatisticsContent : UserControl
     private bool updatingBurnPicker;
     private MonthChoice? selectedBurnMonth;
     private static readonly KeyValuePair<int, string>[] BurnHistoryPeriods =
-        [new(1, "1 месяц"), new(3, "3 месяца"), new(6, "6 месяцев"), new(12, "12 месяцев")];
+        [new(3, "3 месяца"), new(6, "6 месяцев"), new(12, "12 месяцев")];
     private int burnHistoryMonths = 3;
+    private int reserveHistoryMonths = 3;
+    public string ReserveHistorySelection => reserveHistoryMonths.ToString(CultureInfo.InvariantCulture);
     private Task<StatisticsSnapshot>? periodTask;
     internal event Action<DateOnly>? ExpenseDayRequested;
     private SelectorRangeDates? periodSelector;
@@ -117,6 +120,7 @@ public partial class StatisticsContent : UserControl
             await ResetAsync();
         }
         else if (dataStale) await RefreshAsync();
+        else await EnsureCurrentBalanceAsync();
     }
     private void Stop()
     {
@@ -130,7 +134,7 @@ public partial class StatisticsContent : UserControl
     {
         if (RemainingColumn is null) return;
         var wide = BudgetContent.ActualWidth >= 1100;
-        Totals.Tag = wide ? 4 : 2;
+        Totals.Tag = wide ? 5 : 3;
         RemainingColumn.Width = wide ? new GridLength(1, GridUnitType.Star) : new GridLength(0);
         Grid.SetColumn(BurnPanel, wide ? 1 : 0);
         Grid.SetRow(BurnPanel, wide ? 0 : 1);
@@ -191,19 +195,26 @@ public partial class StatisticsContent : UserControl
 
     private Task EnsureCurrentBalanceAsync()
     {
+        var asOf = DateTimeOffset.UtcNow;
+        var today = DateOnly.FromDateTime(TimeZoneInfo.ConvertTime(asOf, settings.DisplayTimeZone).DateTime);
+        if (currentBalanceDate != today)
+        {
+            InvalidateCurrentBalance();
+            currentBalanceDate = today;
+        }
         if (currentBalanceTask is not null && currentBalanceError is null) return currentBalanceTask;
         currentBalanceError = null;
         var request = new CancellationTokenSource();
         currentBalanceRequest = request;
         DrawTotals();
-        return currentBalanceTask = LoadCurrentBalanceAsync(request, currentBalanceVersion);
+        return currentBalanceTask = LoadCurrentBalanceAsync(asOf, request, currentBalanceVersion);
     }
 
-    private async Task LoadCurrentBalanceAsync(CancellationTokenSource request, int version)
+    private async Task LoadCurrentBalanceAsync(DateTimeOffset asOf, CancellationTokenSource request, int version)
     {
         try
         {
-            var result = await statistics.LoadCurrentAsync(DateTimeOffset.UtcNow, settings.DisplayTimeZone,
+            var result = await statistics.LoadCurrentAsync(asOf, settings.DisplayTimeZone,
                 settings.DisplayCurrency, request.Token);
             if (version != currentBalanceVersion || request.IsCancellationRequested) return;
             currentBalanceSnapshot = result;
@@ -225,7 +236,9 @@ public partial class StatisticsContent : UserControl
         }
     }
 
-    private void DrawTotals()
+    private void DrawTotals() => DrawTotals(reserveOnly: false);
+
+    private void DrawTotals(bool reserveOnly)
     {
         var period = PeriodCurrency;
         var code = SelectedCurrency ?? settings.DisplayCurrency;
@@ -242,6 +255,13 @@ public partial class StatisticsContent : UserControl
                 warning = complete.Currencies.Select(row => row.RemainingWarning).FirstOrDefault(text => text.Length > 0)
                     ?? "Начальный остаток недоступен: в истории отсутствует валюта или курс.";
         }
+        var reserve = FinancialReserve(current, amount, code);
+        if (reserveOnly && Totals.Items[^1] is StatisticsTotal existing)
+        {
+            existing.UpdateReserve(reserve);
+            return;
+        }
+
         Dashboard.Visibility = Visibility.Visible;
         Totals.ItemsSource = new[]
         {
@@ -253,7 +273,63 @@ public partial class StatisticsContent : UserControl
             },
             new StatisticsTotal("Текущий остаток", amount is { } balance
                 ? HistoricalExchangeRates.Format(decimal.Round(balance, 2, MidpointRounding.AwayFromZero), code)
-                : "—", warning, currentBalanceRequest is not null)
+                : "—", warning, currentBalanceRequest is not null),
+            reserve
+        };
+    }
+
+    private void ReserveHistory_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (sender is not ComboBox { DataContext: StatisticsTotal { HasReserveSelector: true }, SelectedValue: string value }
+            || !int.TryParse(value, CultureInfo.InvariantCulture, out var months)
+            || months is not (3 or 6 or BudgetStatistics.MaxReserveHistoryMonths)
+            || reserveHistoryMonths == months)
+            return;
+
+        reserveHistoryMonths = months;
+        DrawTotals(reserveOnly: true);
+    }
+
+    private StatisticsTotal FinancialReserve(StatisticsCurrency? current, decimal? balance, string currency)
+    {
+        var tile = new StatisticsTotal("Финансовая подушка", "—", currentBalanceError ?? "",
+            currentBalanceRequest is not null) { HasReserveSelector = true };
+        if (currentBalanceSnapshot is not { } data)
+            return tile;
+        if (!HistoricalExchangeRates.IsCurrencyCode(settings.DisplayCurrency))
+            return tile with { Warning = "Выберите валюту отображения." };
+        var today = currentBalanceDate!.Value;
+        var monthStart = new DateOnly(today.Year, today.Month, 1);
+        var historyStart = monthStart.AddMonths(-reserveHistoryMonths);
+        if (data.EarliestOperationDate is not { } earliest || earliest > historyStart)
+            return tile with { Warning = $"Недостаточно истории за {reserveHistoryMonths} полных месяцев." };
+        if (current?.RemainingPoints.LastOrDefault() is not { } last)
+            return tile with { Warning = $"Нет расходов за {reserveHistoryMonths} полных месяцев." };
+
+        var history = current.DailyPoints.Where(point => point.Date >= historyStart && point.Date < monthStart).ToArray();
+        if (history.Any(point => point.Expenses is null))
+            return tile with { Warning = "Для расчёта не хватает валюты или курса расходов." };
+
+        var average = history.Sum(point => point.Expenses.GetValueOrDefault()) / reserveHistoryMonths;
+        if (average <= 0)
+            return tile with { Warning = "Нет положительных среднемесячных расходов." };
+
+        tile = tile with
+        {
+            AverageMonthlyExpenses = HistoricalExchangeRates.Format(
+                decimal.Round(average, 2, MidpointRounding.AwayFromZero), currency)
+        };
+        if (balance is null)
+            return tile with { Warning = "Текущий остаток недоступен." };
+
+        var months = (double)Math.Max(balance.Value, 0m) / (double)average;
+        var days = Math.Ceiling(months * history.Length / reserveHistoryMonths);
+        return tile with
+        {
+            Amount = $"{months:N1} мес.",
+            EstimatedDepletion = days <= DateOnly.MaxValue.DayNumber - last.Date.DayNumber
+                ? last.Date.AddDays((int)days).ToString("dd.MM.yyyy", CultureInfo.CurrentCulture)
+                : null
         };
     }
     internal Task RefreshAfterServerChangeAsync()
@@ -733,7 +809,23 @@ public partial class StatisticsContent : UserControl
         public string Label => Month.ToString("MM.yyyy", CultureInfo.InvariantCulture);
     }
     private sealed record StatisticsTotal(string Label, string Amount, string Warning = "", bool IsLoading = false)
+        : INotifyPropertyChanged
     {
+        public string Amount { get; set; } = Amount;
+        public string Warning { get; set; } = Warning;
         public int Sign { get; init; }
+        public bool HasReserveSelector { get; init; }
+        public string? AverageMonthlyExpenses { get; set; }
+        public string? EstimatedDepletion { get; set; }
+        public event PropertyChangedEventHandler? PropertyChanged;
+
+        public void UpdateReserve(StatisticsTotal source)
+        {
+            Amount = source.Amount;
+            Warning = source.Warning;
+            AverageMonthlyExpenses = source.AverageMonthlyExpenses;
+            EstimatedDepletion = source.EstimatedDepletion;
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(null));
+        }
     }
 }

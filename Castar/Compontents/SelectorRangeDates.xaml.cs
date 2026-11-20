@@ -99,6 +99,47 @@ namespace Castar.Compontents
 
         private void CurrentMonth_Click(object sender, RoutedEventArgs e) => SetCurrentMonth();
 
+        private void MonthPickerButton_Click(object sender, RoutedEventArgs e)
+        {
+            if (MonthPopup.IsOpen)
+            {
+                CloseMonthPicker();
+                return;
+            }
+
+            var date = RangeDate.StartDate.Date;
+            MonthCalendar.DisplayMode = CalendarMode.Year;
+            MonthCalendar.SelectedDate = date;
+            MonthCalendar.DisplayDate = date;
+            MonthPopup.IsOpen = true;
+        }
+
+        private void MonthPopup_Opened(object sender, EventArgs e) => MonthCalendar.Focus();
+
+        private void MonthCalendar_DisplayModeChanged(object? sender, CalendarModeChangedEventArgs e)
+        {
+            if (e.OldMode != CalendarMode.Year || e.NewMode != CalendarMode.Month || !MonthPopup.IsOpen)
+                return;
+
+            SetMonth(MonthCalendar.DisplayDate);
+            CloseMonthPicker();
+        }
+
+        private void MonthCalendar_PreviewKeyDown(object sender, KeyEventArgs e)
+        {
+            if (e.Key != Key.Escape)
+                return;
+
+            e.Handled = true;
+            CloseMonthPicker();
+        }
+
+        private void CloseMonthPicker()
+        {
+            MonthPopup.IsOpen = false;
+            MonthPickerButton.Focus();
+        }
+
         private void SetMonth(DateTime date)
         {
             var start = new DateTime(date.Year, date.Month, 1);

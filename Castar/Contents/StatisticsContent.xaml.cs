@@ -628,23 +628,37 @@ public partial class StatisticsContent : UserControl
     private void DrawHeatmap()
     {
         var currency = PeriodCurrency;
-        if (currency is null) { HeatPanel.Message("Нет операций за период."); return; }
-        var lastDate = Dates.RangeDate.EndDate;
-        var months = currency.DailyPoints.Where(day => day.Date.Year == lastDate.Year && day.Date.Month == lastDate.Month)
-            .GroupBy(day => new DateOnly(day.Date.Year, day.Date.Month, 1))
-            .Select(group => new ExpenseHeatmapMonth(group.Key, currency.Currency, group.ToArray(),
-                day => ExpenseDayRequested?.Invoke(day))).ToArray();
+        if (currency is null || currency.DailyPoints.Count == 0)
+        {
+            HeatPanel.Plot.Children.Clear();
+            HeatPanel.Message("Нет операций за период.");
+            return;
+        }
+        HeatPanel.Message("");
+        var start = DateOnly.FromDateTime(Dates.RangeDate.StartDate);
+        var end = DateOnly.FromDateTime(Dates.RangeDate.EndDate);
+        var byMonth = (start.Year != 9999 || start.Month != 12) && end >= start.AddMonths(1);
+        var cells = byMonth
+            ? currency.DailyPoints.GroupBy(day => new DateOnly(day.Date.Year, day.Date.Month, 1))
+                .Select(month => new ExpenseHeatmapCell(month.Key,
+                    month.Any(day => day.Expenses is null) ? null : month.Sum(day => day.Expenses!.Value))).ToArray()
+            : currency.DailyPoints.Select(day => new ExpenseHeatmapCell(day.Date, day.Expenses)).ToArray();
+        var maximum = cells.Select(cell => Math.Abs(cell.Amount.GetValueOrDefault())).Max();
+        var periods = cells.GroupBy(cell => new DateOnly(cell.Date.Year, byMonth ? 1 : cell.Date.Month, 1))
+            .Select(group => new ExpenseHeatmapPeriod(group.Key, currency.Currency, byMonth, group.ToArray(),
+                maximum, day => ExpenseDayRequested?.Invoke(day))).ToArray();
         if (HeatPanel.Plot.Children.OfType<ListBox>().FirstOrDefault() is { } previous &&
-            previous.ItemsSource is ExpenseHeatmapMonth[] old && old.Length == months.Length &&
-            old.Zip(months).All(pair => pair.First.Month == pair.Second.Month && pair.First.Currency == pair.Second.Currency
-                && pair.First.Days.SequenceEqual(pair.Second.Days))) return;
+            previous.ItemsSource is ExpenseHeatmapPeriod[] old && old.Length == periods.Length &&
+            old.Zip(periods).All(pair => pair.First.Start == pair.Second.Start && pair.First.Currency == pair.Second.Currency
+                && pair.First.ByMonth == pair.Second.ByMonth && pair.First.Maximum == pair.Second.Maximum
+                && pair.First.Cells.SequenceEqual(pair.Second.Cells))) return;
         var list = new ListBox { BorderThickness = new Thickness(0), Background = Brushes.Transparent,
-            HorizontalContentAlignment = HorizontalAlignment.Stretch, ItemsSource = months };
+            HorizontalContentAlignment = HorizontalAlignment.Stretch, ItemsSource = periods };
         VirtualizingPanel.SetIsVirtualizing(list, true);
         VirtualizingPanel.SetVirtualizationMode(list, VirtualizationMode.Recycling);
         ScrollViewer.SetCanContentScroll(list, true);
         var template = new DataTemplate();
-        template.VisualTree = new FrameworkElementFactory(typeof(ExpenseHeatmapMonthView));
+        template.VisualTree = new FrameworkElementFactory(typeof(ExpenseHeatmapCalendarView));
         list.ItemTemplate = template;
         HeatPanel.Plot.Children.Clear(); HeatPanel.Plot.Children.Add(list);
     }

@@ -99,18 +99,28 @@ namespace Castar.Compontents
 
         private void CurrentMonth_Click(object sender, RoutedEventArgs e) => SetCurrentMonth();
 
-        private void MonthPickerButton_Click(object sender, RoutedEventArgs e)
+        private void MonthPickerButton_Click(object sender, RoutedEventArgs e) =>
+            OpenPeriodPicker(MonthPickerButton, CalendarMode.Year);
+
+        private void YearPickerButton_Click(object sender, RoutedEventArgs e) =>
+            OpenPeriodPicker(YearPickerButton, CalendarMode.Decade);
+
+        private void OpenPeriodPicker(Button button, CalendarMode mode)
         {
             if (MonthPopup.IsOpen)
             {
-                CloseMonthPicker();
-                return;
+                var sameButton = ReferenceEquals(MonthPopup.PlacementTarget, button);
+                ClosePeriodPicker();
+                if (sameButton) return;
             }
 
             var date = RangeDate.StartDate.Date;
-            MonthCalendar.DisplayMode = CalendarMode.Year;
+            MonthPopup.PlacementTarget = button;
+            MonthCalendar.DisplayMode = mode;
             MonthCalendar.SelectedDate = date;
             MonthCalendar.DisplayDate = date;
+            System.Windows.Automation.AutomationProperties.SetName(MonthCalendar,
+                mode == CalendarMode.Decade ? "Год периода" : "Месяц периода");
             MonthPopup.IsOpen = true;
         }
 
@@ -118,11 +128,23 @@ namespace Castar.Compontents
 
         private void MonthCalendar_DisplayModeChanged(object? sender, CalendarModeChangedEventArgs e)
         {
-            if (e.OldMode != CalendarMode.Year || e.NewMode != CalendarMode.Month || !MonthPopup.IsOpen)
+            if (!MonthPopup.IsOpen)
                 return;
 
-            SetMonth(MonthCalendar.DisplayDate);
-            CloseMonthPicker();
+            if (ReferenceEquals(MonthPopup.PlacementTarget, YearPickerButton))
+            {
+                if (e.OldMode != CalendarMode.Decade || e.NewMode != CalendarMode.Year)
+                    return;
+                SetYear(MonthCalendar.DisplayDate.Year);
+            }
+            else
+            {
+                if (e.OldMode != CalendarMode.Year || e.NewMode != CalendarMode.Month)
+                    return;
+                SetMonth(MonthCalendar.DisplayDate);
+            }
+
+            ClosePeriodPicker();
         }
 
         private void MonthCalendar_PreviewKeyDown(object sender, KeyEventArgs e)
@@ -131,14 +153,16 @@ namespace Castar.Compontents
                 return;
 
             e.Handled = true;
-            CloseMonthPicker();
+            ClosePeriodPicker();
         }
 
-        private void CloseMonthPicker()
+        private void ClosePeriodPicker()
         {
             MonthPopup.IsOpen = false;
-            MonthPickerButton.Focus();
+            (MonthPopup.PlacementTarget as Button)?.Focus();
         }
+
+        private void SetYear(int year) => RangeDate = new RangeDate(new DateTime(year, 1, 1), new DateTime(year, 12, 31));
 
         private void SetMonth(DateTime date)
         {
@@ -150,6 +174,13 @@ namespace Castar.Compontents
         private void ChangeRangeDate(TypeRange type, int offset)
         {
             var currentStartDate = RangeDate.StartDate;
+            if (type == TypeRange.year && currentStartDate.Month == 1 && currentStartDate.Day == 1
+                && RangeDate.EndDate.Date == new DateTime(currentStartDate.Year, 12, 31))
+            {
+                var year = currentStartDate.Year + offset;
+                if (year is >= 1 and <= 9999) SetYear(year);
+                return;
+            }
             DateTime offsetDate = default!;
             switch (type)
             {

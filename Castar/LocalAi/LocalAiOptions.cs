@@ -17,12 +17,10 @@ public enum LocalAiMode
 public sealed record LocalAiOptions(LocalAiProvider Provider, LocalAiMode Mode, string Endpoint, string Model,
     string? ExecutablePath, string? ModelDirectory, int IdleMinutes)
 {
-    public const string RecommendedOllamaModel = "qwen3:4b-instruct-2507-q4_K_M";
-
     public static LocalAiOptions Default { get; } = new();
 
     public LocalAiOptions() : this(LocalAiProvider.Ollama, LocalAiMode.External, "http://127.0.0.1:11434",
-        RecommendedOllamaModel, null, null, 5)
+        "", null, null, 5)
     {
     }
 }

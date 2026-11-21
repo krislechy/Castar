@@ -33,7 +33,7 @@ namespace Castar.DAL.Repositories.DataBase
         Task<int> CountUncategorizedPurchasesAsync(DateTime? first, DateTime? endExclusive, CancellationToken token);
         Task<int> CountPendingItemsAsync(DateTime? first, DateTime? endExclusive, CancellationToken token);
         Task<PurchaseMutationResult> ApplyClassificationAsync(Guid purchaseId, long expectedRevision,
-            IReadOnlyDictionary<Guid, Guid?> results, CancellationToken cancellationToken);
+            IReadOnlyDictionary<Guid, Guid?> results, CancellationToken cancellationToken, bool reclassify = false);
     }
 
     public enum PurchaseMutationResult

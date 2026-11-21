@@ -11,6 +11,7 @@ namespace Castar.Server;
 public static partial class CastarEndpoints
 {
     private const int ClassificationBatchLimit = 250;
+    private const int PurchaseReclassificationLimit = 5_000;
 
     private static async Task<IResult> CountUncategorizedPurchases(IPurchasesRepository purchases,
         CancellationToken token, DateTimeOffset? startUtc = null, DateTimeOffset? endExclusiveUtc = null)
@@ -66,13 +67,26 @@ public static partial class CastarEndpoints
         return first is null && endExclusive is null || first < endExclusive;
     }
 
-    private static async Task<IResult> ApplyPurchaseClassification(Guid purchaseId, long revision,
+    private static Task<IResult> ApplyPurchaseClassification(Guid purchaseId, long revision,
         PurchaseClassificationWriteDto input, IPurchasesRepository purchases, CastarDbContext db,
-        BudgetEventPublisher events, CancellationToken token)
+        BudgetEventPublisher events, CancellationToken token) =>
+        WritePurchaseClassification(purchaseId, revision, input, purchases, db, events, token, reclassify: false);
+
+    private static Task<IResult> ReclassifyPurchase(Guid purchaseId, long revision,
+        PurchaseClassificationWriteDto input, IPurchasesRepository purchases, CastarDbContext db,
+        BudgetEventPublisher events, CancellationToken token) =>
+        WritePurchaseClassification(purchaseId, revision, input, purchases, db, events, token, reclassify: true);
+
+    private static async Task<IResult> WritePurchaseClassification(Guid purchaseId, long revision,
+        PurchaseClassificationWriteDto input, IPurchasesRepository purchases, CastarDbContext db,
+        BudgetEventPublisher events, CancellationToken token, bool reclassify)
     {
         if (revision < 0)
             return InvalidInput("Укажите версию покупки.");
-        if (input.Items is not { Count: > 0 and <= ClassificationBatchLimit }
+        var limit = reclassify ? PurchaseReclassificationLimit : ClassificationBatchLimit;
+        if (input.Items is { } items && items.Count > limit)
+            return InvalidInput($"Укажите не более {limit} товаров.");
+        if (input.Items is not { Count: > 0 }
             || input.Items.Any(item => item is null || item.ItemId == Guid.Empty)
             || input.Items.Select(item => item.ItemId).Distinct().Count() != input.Items.Count)
             return InvalidInput("Укажите уникальные товары покупки.");
@@ -83,7 +97,7 @@ public static partial class CastarEndpoints
             return InvalidInput("Выберите существующие категории расходов.");
 
         var result = await purchases.ApplyClassificationAsync(purchaseId, revision,
-            input.Items.ToDictionary(item => item.ItemId, item => item.CategoryId), token);
+            input.Items.ToDictionary(item => item.ItemId, item => item.CategoryId), token, reclassify);
         if (result == PurchaseMutationResult.Applied)
             events.QueueSynchronization(ServerSynchronization.PurchaseClassification);
         return PurchaseMutation(result);

@@ -14,7 +14,6 @@ using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
-using System.Windows.Media;
 
 namespace Castar.Contents;
 
@@ -27,7 +26,6 @@ public partial class LocalAiSettingsContent : UserControl
     private CancellationTokenSource? discovery;
     private LocalAiOptions saved = LocalAiOptions.Default;
     private bool savedEnabled;
-    private string? draftPrompt;
     private bool editingDraft;
     private bool changingControls = true;
     private bool startingHistory;
@@ -106,7 +104,6 @@ public partial class LocalAiSettingsContent : UserControl
             EndpointInput.Text = saved.Endpoint;
             ExecutableInput.Text = saved.ExecutablePath ?? "";
             DirectoryInput.Text = saved.ModelDirectory ?? "";
-            draftPrompt = saved.Prompt;
             RestoreModel(saved.Model);
             currentTarget = ModelSource(saved);
             DiscoveryStatus.Text = "";
@@ -374,27 +371,6 @@ public partial class LocalAiSettingsContent : UserControl
 
     private void TargetText_Changed(object sender, TextChangedEventArgs e) => UpdateTarget();
 
-    private async void EditPrompt_Click(object sender, RoutedEventArgs e)
-    {
-        if (!editingDraft)
-            return;
-
-        var editor = new CategorizationPromptEditor(draftPrompt);
-        var accepted = await PopupDialog.Show(editor, PopupDialog.TypeDialogEnum.Confirm, options =>
-        {
-            options.Title = "Промпт категоризации";
-            options.EditorIcon = (Geometry)FindResource("Lucide.file-text");
-            options.SuccessButton.SuccessConfirmButtonText = "Готово";
-            options.AllowMissClick = false;
-            return options;
-        });
-        if (accepted != true || !editingDraft)
-            return;
-
-        draftPrompt = editor.Prompt;
-        UpdateDraft();
-    }
-
     private void UpdateTarget()
     {
         if (changingControls || !editingDraft)
@@ -463,10 +439,7 @@ public partial class LocalAiSettingsContent : UserControl
             ModelPicker.SelectedItem as string ?? "",
             TrimToNull(ExecutableInput.Text),
             provider == LocalAiProvider.LlamaCpp ? TrimToNull(DirectoryInput.Text) : null,
-            IdlePicker.SelectedValue is int idle ? idle : saved.IdleMinutes)
-        {
-            Prompt = draftPrompt
-        };
+            IdlePicker.SelectedValue is int idle ? idle : saved.IdleMinutes);
     }
 
     private static string? TrimToNull(string value) => string.IsNullOrWhiteSpace(value) ? null : value.Trim();

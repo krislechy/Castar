@@ -11,7 +11,7 @@ public static class BudgetCategoryIconKeys
         ["shopping-cart", "utensils", "house", "car-front", "heart-pulse", "shirt", "smartphone", "monitor", "repeat",
          "gamepad-2", "plane", "dumbbell", "graduation-cap", "shopping-bag", "scissors", "landmark", "wallet",
          "paw-print", "gift", "ellipsis", "coffee", "bus", "fuel", "zap", "pill", "baby", "shield-check", "receipt-text",
-         "package", "banknote"]);
+         "package", "banknote", "wine"]);
 
     private static readonly IReadOnlyDictionary<string, string> IncomeAliases = new Dictionary<string, string>(StringComparer.Ordinal)
     {

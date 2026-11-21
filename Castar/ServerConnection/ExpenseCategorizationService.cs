@@ -45,6 +45,45 @@ public sealed class ExpenseCategorizationService(
 
     public Task CategorizeHistoryAsync(CancellationToken token = default) => StartRun(null, null, null, token);
 
+    internal async Task<bool> ReclassifyPurchaseAsync(PurchaseDto purchase, CancellationToken token = default)
+    {
+        if (purchase.Revision is not { } revision || purchase.ItemsDeferred)
+            throw new InvalidOperationException("Дождитесь загрузки товаров покупки.");
+        var options = settings.LocalAi;
+        if (string.IsNullOrWhiteSpace(options.Model) || settings.ApiKey.Length == 0)
+            throw new InvalidOperationException("Подключите сервер и выберите локальную модель.");
+        var connection = (settings.ServerUrl, settings.ProtectedApiKey);
+        var items = purchase.Items.Select(item => new LocalAiItem(item.Id, item.Name)).ToArray();
+        if (items.Length == 0)
+            return false;
+
+        var categories = await ReadCategoriesAsync(BudgetEvents.Purchase, token).ConfigureAwait(false);
+        if (categories.Length == 0)
+            throw new InvalidOperationException("Добавьте категории расходов.");
+
+        IReadOnlyList<LocalAiAssignment> assignments;
+        try
+        {
+            assignments = await localAi.ClassifyAsync(options, purchase.RetailPlace, items, categories, token).ConfigureAwait(false);
+        }
+        catch (LocalAiProtocol.ContextLimitException)
+        {
+            throw;
+        }
+        catch (Exception error) when (!token.IsCancellationRequested && IsRecoverable(error))
+        {
+            logger.Log<ExpenseCategorizationService>("Повторная категоризация: " + error.GetType().Name, TypeLog.Warning);
+            throw new InvalidOperationException("Локальная модель не смогла обработать товары.", error);
+        }
+
+        token.ThrowIfCancellationRequested();
+        if (connection != (settings.ServerUrl, settings.ProtectedApiKey))
+            throw new InvalidOperationException("Подключение к серверу изменилось.");
+        return await server.ApplyPurchaseReclassificationAsync(purchase.Id, revision,
+            assignments.Select(assignment => new PurchaseClassificationResultDto(assignment.ItemId, assignment.CategoryId)).ToArray(),
+            token).ConfigureAwait(false);
+    }
+
     public Task CategorizePeriodAsync(string kind, DateTime startUtc, DateTime endUtc, CancellationToken token = default)
     {
         if (kind is not (BudgetEvents.Purchase or BudgetEvents.Income))

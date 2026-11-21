@@ -93,7 +93,7 @@
    <Border x:Name="DetailsPanel" Grid.Column="2" Style="{StaticResource ExpenseCardSurface}" Padding="18,16">
     <Grid Grid.IsSharedSizeScope="True"><Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
      <Grid Margin="0,0,0,12">
-      <Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+      <Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
       <TextBlock Text="Товары" Style="{StaticResource ExpenseSectionTitle}" VerticalAlignment="Center"/>
       <StackPanel x:Name="UncategorizedItemsWarning" Grid.Column="1" Orientation="Horizontal" Margin="8,0,10,0"
                   VerticalAlignment="Center" Background="Transparent" ToolTip="Товары без категории">
@@ -111,7 +111,14 @@
                   Foreground="{DynamicResource Warning.Svg.Brush}" FontWeight="SemiBold" VerticalAlignment="Center"
                   AutomationProperties.Name="{Binding UncategorizedItemCount, StringFormat='Товары без категории: {0}'}"/>
       </StackPanel>
-      <Button x:Name="AddPurchaseItemButton" Grid.Column="2" Style="{StaticResource LedgerActionButton}" Content="Добавить товар"
+      <Button x:Name="ReclassifyPurchaseButton" Grid.Column="2" Style="{StaticResource LedgerActionButton}"
+              Width="40" Padding="8" Margin="0,0,8,0" IsEnabled="False" Click="ReclassifyPurchase_Click"
+              AutomationProperties.Name="Повторить категоризацию покупки" ToolTipService.ShowOnDisabled="True">
+       <Path Data="{StaticResource Lucide.wand-sparkles}" Width="16" Height="16" Stretch="Uniform"
+             Stroke="{DynamicResource Highlight}" StrokeThickness="1.5" StrokeStartLineCap="Round"
+             StrokeEndLineCap="Round" StrokeLineJoin="Round"/>
+      </Button>
+      <Button x:Name="AddPurchaseItemButton" Grid.Column="3" Style="{StaticResource LedgerActionButton}" Content="Добавить товар"
               Click="AddPurchaseItem_Click" AutomationProperties.Name="Добавить товар" IsEnabled="{Binding CanDelete, FallbackValue=False}"/>
      </Grid>
      <StackPanel Grid.Row="1" Margin="0,0,0,12"><TextBlock Text="{Binding RetailPlace, TargetNullValue=''}" Style="{StaticResource BudgetOptionalText}" Foreground="{DynamicResource Foreground.White}" FontWeight="SemiBold"/><TextBlock Text="{Binding RetailPlaceAddress, TargetNullValue=''}" Style="{StaticResource BudgetOptionalText}" Foreground="{StaticResource LedgerMuted}"/><c:MoneyAmount Display="{Binding Amount}" AmountAlignment="Left" Margin="0,4,0,0" FontWeight="SemiBold" Foreground="{StaticResource LedgerExpense}" FontSize="18" AutomationProperties.Name="Итог чека"/><TextBlock Text="{Binding Tag.Message, ElementName=DetailsPanel}" Style="{StaticResource BudgetOptionalText}" Foreground="{DynamicResource Warning.Svg.Brush}" TextWrapping="Wrap" AutomationProperties.LiveSetting="Polite"/></StackPanel>

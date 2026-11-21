@@ -424,6 +424,11 @@ public sealed class CastarServerClient(ClientSettings settings) : IDisposable
         SendMutationAsync(HttpMethod.Post, FormattableString.Invariant($"api/purchases/{purchaseId:D}/classification?revision={revision}"),
             token, new PurchaseClassificationWriteDto(items), modifiesAmounts: false);
 
+    internal Task<bool> ApplyPurchaseReclassificationAsync(Guid purchaseId, long revision,
+        IReadOnlyList<PurchaseClassificationResultDto> items, CancellationToken token) =>
+        SendMutationAsync(HttpMethod.Post, FormattableString.Invariant($"api/purchases/{purchaseId:D}/reclassification?revision={revision}"),
+            token, new PurchaseClassificationWriteDto(items), modifiesAmounts: false);
+
     internal Task<bool> ApplyIncomeClassificationAsync(Guid incomeId, long revision, Guid? categoryId,
         CancellationToken token) => SendMutationAsync(HttpMethod.Post,
             FormattableString.Invariant($"api/incomes/{incomeId:D}/classification?revision={revision}"),

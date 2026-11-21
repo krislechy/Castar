@@ -265,7 +265,7 @@ namespace Castar.DAL.Repositories.DataBase
             var amountChanged = item.Quantity != quantity || item.Price != unitPrice;
             var fiscalLineChanged = item.Name != name || amountChanged;
             if (!fiscalLineChanged && (!updateCategory ||
-                item.CategoryState == ItemCategoryState.Confirmed && item.BudgetCategoryId == categoryId))
+                categoryId.HasValue && item.CategoryState == ItemCategoryState.Confirmed && item.BudgetCategoryId == categoryId))
                 return PurchaseMutationResult.Unchanged;
 
             if (fiscalLineChanged && IsFiscal(Context, purchase))

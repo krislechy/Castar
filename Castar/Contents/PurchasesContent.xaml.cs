@@ -27,6 +27,7 @@ public partial class PurchasesContent : UserControl
     private readonly CastarServerClient server;
     private readonly ClientSettings settings;
     private readonly HistoricalExchangeRates exchangeRates;
+    private readonly ExpenseCategorizationService? categorization;
     private readonly PeriodClassification classification;
     private bool listeningForChanges;
     private readonly ObservableCollection<PurchaseRow> purchases = [];
@@ -68,8 +69,11 @@ public partial class PurchasesContent : UserControl
         this.server = server;
         this.settings = settings;
         this.exchangeRates = exchangeRates;
+        this.categorization = categorization;
         InitializeComponent();
         classification = new(ClassificationButton, server, settings, categorization, BudgetEvents.Purchase, "Покупки");
+        DetailsPanel.DataContextChanged += (_, _) => UpdatePurchaseClassificationButton();
+        UpdatePurchaseClassificationButton();
         ExpenseComparison.DataContext = comparison;
         SelectionAmount.EnableSelectAll(PurchasesList);
         SelectionAmount.EnableSelectAll(ItemsList);
@@ -146,6 +150,8 @@ public partial class PurchasesContent : UserControl
 
     private async void Settings_PropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
+        if (e.PropertyName == nameof(ClientSettings.LocalAi))
+            UpdatePurchaseClassificationButton();
         if (e.PropertyName is not (nameof(ClientSettings.DisplayCurrency) or nameof(ClientSettings.DisplayTimeZoneId)))
             return;
 
@@ -484,6 +490,7 @@ public partial class PurchasesContent : UserControl
 
     private async Task LoadSelectionAsync()
     {
+        UpdatePurchaseClassificationButton();
         var selected = PurchasesList.SelectedItem as PurchaseRow;
         if (selected is not null && (selected == detailsFor || selected == loadingDetailsFor))
             return;
@@ -541,6 +548,43 @@ public partial class PurchasesContent : UserControl
     }
 
     private sealed record DetailStatus(bool IsLoading, string Message);
+
+    private PurchaseRow? ReclassifiablePurchase =>
+        DetailsPanel.DataContext is PurchaseRow { CanDelete: true, Source.ItemsDeferred: false } row
+        && PurchasesList.SelectedItem is PurchaseRow current && current.Id == row.Id
+        && current.Source.Revision == row.Source.Revision && row.Source.Items.Count > 0
+            ? row : null;
+
+    private void UpdatePurchaseClassificationButton()
+    {
+        var modelConfigured = categorization is not null && !string.IsNullOrWhiteSpace(settings.LocalAi.Model);
+        var eligible = ReclassifiablePurchase is not null;
+        ReclassifyPurchaseButton.IsEnabled = modelConfigured && eligible && purchaseAction is null;
+        ReclassifyPurchaseButton.ToolTip = !eligible ? null : modelConfigured
+            ? "Повторить категоризацию покупки" : "Выберите модель в настройках автоматической категоризации.";
+    }
+
+    private async void ReclassifyPurchase_Click(object sender, RoutedEventArgs e)
+    {
+        if (categorization is null || !ReclassifyPurchaseButton.IsEnabled || ReclassifiablePurchase is not { } row)
+            return;
+
+        await RunPurchaseActionAsync(async token =>
+        {
+            try
+            {
+                var applied = false;
+                await ButtonLoading.RunAsync(sender, async () =>
+                    applied = await categorization.ReclassifyPurchaseAsync(row.Source, token));
+                if (!applied && !token.IsCancellationRequested)
+                    await ShowPurchaseActionMessageAsync("Повторная категоризация недоступна. Проверьте версию Castar Server.");
+            }
+            catch (InvalidOperationException error) when (!token.IsCancellationRequested)
+            {
+                await ShowPurchaseActionMessageAsync(error.Message);
+            }
+        });
+    }
 
     internal void RevealNotification(Guid id, DateTime? addedOn)
     {
@@ -797,6 +841,7 @@ public partial class PurchasesContent : UserControl
 
         using var request = new CancellationTokenSource();
         purchaseAction = request;
+        UpdatePurchaseClassificationButton();
         try
         {
             await action(request.Token);
@@ -816,6 +861,7 @@ public partial class PurchasesContent : UserControl
         finally
         {
             purchaseAction = null;
+            UpdatePurchaseClassificationButton();
         }
     }
 

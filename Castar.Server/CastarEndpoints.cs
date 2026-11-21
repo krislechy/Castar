@@ -55,6 +55,7 @@ public static partial class CastarEndpoints
         api.MapGet("/purchases/classification/count", CountUncategorizedPurchases);
         api.MapPost("/purchases/classification/queue", QueueUncategorizedPurchaseItems);
         api.MapPost("/purchases/{purchaseId:guid}/classification", ApplyPurchaseClassification);
+        api.MapPost("/purchases/{purchaseId:guid}/reclassification", ReclassifyPurchase);
         api.MapGet("/purchases/{purchaseId:guid}", GetPurchaseDetails);
         api.MapGet("/budget/operations", GetBudgetOperations);
         api.MapGet("/budget/category-breakdown", GetBudgetCategoryBreakdown);
@@ -509,7 +510,7 @@ public static partial class CastarEndpoints
         {
             return ConfirmPurchaseCreation(await purchases.FindWithItemsAsync(input.Id, token), purchase);
         }
-        if (purchase.Items.Any(item => item.CategoryState == ItemCategoryState.Confirmed))
+        if (input.Items.Any(item => item.Category is not null))
             events.Queue(default(BudgetChange).AddCreation(purchase.Id, purchase.AddedOn), default);
         return Results.NoContent();
     }
@@ -524,7 +525,7 @@ public static partial class CastarEndpoints
             existing.Items.Zip(requested.Items).All(pair =>
                 pair.First.Name == pair.Second.Name && pair.First.Quantity == pair.Second.Quantity &&
                 pair.First.Price == pair.Second.Price &&
-                (pair.Second.CategoryState != ItemCategoryState.Confirmed ||
+                (pair.Second.CategoryState != ItemCategoryState.Confirmed || pair.Second.BudgetCategoryId is null ||
                     pair.First.CategoryState == ItemCategoryState.Confirmed &&
                     pair.First.BudgetCategoryId == pair.Second.BudgetCategoryId)))
             return Results.NoContent();

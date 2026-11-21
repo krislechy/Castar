@@ -9,18 +9,18 @@ public sealed partial class PurchasesRepository
 {
     public Task<int> CountUncategorizedPurchasesAsync(DateTime? first, DateTime? endExclusive, CancellationToken token) =>
         ItemsInPeriod(first, endExclusive)
-            .Where(item => item.BudgetCategoryId == null && item.CategoryState != ItemCategoryState.Confirmed)
+            .Where(item => item.BudgetCategoryId == null)
             .Select(item => item.PurchaseId).Distinct().CountAsync(token);
 
     public Task<int> CountPendingItemsAsync(DateTime? first, DateTime? endExclusive, CancellationToken token) =>
-        ItemsInPeriod(first, endExclusive).CountAsync(item => item.CategoryState == ItemCategoryState.Pending, token);
+        PendingClassificationItems(first, endExclusive).CountAsync(token);
 
     public async Task<(int QueuedCount, int PendingCount)> QueueUncategorizedItemsAsync(CancellationToken cancellationToken,
         DateTime? first = null, DateTime? endExclusive = null)
     {
         await using var transaction = await Context.Database.BeginTransactionAsync(cancellationToken);
         var queued = await ItemsInPeriod(first, endExclusive).Where(item => item.BudgetCategoryId == null &&
-                (item.CategoryState == ItemCategoryState.Archived || item.CategoryState == ItemCategoryState.Automatic))
+                item.CategoryState != ItemCategoryState.Pending)
             .ExecuteUpdateAsync(update => update.SetProperty(item => item.CategoryState, ItemCategoryState.Pending), cancellationToken);
         var pending = await CountPendingItemsAsync(first, endExclusive, cancellationToken);
         await transaction.CommitAsync(cancellationToken);
@@ -30,8 +30,7 @@ public sealed partial class PurchasesRepository
     public async Task<IReadOnlyList<PendingPurchaseClassification>> GetPendingClassificationAsync(
         int limit, CancellationToken cancellationToken, DateTime? first = null, DateTime? endExclusive = null)
     {
-        var pending = await ItemsInPeriod(first, endExclusive).AsNoTracking()
-            .Where(item => item.CategoryState == ItemCategoryState.Pending)
+        var pending = await PendingClassificationItems(first, endExclusive).AsNoTracking()
             .OrderBy(item => item.CreatedOn).ThenBy(item => item.Id)
             .Select(item => new
             {
@@ -53,8 +52,12 @@ public sealed partial class PurchasesRepository
             ? Context.Items.Where(item => item.Purchase!.AddedOn >= from && item.Purchase.AddedOn < to)
             : Context.Items;
 
+    private IQueryable<Item> PendingClassificationItems(DateTime? first, DateTime? endExclusive) =>
+        ItemsInPeriod(first, endExclusive).Where(item => item.CategoryState == ItemCategoryState.Pending ||
+            item.CategoryState == ItemCategoryState.Confirmed && item.BudgetCategoryId == null);
+
     public async Task<PurchaseMutationResult> ApplyClassificationAsync(Guid purchaseId, long expectedRevision,
-        IReadOnlyDictionary<Guid, Guid?> results, CancellationToken cancellationToken)
+        IReadOnlyDictionary<Guid, Guid?> results, CancellationToken cancellationToken, bool reclassify = false)
     {
         await using var transaction = await Context.Database.BeginTransactionAsync(cancellationToken);
         var itemIds = results.Keys.ToArray();
@@ -66,18 +69,35 @@ public sealed partial class PurchasesRepository
             return PurchaseMutationResult.Conflict;
         if (purchase.Items.Count != results.Count)
             return PurchaseMutationResult.NotFound;
+        if (reclassify && purchase.Items.Any(item => item.CategoryState is not
+            (ItemCategoryState.Pending or ItemCategoryState.Automatic or ItemCategoryState.Archived or ItemCategoryState.Confirmed)))
+            return PurchaseMutationResult.Conflict;
 
-        var pending = purchase.Items.Where(item => item.CategoryState == ItemCategoryState.Pending)
-            .Select(item => new { Item = item, Key = CategoryKey(item.Name, purchase.RetailPlace) }).ToArray();
-        if (pending.Length == 0)
+        var items = purchase.Items.Where(item => reclassify || item.CategoryState == ItemCategoryState.Pending ||
+                item.CategoryState == ItemCategoryState.Confirmed && item.BudgetCategoryId == null)
+            .Select(item => new { Item = item, Key = reclassify ? null : CategoryKey(item.Name, purchase.RetailPlace) })
+            .ToArray();
+        if (items.Length == 0)
             return PurchaseMutationResult.Unchanged;
 
-        var history = await ReadCategoryHistoryAsync(pending.Select(row => row.Key), cancellationToken);
-        foreach (var row in pending)
+        var history = reclassify ? null : await ReadCategoryHistoryAsync(items.Select(row => row.Key!), cancellationToken);
+        var changed = false;
+        foreach (var row in items)
         {
-            row.Item.BudgetCategoryId = history.TryGetValue(row.Key, out var categoryId) ? categoryId : results[row.Item.Id];
+            var categoryId = history is not null && history.TryGetValue(row.Key!, out var remembered)
+                ? remembered : results[row.Item.Id];
+            if (row.Item.BudgetCategoryId == categoryId &&
+                (row.Item.CategoryState == ItemCategoryState.Automatic ||
+                    row.Item.CategoryState == ItemCategoryState.Confirmed && categoryId.HasValue))
+                continue;
+
+            row.Item.BudgetCategoryId = categoryId;
             row.Item.CategoryState = ItemCategoryState.Automatic;
+            changed = true;
         }
+        if (!changed)
+            return PurchaseMutationResult.Unchanged;
+
         purchase.Revision = checked(purchase.Revision + 1);
         await Context.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
@@ -102,14 +122,22 @@ public sealed partial class PurchasesRepository
     {
         var values = keys.Distinct().ToArray();
         return values.Length == 0 ? [] : await Context.ItemCategoryHistory.AsNoTracking()
-            .Where(entry => values.Contains(entry.Key)).ToDictionaryAsync(entry => entry.Key, entry => entry.BudgetCategoryId, token);
+            .Where(entry => entry.BudgetCategoryId != null && values.Contains(entry.Key))
+            .ToDictionaryAsync(entry => entry.Key, entry => entry.BudgetCategoryId, token);
     }
 
     private async Task ConfirmCategoryAsync(Purchase purchase, Item item, Guid? categoryId, CancellationToken token)
     {
         item.BudgetCategoryId = categoryId;
-        item.CategoryState = ItemCategoryState.Confirmed;
         var key = CategoryKey(item.Name, purchase.RetailPlace);
+        if (!categoryId.HasValue)
+        {
+            item.CategoryState = ItemCategoryState.Pending;
+            await Context.ItemCategoryHistory.Where(entry => entry.Key == key).ExecuteDeleteAsync(token);
+            return;
+        }
+
+        item.CategoryState = ItemCategoryState.Confirmed;
         await Context.Database.ExecuteSqlAsync($"""
             INSERT INTO "ItemCategoryHistory" ("Key", "BudgetCategoryId") VALUES ({key}, {categoryId})
             ON CONFLICT ("Key") DO UPDATE SET "BudgetCategoryId" = excluded."BudgetCategoryId"

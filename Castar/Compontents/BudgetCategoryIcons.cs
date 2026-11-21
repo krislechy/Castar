@@ -33,7 +33,7 @@ internal static class BudgetCategoryIcons
         ["graduation-cap"] = "Образование", ["shopping-bag"] = "Покупки", ["scissors"] = "Красота",
         ["wallet"] = "Кошелёк", ["paw-print"] = "Питомцы", ["coffee"] = "Кофе", ["bus"] = "Транспорт",
         ["fuel"] = "Топливо", ["zap"] = "Коммунальные услуги", ["pill"] = "Аптека", ["baby"] = "Дети",
-        ["shield-check"] = "Страхование", ["package"] = "Доставка"
+        ["shield-check"] = "Страхование", ["package"] = "Доставка", ["wine"] = "Алкоголь"
     };
 
     internal static IReadOnlyList<Choice> ForKind(string kind) => BudgetCategoryIconKeys.ForKind(kind)

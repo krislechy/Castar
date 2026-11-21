@@ -45,6 +45,7 @@ public partial class IncomesContent : UserControl
     private IReadOnlyDictionary<Guid, BudgetCategoryDto>? categoryNames;
     private string incomeSearch = "";
     private bool applyingIncomes;
+    private bool editingIncome;
     private long revealGeneration;
     private long incomeConnectionRevision;
     private SelectorRangeDates? periodSelector;
@@ -465,6 +466,9 @@ public partial class IncomesContent : UserControl
 
     private async Task EditIncomeAsync(Income income, DateTime? instant = null, object? source = null)
     {
+        if (editingIncome)
+            return;
+        editingIncome = true;
         try
         {
             var revision = incomeConnectionRevision;
@@ -511,6 +515,10 @@ public partial class IncomesContent : UserControl
         catch (Exception error) when (CastarServerClient.IsConnectionError(error))
         {
             await PopupDialog.Show(CastarServerClient.DescribeError(error), PopupDialog.TypeDialogEnum.Default);
+        }
+        finally
+        {
+            editingIncome = false;
         }
     }
 

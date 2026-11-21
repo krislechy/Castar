@@ -190,6 +190,29 @@
                 </Grid>
                 <c:PopupDialog x:Name="MainDialog"/>
                 <!--#endregion-->
+                <Border x:Name="ServerActionIndicator"
+                        HorizontalAlignment="Right" VerticalAlignment="Bottom" Margin="0,0,24,24" Padding="12,8"
+                        Focusable="False" IsHitTestVisible="False">
+                    <Border.Style>
+                        <Style TargetType="Border" BasedOn="{StaticResource Castar.Panel}">
+                            <Setter Property="Background" Value="{DynamicResource Castar.Field}"/>
+                            <Setter Property="CornerRadius" Value="{DynamicResource Castar.Corner.Control}"/>
+                            <Setter Property="Visibility" Value="Collapsed"/>
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding IsServerActionPending, RelativeSource={RelativeSource AncestorType=local:MainWindow}}" Value="True">
+                                    <Setter Property="Visibility" Value="Visible"/>
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </Border.Style>
+                    <Grid>
+                        <Grid.ColumnDefinitions><ColumnDefinition Width="16"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                        <ContentControl Style="{StaticResource Castar.BusyIndicator}" Foreground="{DynamicResource Castar.Accent}"/>
+                        <TextBlock Grid.Column="1" Text="Выполняется запрос…" Margin="8,0,0,0" VerticalAlignment="Center"
+                                   Foreground="{DynamicResource Foreground.White}" FontSize="{StaticResource Castar.Font.Caption}"
+                                   AutomationProperties.LiveSetting="Polite"/>
+                    </Grid>
+                </Border>
             </Grid>
         </Grid>
     </Border>

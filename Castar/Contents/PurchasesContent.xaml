@@ -1,7 +1,8 @@
 <UserControl x:Class="Castar.Contents.PurchasesContent"
  xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
  xmlns:api="clr-namespace:Castar.Api;assembly=Castar.Api"
- xmlns:c="clr-namespace:Castar.Compontents" Loaded="Purchases_Loaded" Unloaded="Purchases_Unloaded"
+ xmlns:c="clr-namespace:Castar.Compontents" xmlns:views="clr-namespace:Castar.Contents"
+ Loaded="Purchases_Loaded" Unloaded="Purchases_Unloaded"
  IsVisibleChanged="Purchases_IsVisibleChanged" ContextMenuOpening="Purchases_ContextMenuOpening" FontFamily="Segoe UI" FontSize="14">
  <UserControl.Resources><ResourceDictionary>
   <ResourceDictionary.MergedDictionaries><ResourceDictionary Source="/Castar;component/Styles/ExpenseLedger.xaml"/></ResourceDictionary.MergedDictionaries>
@@ -93,7 +94,7 @@
    <Border x:Name="DetailsPanel" Grid.Column="2" Style="{StaticResource ExpenseCardSurface}" Padding="18,16">
     <Grid Grid.IsSharedSizeScope="True"><Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
      <Grid Margin="0,0,0,12">
-      <Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+      <Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
       <TextBlock Text="Товары" Style="{StaticResource ExpenseSectionTitle}" VerticalAlignment="Center"/>
       <StackPanel x:Name="UncategorizedItemsWarning" Grid.Column="1" Orientation="Horizontal" Margin="8,0,10,0"
                   VerticalAlignment="Center" Background="Transparent" ToolTip="Товары без категории">
@@ -118,7 +119,47 @@
              Stroke="{DynamicResource Highlight}" StrokeThickness="1.5" StrokeStartLineCap="Round"
              StrokeEndLineCap="Round" StrokeLineJoin="Round"/>
       </Button>
-      <Button x:Name="AddPurchaseItemButton" Grid.Column="3" Style="{StaticResource LedgerActionButton}" Content="Добавить товар"
+      <Grid x:Name="PurchaseItemQueueStatus" Grid.Column="3" Width="68" Margin="0,0,8,0" VerticalAlignment="Center">
+       <Grid.ColumnDefinitions><ColumnDefinition Width="40"/><ColumnDefinition/></Grid.ColumnDefinitions>
+       <Grid.Style>
+        <Style TargetType="Grid">
+         <Style.Triggers>
+          <DataTrigger Binding="{Binding PendingPurchaseItemCount, RelativeSource={RelativeSource AncestorType=views:PurchasesContent}, FallbackValue=0}" Value="0">
+           <Setter Property="Visibility" Value="Hidden"/>
+          </DataTrigger>
+         </Style.Triggers>
+        </Style>
+       </Grid.Style>
+       <Button x:Name="RetryPurchaseItemsButton" Padding="8" Click="RetryPendingPurchaseItems_Click"
+               ToolTip="{Binding PurchaseItemQueueMessage, RelativeSource={RelativeSource AncestorType=views:PurchasesContent}}"
+               AutomationProperties.ItemStatus="{Binding ToolTip, RelativeSource={RelativeSource Self}}"
+               ToolTipService.ShowOnDisabled="True">
+        <Button.Style>
+         <Style TargetType="Button" BasedOn="{StaticResource LedgerActionButton}">
+          <Setter Property="Foreground" Value="{DynamicResource Warning.Svg.Brush}"/>
+          <Setter Property="AutomationProperties.Name" Value="Повторить отправку товаров"/>
+          <Style.Triggers>
+           <DataTrigger Binding="{Binding IsPurchaseItemQueueWaiting, RelativeSource={RelativeSource AncestorType=views:PurchasesContent}, FallbackValue=False}" Value="True">
+            <Setter Property="c:ButtonLoading.IsBusy" Value="True"/>
+            <Setter Property="Foreground" Value="{DynamicResource Highlight}"/>
+            <Setter Property="AutomationProperties.Name" Value="Товары ожидают отправки"/>
+           </DataTrigger>
+          </Style.Triggers>
+         </Style>
+        </Button.Style>
+        <Path Style="{StaticResource ExpenseCategoryStatusIcon}" Data="{StaticResource Lucide.rotate-ccw}"
+              Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"/>
+       </Button>
+       <TextBlock x:Name="PendingPurchaseItemsCount" Grid.Column="1" Margin="4,0,0,0"
+                  Text="{Binding PendingPurchaseItemCount, RelativeSource={RelativeSource AncestorType=views:PurchasesContent}}"
+                  Foreground="{Binding Foreground, ElementName=RetryPurchaseItemsButton}"
+                  FontWeight="SemiBold" VerticalAlignment="Center" HorizontalAlignment="Center"
+                  TextTrimming="CharacterEllipsis"
+                  ToolTip="{Binding ToolTip, ElementName=RetryPurchaseItemsButton}"
+                  AutomationProperties.Name="{Binding Text, RelativeSource={RelativeSource Self}, StringFormat='Товаров в очереди: {0}'}"
+                  AutomationProperties.LiveSetting="Polite"/>
+      </Grid>
+      <Button x:Name="AddPurchaseItemButton" Grid.Column="4" Style="{StaticResource LedgerActionButton}" Content="Добавить товар"
               Click="AddPurchaseItem_Click" AutomationProperties.Name="Добавить товар" IsEnabled="{Binding CanDelete, FallbackValue=False}"/>
      </Grid>
      <StackPanel Grid.Row="1" Margin="0,0,0,12"><TextBlock Text="{Binding RetailPlace, TargetNullValue=''}" Style="{StaticResource BudgetOptionalText}" Foreground="{DynamicResource Foreground.White}" FontWeight="SemiBold"/><TextBlock Text="{Binding RetailPlaceAddress, TargetNullValue=''}" Style="{StaticResource BudgetOptionalText}" Foreground="{StaticResource LedgerMuted}"/><c:MoneyAmount Display="{Binding Amount}" AmountAlignment="Left" Margin="0,4,0,0" FontWeight="SemiBold" Foreground="{StaticResource LedgerExpense}" FontSize="18" AutomationProperties.Name="Итог чека"/><TextBlock Text="{Binding Tag.Message, ElementName=DetailsPanel}" Style="{StaticResource BudgetOptionalText}" Foreground="{DynamicResource Warning.Svg.Brush}" TextWrapping="Wrap" AutomationProperties.LiveSetting="Polite"/></StackPanel>

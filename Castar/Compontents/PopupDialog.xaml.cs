@@ -33,6 +33,7 @@ public partial class PopupDialog : UserControl
     public sealed class Options
     {
         public bool AllowMissClick { get; set; } = true;
+        public bool EscapeReturnsNull { get; set; }
         public DefaultButtonClass DefaultButton { get; } = new();
         public SuccessConfirmButtonClass SuccessButton { get; } = new();
         public CancelConfirmButtonClass CancelButton { get; } = new();
@@ -276,7 +277,7 @@ public partial class PopupDialog : UserControl
         if (e.Key != Key.Escape)
             return;
         e.Handled = true;
-        Close(ActiveDialog?.Type == TypeDialogEnum.Confirm ? false : null);
+        Close(ActiveDialog is { Type: TypeDialogEnum.Confirm, EscapeReturnsNull: false } ? false : null);
     }
 
     private void SuccessConfirmEvent(object sender, RoutedEventArgs e) => Close(true);
@@ -304,6 +305,7 @@ public partial class PopupDialog : UserControl
             ConfirmButton = new(options.SuccessButton.SuccessConfirmButtonText, options.SuccessButton.SuccessConfirmButtonForeground);
             CancelButton = new(options.CancelButton.CancelConfirmButtonText, options.CancelButton.CancelConfirmButtonForeground);
             AllowMissClick = options.AllowMissClick;
+            EscapeReturnsNull = options.EscapeReturnsNull;
             Validation = validation;
         }
 
@@ -318,6 +320,7 @@ public partial class PopupDialog : UserControl
         public ButtonPresentation CancelButton { get; }
         public string? Warning { get => warning; internal set => SetField(ref warning, value); }
         internal bool AllowMissClick { get; }
+        internal bool EscapeReturnsNull { get; }
         internal Func<ValidatePopupDialog>? Validation { get; }
         internal TaskCompletionSource<bool?> Completion { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
     }

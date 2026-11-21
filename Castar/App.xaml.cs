@@ -175,6 +175,7 @@ public partial class App : Application
         {
             serviceProvider.GetRequiredService<CastarServerClient>().ClearAvatarCache();
             incomes.InvalidateCategoryNames();
+            purchases.ResumePurchaseItemQueue();
             _ = purchases.RefreshAfterServerChangeAsync();
             _ = incomes.RefreshAfterServerChangeAsync();
             _ = categories.RefreshAfterServerChangeAsync();

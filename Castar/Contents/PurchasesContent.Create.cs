@@ -51,9 +51,10 @@ public partial class PurchasesContent
 
     private async void AddPurchaseItem_Click(object sender, RoutedEventArgs e)
     {
-        if (PurchasesList.SelectedItem is not PurchaseRow { Source.Revision: { } revision } row)
+        if (PurchasesList.SelectedItem is not PurchaseRow { Source.Revision: not null } row)
             return;
+        var scope = PurchaseItemQueueScope;
         await ShowPurchaseItemEditorAsync(new(Guid.Empty, "", null, 1, 0, 0), row.Source.Currency, "Добавить товар", "Добавить",
-            (item, token) => server.AddPurchaseItemAsync(row.Id, revision, item, token), sender);
+            item => EnqueuePurchaseItem(scope, row.Id, row.Source.Currency, item), sender);
     }
 }

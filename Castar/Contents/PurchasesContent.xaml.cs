@@ -72,7 +72,11 @@ public partial class PurchasesContent : UserControl
         this.categorization = categorization;
         InitializeComponent();
         classification = new(ClassificationButton, server, settings, categorization, BudgetEvents.Purchase, "Покупки");
-        DetailsPanel.DataContextChanged += (_, _) => UpdatePurchaseClassificationButton();
+        DetailsPanel.DataContextChanged += (_, _) =>
+        {
+            UpdatePurchaseClassificationButton();
+            UpdatePurchaseItemQueueStatus();
+        };
         UpdatePurchaseClassificationButton();
         ExpenseComparison.DataContext = comparison;
         SelectionAmount.EnableSelectAll(PurchasesList);
@@ -102,8 +106,10 @@ public partial class PurchasesContent : UserControl
             return;
 
         listeningForChanges = true;
+        if (pendingPurchaseItems is null)
+            ResumePurchaseItemQueue();
         if (dataStale)
-            await RefreshAsync();
+            await RefreshAsync(showProgress: true);
         else
         {
             classification.Refresh(Dates.RangeDate.StartDate, Dates.RangeDate.EndDate, force: false);
@@ -144,6 +150,7 @@ public partial class PurchasesContent : UserControl
         CancelRefresh();
         dataStale = true;
         ClearPurchases();
+        ResumePurchaseItemQueue();
         if (listeningForChanges)
             await RefreshAsync();
     }
@@ -199,7 +206,7 @@ public partial class PurchasesContent : UserControl
         Dates.RangeDate = new RangeDate(day.ToDateTime(TimeOnly.MinValue), day.ToDateTime(TimeOnly.MinValue));
     }
 
-    private async Task RefreshAsync()
+    private async Task RefreshAsync(bool showProgress = false)
     {
         CancelRefresh();
         dataStale = true;
@@ -223,7 +230,7 @@ public partial class PurchasesContent : UserControl
 
         using var request = new CancellationTokenSource();
         activeRequest = request;
-        Progress.IsLoading = !hasLoaded;
+        Progress.IsLoading = showProgress || !hasLoaded;
         try
         {
             var rows = await server.GetPurchaseSummariesAsync(range.StartDate, range.EndDate, request.Token);
@@ -258,7 +265,7 @@ public partial class PurchasesContent : UserControl
             {
                 activeRequest = null;
                 if (refreshPending)
-                    _ = RefreshAsync();
+                    _ = RefreshAsync(showProgress);
                 else
                     Progress.IsLoading = false;
             }
@@ -466,9 +473,12 @@ public partial class PurchasesContent : UserControl
         await LoadSelectionAsync();
     }
 
-    private void UpdatePurchaseSelection() =>
+    private void UpdatePurchaseSelection()
+    {
         SelectionAmount.Show(SelectionTotal, SelectionTotalText, PurchasesList.SelectedItems.OfType<PurchaseRow>()
             .Select(row => (row.AmountWarning is null ? (decimal?)row.DisplayTotal : null, row.SelectionCurrency)));
+        UpdatePurchaseItemQueueStatus();
+    }
 
     private void ItemsSelection_Changed(object sender, SelectionChangedEventArgs e)
     {
@@ -729,11 +739,12 @@ public partial class PurchasesContent : UserControl
         if (row.Revision is not { } revision || purchaseAction is not null)
             return Task.CompletedTask;
         return ShowPurchaseItemEditorAsync(row.Source, row.Currency, "Изменить товар", "Сохранить",
-            (item, token) => server.EditPurchaseItemAsync(row.PurchaseId, row.Id, revision, item, token), source);
+            null, source, (item, token) => server.EditPurchaseItemAsync(row.PurchaseId, row.Id, revision, item, token));
     }
 
     private Task ShowPurchaseItemEditorAsync(PurchaseItemDto item, string? currency, string title, string action,
-        Func<PurchaseItemWriteDto, CancellationToken, Task<bool>> mutate, object? source) =>
+        Func<PurchaseItemWriteDto, ValidatePopupDialog>? enqueue, object? source,
+        Func<PurchaseItemWriteDto, CancellationToken, Task<bool>>? mutate = null) =>
         RunPurchaseActionAsync(async token =>
         {
             IReadOnlyList<BudgetCategoryDto>? categories = null;
@@ -742,7 +753,29 @@ public partial class PurchasesContent : UserControl
             token.ThrowIfCancellationRequested();
 
             var editor = new PurchaseItemEditor(item, currency, usePurchaseFormStyle: true, categories: categories);
-            await ConfirmAndApplyAsync(title, editor, action, request => mutate(editor.Result!, request),
+            if (enqueue is not null)
+            {
+                var accepted = await PopupDialog.Show(editor, PopupDialog.TypeDialogEnum.Confirm, options =>
+                {
+                    options.Title = title;
+                    options.EditorIcon = (Geometry)editor.FindResource("Lucide.package");
+                    options.SuccessButton.SuccessConfirmButtonText = action;
+                    options.AllowMissClick = false;
+                    return options;
+                }, () =>
+                {
+                    var validation = editor.Validate();
+                    if (!validation.Result)
+                        return validation;
+                    return token.IsCancellationRequested
+                        ? new(false, "Соединение изменилось. Откройте покупку заново.")
+                        : enqueue(editor.Result!);
+                });
+                if (accepted == true)
+                    _ = ProcessPurchaseItemQueueAsync();
+                return;
+            }
+            await ConfirmAndApplyAsync(title, editor, action, request => mutate!(editor.Result!, request),
                 token, editor.Validate, source: source, editorIcon: (Geometry)editor.FindResource("Lucide.package"));
         });
 

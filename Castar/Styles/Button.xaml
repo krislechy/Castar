@@ -1,13 +1,11 @@
 <ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
                     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
                     xmlns:c="clr-namespace:Castar.Compontents">
-    <!-- Zero-size overlay reserves the existing button geometry while content stays measured. -->
-    <Style x:Key="Castar.ButtonBusyIndicator" TargetType="ContentControl">
+    <!-- Zero-size spinner is centered in the space allocated by the host. -->
+    <Style x:Key="Castar.BusyIndicator" TargetType="ContentControl">
         <Setter Property="Width" Value="0"/><Setter Property="Height" Value="0"/>
         <Setter Property="HorizontalAlignment" Value="Center"/><Setter Property="VerticalAlignment" Value="Center"/>
         <Setter Property="IsHitTestVisible" Value="False"/><Setter Property="Focusable" Value="False"/>
-        <Setter Property="Visibility" Value="Collapsed"/>
-        <Setter Property="Foreground" Value="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"/>
         <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="ContentControl">
             <Canvas Width="0" Height="0">
                 <Grid x:Name="Spinner" Canvas.Left="-8" Canvas.Top="-8" Width="16" Height="16" RenderTransformOrigin="0.5,0.5">
@@ -34,6 +32,10 @@
                 </MultiDataTrigger>
             </ControlTemplate.Triggers>
         </ControlTemplate></Setter.Value></Setter>
+    </Style>
+    <Style x:Key="Castar.ButtonBusyIndicator" TargetType="ContentControl" BasedOn="{StaticResource Castar.BusyIndicator}">
+        <Setter Property="Visibility" Value="Collapsed"/>
+        <Setter Property="Foreground" Value="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"/>
         <Style.Triggers>
             <DataTrigger Binding="{Binding (c:ButtonLoading.IsBusy), RelativeSource={RelativeSource AncestorType=Button}}" Value="True">
                 <Setter Property="Visibility" Value="Visible"/>

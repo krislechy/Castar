@@ -7,7 +7,7 @@ using System.Windows.Media.Animation;
 
 namespace Castar.Compontents;
 
-/// <summary>Shared loading state for explicitly awaited button actions.</summary>
+/// <summary>Loading feedback for explicit actions on a button, menu, or the workspace.</summary>
 public static class ButtonLoading
 {
     public static readonly DependencyProperty IsBusyProperty = DependencyProperty.RegisterAttached(
@@ -34,7 +34,10 @@ public static class ButtonLoading
         var target = ResolveTarget(source);
         if (target is null)
         {
-            await action();
+            if (Application.Current?.MainWindow is MainWindow window)
+                await window.RunServerActionAsync(action);
+            else
+                await action();
             return;
         }
 
@@ -63,7 +66,7 @@ public static class ButtonLoading
         ItemsControl? parent = ItemsControl.ItemsControlFromItemContainer(item);
         while (parent is MenuItem parentItem)
             parent = ItemsControl.ItemsControlFromItemContainer(parentItem);
-        return parent is ContextMenu { PlacementTarget: ButtonBase placement } ? placement : item;
+        return parent is ContextMenu { PlacementTarget: ButtonBase placement } ? placement : null;
     }
 
     private static void UpdateInteraction(DependencyObject target, DependencyPropertyChangedEventArgs args)

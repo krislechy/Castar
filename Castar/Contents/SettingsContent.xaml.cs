@@ -408,7 +408,8 @@ public partial class SettingsContent : UserControl
             var canSetTelegramNotifications = false;
             if (!isNew)
             {
-                (user, canSetTelegramNotifications) = await server.GetUserForEditingAsync(user.Id);
+                await ButtonLoading.RunAsync(source, async () =>
+                    (user, canSetTelegramNotifications) = await server.GetUserForEditingAsync(user.Id));
                 if (!IsCurrent())
                     return;
             }

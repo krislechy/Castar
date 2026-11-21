@@ -42,6 +42,14 @@ namespace Castar
         private const double CollapsedNavigationWidth = 64;
         private const double ExpandedNavigationWidth = 240;
         private bool skipNavigationAnimation;
+        private readonly DispatcherTimer serverActionIndicatorDelay;
+        private int pendingServerActions;
+
+        private static readonly DependencyPropertyKey IsServerActionPendingPropertyKey = DependencyProperty.RegisterReadOnly(
+            nameof(IsServerActionPending), typeof(bool), typeof(MainWindow), new PropertyMetadata(false));
+
+        public static readonly DependencyProperty IsServerActionPendingProperty = IsServerActionPendingPropertyKey.DependencyProperty;
+        public bool IsServerActionPending => (bool)GetValue(IsServerActionPendingProperty);
 
         internal UIElement FieldNavigationScope => MainDialog is { IsVisible: true, ActiveDialog: not null }
             ? MainDialog : SettingsOverlay.IsVisible ? SettingsOverlay : this;
@@ -64,6 +72,15 @@ namespace Castar
             this.purchasesContent = purchasesContent;
             this.categoriesContent = categoriesContent;
             this.statisticsContent = statisticsContent;
+            serverActionIndicatorDelay = new DispatcherTimer(DispatcherPriority.Background, Dispatcher)
+            {
+                Interval = TimeSpan.FromMilliseconds(150)
+            };
+            serverActionIndicatorDelay.Tick += (_, _) =>
+            {
+                serverActionIndicatorDelay.Stop();
+                SetValue(IsServerActionPendingPropertyKey, pendingServerActions > 0);
+            };
             InitializeComponent();
             StateChanged += (_, _) => UpdateMaximizedBorder(VisualTreeHelper.GetDpi(this));
             DpiChanged += (_, e) => UpdateMaximizedBorder(e.NewDpi);
@@ -85,6 +102,24 @@ namespace Castar
             settings.ConnectionChanged += (_, _) => notificationTarget = null;
             if (settings.ApiKey.Length == 0)
                 ShowSettings();
+        }
+
+        internal async Task RunServerActionAsync(Func<Task> action)
+        {
+            if (pendingServerActions++ == 0)
+                serverActionIndicatorDelay.Start();
+            try
+            {
+                await action();
+            }
+            finally
+            {
+                if (--pendingServerActions == 0)
+                {
+                    serverActionIndicatorDelay.Stop();
+                    SetValue(IsServerActionPendingPropertyKey, false);
+                }
+            }
         }
 
         #region TopControls
@@ -219,7 +254,7 @@ namespace Castar
                 return;
 
             focusBeforeSettings = Keyboard.FocusedElement;
-            _ = settingsContent.RetryUnavailableDataAsync();
+            _ = RunServerActionAsync(settingsContent.RetryUnavailableDataAsync);
             SettingsMenuButton.IsChecked = true;
             SettingsOverlay.Visibility = Visibility.Visible;
             _ = settingsContent.RefreshClientUpdateAsync();

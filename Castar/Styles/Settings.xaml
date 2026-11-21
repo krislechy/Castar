@@ -5,6 +5,7 @@
         <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
         <Setter Property="Margin" Value="0"/>
         <Setter Property="FontWeight" Value="Normal"/>
+        <Setter Property="Foreground" Value="{DynamicResource Foreground.White}"/>
         <Setter Property="FocusVisualStyle">
             <Setter.Value>
                 <Style TargetType="Control">
@@ -12,7 +13,7 @@
                         <Setter.Value>
                             <ControlTemplate TargetType="Control">
                                 <Border Margin="1" CornerRadius="8" BorderThickness="1"
-                                        BorderBrush="{DynamicResource Highlight}"/>
+                                        BorderBrush="{DynamicResource Castar.Focus}"/>
                             </ControlTemplate>
                         </Setter.Value>
                     </Setter>
@@ -74,10 +75,8 @@
         </Setter>
     </Style>
 
-    <Style x:Key="SettingsGroup" TargetType="Border">
-        <Setter Property="Background" Value="{DynamicResource Main.Background.lvl2}"/>
+    <Style x:Key="SettingsGroup" TargetType="Border" BasedOn="{StaticResource Castar.Panel}">
         <Setter Property="Padding" Value="16"/>
-        <Setter Property="CornerRadius" Value="12"/>
         <Setter Property="TextElement.Foreground" Value="{DynamicResource Foreground.White}"/>
     </Style>
 
@@ -86,7 +85,8 @@
     </Style>
 
     <Style x:Key="SettingsUpdateBanner" TargetType="Border" BasedOn="{StaticResource SettingsGroup}">
-        <Setter Property="Background" Value="{DynamicResource Main.Background.lvl3}"/>
+        <Setter Property="Background" Value="{DynamicResource Castar.Selection}"/>
+        <Setter Property="BorderBrush" Value="{DynamicResource Castar.FieldBorder}"/>
         <Setter Property="Margin" Value="0,0,0,12"/>
         <Setter Property="Visibility" Value="Collapsed"/>
         <Style.Triggers>
@@ -97,7 +97,7 @@
     </Style>
 
     <Style x:Key="SettingsDangerAction" TargetType="Button" BasedOn="{StaticResource FormAction}">
-        <Setter Property="Foreground" Value="#FFFF7777"/>
+        <Setter Property="Foreground" Value="{DynamicResource Foreground.Negative}"/>
     </Style>
 
     <Style x:Key="SettingsDivider" TargetType="Border">
@@ -170,10 +170,10 @@
                             </VisualStateGroup>
                         </VisualStateManager.VisualStateGroups>
                         <DockPanel LastChildFill="True">
-                            <Border x:Name="Track" DockPanel.Dock="Right" Background="{DynamicResource Foreground.Gray}"
+                            <Border x:Name="Track" DockPanel.Dock="Right" Background="{DynamicResource Castar.ScrollThumb}"
                                     Margin="12,0,0,0" Width="36" Height="18" CornerRadius="9" VerticalAlignment="Center">
                                 <Grid>
-                                    <Border x:Name="CheckedTrack" Background="{DynamicResource Highlight}"
+                                    <Border x:Name="CheckedTrack" Background="{DynamicResource PurchaseForm.PrimaryAction}"
                                             CornerRadius="9" Opacity="0"/>
                                     <Grid x:Name="Thumb" Width="12" Height="12" Margin="3,0"
                                           HorizontalAlignment="Left" VerticalAlignment="Center">
@@ -181,7 +181,7 @@
                                             <TranslateTransform/>
                                         </Grid.RenderTransform>
                                         <Ellipse Fill="{DynamicResource Main.Background.lvl2}"/>
-                                        <Ellipse x:Name="CheckedThumb" Fill="{DynamicResource Main.Background.lvl1}" Opacity="0"/>
+                                        <Ellipse x:Name="CheckedThumb" Fill="{DynamicResource Foreground.White}" Opacity="0"/>
                                     </Grid>
                                 </Grid>
                             </Border>
@@ -196,7 +196,7 @@
                     </Border>
                     <ControlTemplate.Triggers>
                         <Trigger Property="IsMouseOver" Value="True">
-                            <Setter TargetName="Surface" Property="Background" Value="{DynamicResource Main.Background.lvl3}"/>
+                            <Setter TargetName="Surface" Property="Background" Value="{DynamicResource Main.MouseOver}"/>
                         </Trigger>
                         <Trigger Property="IsEnabled" Value="False">
                             <Setter TargetName="Surface" Property="Opacity" Value="0.5"/>

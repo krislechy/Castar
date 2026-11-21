@@ -2,7 +2,22 @@
                     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
                     xmlns:sys="clr-namespace:System;assembly=System.Runtime"
                     xmlns:converters="clr-namespace:Castar.Converters">
-    <!-- Shared visual scale; the original Castar color palette stays authoritative. -->
+    <ResourceDictionary.MergedDictionaries>
+        <ResourceDictionary Source="/Castar;component/Styles/PurchaseFormPalette.xaml"/>
+    </ResourceDictionary.MergedDictionaries>
+
+    <SolidColorBrush x:Key="Castar.Canvas" Color="{Binding GradientStops[1].Color, Source={StaticResource PurchaseForm.DialogBackground}, Mode=OneTime}"/>
+    <SolidColorBrush x:Key="Castar.Surface" Color="{Binding GradientStops[0].Color, Source={StaticResource PurchaseForm.DialogBackground}, Mode=OneTime}"/>
+    <SolidColorBrush x:Key="Castar.PanelBorder" Color="{Binding Color, Source={StaticResource PurchaseForm.PanelBorder}, Mode=OneTime}"/>
+    <SolidColorBrush x:Key="Castar.Field" Color="{Binding Color, Source={StaticResource PurchaseForm.Field}, Mode=OneTime}"/>
+    <SolidColorBrush x:Key="Castar.FieldBorder" Color="{Binding Color, Source={StaticResource PurchaseForm.FieldBorder}, Mode=OneTime}"/>
+    <SolidColorBrush x:Key="Castar.Accent" Color="{Binding Color, Source={StaticResource PurchaseForm.Accent}, Mode=OneTime}"/>
+    <SolidColorBrush x:Key="Castar.Focus" Color="{Binding Color, Source={StaticResource PurchaseForm.Focus}, Mode=OneTime}"/>
+    <SolidColorBrush x:Key="Castar.Selection" Color="{Binding Color, Source={StaticResource PurchaseForm.Selection}, Mode=OneTime}"/>
+    <SolidColorBrush x:Key="Castar.Divider" Color="{Binding Color, Source={StaticResource PurchaseForm.Divider}, Mode=OneTime}"/>
+    <SolidColorBrush x:Key="Castar.ScrollThumb" Color="#676D82"/>
+
+    <!-- Shared geometry and the established brush keys used by existing controls. -->
     <FontFamily x:Key="Castar.FontFamily">Segoe UI</FontFamily>
     <sys:Double x:Key="Castar.Font.Body">14</sys:Double>
     <sys:Double x:Key="Castar.Font.Caption">12</sys:Double>
@@ -11,43 +26,43 @@
     <CornerRadius x:Key="Castar.Corner.Panel">12</CornerRadius>
     <Style x:Key="Castar.FocusVisual" TargetType="Control">
         <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="Control">
-            <Border Margin="2" CornerRadius="6" BorderBrush="{DynamicResource Highlight}" BorderThickness="1"/>
+            <Border Margin="2" CornerRadius="{DynamicResource Castar.Corner.Control}" BorderBrush="{DynamicResource Castar.Focus}" BorderThickness="1"/>
         </ControlTemplate></Setter.Value></Setter>
     </Style>
     <converters:ImageBytesToBitmapConverter x:Key="UserAvatarImageConverter"/>
-    <!--<SolidColorBrush x:Key="Menu.Highlight" Color="#25dbca"/>-->
-    <SolidColorBrush x:Key="Highlight" Color="#14cfff"/>
-    <Color x:Key="Highlight.Color">
-        #14cfff
-    </Color>
-    <Color x:Key="Foreground.Gray.Color">
-        #8d939e
-    </Color>
-    <SolidColorBrush x:Key="Foreground.Gray" Color="#8d939e"/>
-    <SolidColorBrush x:Key="Foreground.White" Color="#f5f5f5"/>
+    <SolidColorBrush x:Key="Highlight" Color="{Binding Color, Source={StaticResource PurchaseForm.Accent}, Mode=OneTime}"/>
+    <SolidColorBrush x:Key="Foreground.Gray" Color="{Binding Color, Source={StaticResource PurchaseForm.Muted}, Mode=OneTime}"/>
+    <SolidColorBrush x:Key="Foreground.White" Color="{Binding Color, Source={StaticResource PurchaseForm.Foreground}, Mode=OneTime}"/>
     <SolidColorBrush x:Key="Foreground.Negative" Color="#FFFF7777"/>
-    <SolidColorBrush x:Key="Background.Disabled" Color="#338C8C8C"/>
-    <SolidColorBrush x:Key="Main.Background.lvl1" Color="#18191d"/>
-    <SolidColorBrush x:Key="Main.Background.lvl2" Color="#282e33"/>
-    <SolidColorBrush x:Key="Main.Background.lvl3" Color="#313b43"/>
-    <SolidColorBrush x:Key="Main.Disabled" Color="#3DDADADA"/>
-    <SolidColorBrush x:Key="Main.MouseOver" Color="#2614CFFF"/>
-    <SolidColorBrush x:Key="Main.MousePressed" Color="#4214CFFF"/>
-    <SolidColorBrush x:Key="Main.Top.Panel" Color="#3a4047"/>
+    <SolidColorBrush x:Key="Background.Disabled" Color="#338B90A1"/>
+    <SolidColorBrush x:Key="Main.Background.lvl1" Color="{Binding GradientStops[1].Color, Source={StaticResource PurchaseForm.DialogBackground}, Mode=OneTime}"/>
+    <SolidColorBrush x:Key="Main.Background.lvl2" Color="{Binding Color, Source={StaticResource PurchaseForm.Field}, Mode=OneTime}"/>
+    <SolidColorBrush x:Key="Main.Background.lvl3" Color="{Binding Color, Source={StaticResource PurchaseForm.PanelBorder}, Mode=OneTime}"/>
+    <SolidColorBrush x:Key="Main.Disabled" Color="#3D8B90A1"/>
+    <SolidColorBrush x:Key="Main.MouseOver" Color="{Binding Color, Source={StaticResource PurchaseForm.Hover}, Mode=OneTime}"/>
+    <SolidColorBrush x:Key="Main.MousePressed" Color="{Binding Color, Source={StaticResource PurchaseForm.Pressed}, Mode=OneTime}"/>
+    <SolidColorBrush x:Key="Main.Top.Panel" Color="{Binding Color, Source={StaticResource PurchaseForm.FieldBorder}, Mode=OneTime}"/>
     <SolidColorBrush x:Key="Warning.Svg.Brush" Color="#FFFF9663"/>
     
     <Style x:Key="GrayTextBlock" TargetType="TextBlock">
-        <Setter Property="Foreground" Value="#8d939e"/>
+        <Setter Property="Foreground" Value="{DynamicResource Foreground.Gray}"/>
+    </Style>
+    <Style x:Key="Castar.Panel" TargetType="Border">
+        <Setter Property="Background" Value="{DynamicResource Castar.Surface}"/>
+        <Setter Property="BorderBrush" Value="{DynamicResource Castar.PanelBorder}"/>
+        <Setter Property="BorderThickness" Value="1"/>
+        <Setter Property="CornerRadius" Value="{DynamicResource Castar.Corner.Panel}"/>
+        <Setter Property="SnapsToDevicePixels" Value="True"/>
     </Style>
     <!--#region Button-->
     <SolidColorBrush x:Key="Button.Disabled.Background" Color="Transparent"/>
-    <SolidColorBrush x:Key="Button.Disabled.Foreground" Color="#FF838383"/>
-    <SolidColorBrush x:Key="Button.Foreground" Color="#8d939e"/>
+    <SolidColorBrush x:Key="Button.Disabled.Foreground" Color="#85899A"/>
+    <SolidColorBrush x:Key="Button.Foreground" Color="{Binding Color, Source={StaticResource PurchaseForm.Muted}, Mode=OneTime}"/>
     <SolidColorBrush x:Key="Button.Foreground.Green" Color="#FF90EE90"/>
     <!--#endregion-->
     <!--#region Modal-->
-    <SolidColorBrush x:Key="Modal.Back.ColorSolid" Color="#313b43"/>
-    <SolidColorBrush x:Key="Modal.Container.ColorSolid" Color="#282e33"/>
+    <SolidColorBrush x:Key="Modal.Back.ColorSolid" Color="{Binding GradientStops[0].Color, Source={StaticResource PurchaseForm.DialogBackground}, Mode=OneTime}"/>
+    <SolidColorBrush x:Key="Modal.Container.ColorSolid" Color="{Binding Color, Source={StaticResource PurchaseForm.Action}, Mode=OneTime}"/>
     <!--#endregion-->
     <Style x:Key="DynamicHighlight" TargetType="{x:Type Canvas}">
         <Style.Resources>

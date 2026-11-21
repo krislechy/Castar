@@ -1,7 +1,7 @@
 <ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
                     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
                     xmlns:sys="clr-namespace:System;assembly=System.Runtime">
-    <CornerRadius x:Key="InputCornerRadius">6</CornerRadius>
+    <CornerRadius x:Key="InputCornerRadius">8</CornerRadius>
     <sys:Double x:Key="InputMinHeight">34</sys:Double>
     <Thickness x:Key="InputPadding">10,7</Thickness>
 
@@ -34,7 +34,7 @@
                             <Setter TargetName="Field" Property="BorderBrush" Value="{DynamicResource Foreground.Gray}"/>
                         </Trigger>
                         <Trigger Property="IsKeyboardFocused" Value="True">
-                            <Setter TargetName="Field" Property="BorderBrush" Value="{DynamicResource Highlight}"/>
+                            <Setter TargetName="Field" Property="BorderBrush" Value="{DynamicResource Castar.Focus}"/>
                         </Trigger>
                         <Trigger Property="Validation.HasError" Value="True"><Setter TargetName="Field" Property="BorderBrush" Value="{DynamicResource Warning.Svg.Brush}"/></Trigger>
                         <Trigger Property="IsEnabled" Value="False">

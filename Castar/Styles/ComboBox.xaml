@@ -20,7 +20,7 @@
                             <Setter TargetName="ItemBackground" Property="Background" Value="{DynamicResource Main.MouseOver}"/>
                         </Trigger>
                         <Trigger Property="IsSelected" Value="True">
-                            <Setter TargetName="ItemBackground" Property="Background" Value="{DynamicResource Main.MousePressed}"/>
+                            <Setter TargetName="ItemBackground" Property="Background" Value="{DynamicResource Castar.Selection}"/>
                         </Trigger>
                         <Trigger Property="IsEnabled" Value="False">
                             <Setter Property="Foreground" Value="{DynamicResource Foreground.Gray}"/>
@@ -34,7 +34,7 @@
     <Style TargetType="{x:Type ComboBox}">
         <Setter Property="Background" Value="{DynamicResource Main.Background.lvl2}"/>
         <Setter Property="Foreground" Value="{DynamicResource Foreground.White}"/>
-        <Setter Property="BorderBrush" Value="{DynamicResource Main.Background.lvl3}"/>
+        <Setter Property="BorderBrush" Value="{DynamicResource Castar.FieldBorder}"/>
         <Setter Property="BorderThickness" Value="1"/>
         <Setter Property="Padding" Value="{DynamicResource InputPadding}"/>
         <Setter Property="MinHeight" Value="{DynamicResource InputMinHeight}"/>
@@ -99,8 +99,8 @@
                                IsOpen="{TemplateBinding IsDropDownOpen}">
                             <Border MinWidth="{TemplateBinding ActualWidth}" MaxHeight="{TemplateBinding MaxDropDownHeight}"
                                     Margin="0,4,0,0" Padding="4" CornerRadius="{DynamicResource InputCornerRadius}" BorderThickness="1"
-                                    Background="{DynamicResource Main.Background.lvl2}"
-                                    BorderBrush="{DynamicResource Main.Background.lvl3}">
+                                    Background="{DynamicResource Castar.Surface}"
+                                    BorderBrush="{DynamicResource Castar.FieldBorder}">
                                 <ScrollViewer CanContentScroll="{TemplateBinding ScrollViewer.CanContentScroll}"
                                               HorizontalScrollBarVisibility="{TemplateBinding ScrollViewer.HorizontalScrollBarVisibility}"
                                               VerticalScrollBarVisibility="{TemplateBinding ScrollViewer.VerticalScrollBarVisibility}">
@@ -118,13 +118,13 @@
                             <Setter TargetName="DropDownToggle" Property="Grid.Column" Value="1"/>
                         </Trigger>
                         <Trigger Property="IsMouseOver" Value="True">
-                            <Setter TargetName="Field" Property="Background" Value="{DynamicResource Main.Top.Panel}"/>
+                            <Setter TargetName="Field" Property="BorderBrush" Value="{DynamicResource Foreground.Gray}"/>
                         </Trigger>
                         <Trigger Property="IsKeyboardFocusWithin" Value="True">
-                            <Setter TargetName="Field" Property="BorderBrush" Value="{DynamicResource Highlight}"/>
+                            <Setter TargetName="Field" Property="BorderBrush" Value="{DynamicResource Castar.Focus}"/>
                         </Trigger>
                         <Trigger Property="IsDropDownOpen" Value="True">
-                            <Setter TargetName="Field" Property="BorderBrush" Value="{DynamicResource Highlight}"/>
+                            <Setter TargetName="Field" Property="BorderBrush" Value="{DynamicResource Castar.Focus}"/>
                             <Setter TargetName="DropDownToggle" Property="Foreground" Value="{DynamicResource Highlight}"/>
                         </Trigger>
                         <Trigger Property="Validation.HasError" Value="True">

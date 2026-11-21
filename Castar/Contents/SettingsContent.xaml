@@ -12,11 +12,12 @@
             </ResourceDictionary.MergedDictionaries>
             <BooleanToVisibilityConverter x:Key="ServerConnectionVisibility"/>
             <converters:SexConverter x:Key="UserSex"/>
+            <Geometry x:Key="LocalAiSettingsIcon">M5,5 H19 V19 H5 Z M9,9 H15 V15 H9 Z M9,2 V5 M15,2 V5 M9,19 V22 M15,19 V22 M2,9 H5 M2,15 H5 M19,9 H22 M19,15 H22</Geometry>
             <Style TargetType="TextBox" BasedOn="{StaticResource {x:Type TextBox}}">
-                <Setter Property="Background" Value="{DynamicResource Main.Background.lvl1}"/>
+                <Setter Property="Background" Value="{DynamicResource Castar.Field}"/>
             </Style>
             <Style TargetType="PasswordBox" BasedOn="{StaticResource {x:Type PasswordBox}}">
-                <Setter Property="Background" Value="{DynamicResource Main.Background.lvl1}"/>
+                <Setter Property="Background" Value="{DynamicResource Castar.Field}"/>
             </Style>
         </ResourceDictionary>
     </UserControl.Resources>
@@ -25,7 +26,7 @@
             <RowDefinition Height="Auto"/>
             <RowDefinition Height="*"/>
         </Grid.RowDefinitions>
-        <Border Background="{DynamicResource Main.Background.lvl2}" BorderBrush="{DynamicResource Main.Top.Panel}"
+        <Border Background="{DynamicResource Castar.Surface}" BorderBrush="{DynamicResource Castar.Divider}"
                 BorderThickness="0,0,0,1">
             <DockPanel Margin="12,8" MinHeight="40">
                 <Button x:Name="BackToSections" DockPanel.Dock="Left" Visibility="Collapsed"
@@ -84,6 +85,15 @@
                             <Button Content="Приложение" Tag="{Binding ElementName=ApplicationSection}"
                                     CommandParameter="{DynamicResource Svg.Tools}"
                                     Style="{StaticResource SettingsSectionButton}" Click="OpenSettingsSection_Click"/>
+                            <Button x:Name="LocalAiSectionButton" Content="Автоматическая категоризация"
+                                    Tag="{Binding ElementName=LocalAiSection}"
+                                    Style="{StaticResource SettingsSectionButton}" Click="OpenSettingsSection_Click">
+                                <Button.CommandParameter>
+                                    <Path Data="{StaticResource LocalAiSettingsIcon}" Width="18" Height="18" Stretch="Uniform"
+                                          Stroke="{DynamicResource Foreground.Gray}" StrokeThickness="1.5"
+                                          StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round"/>
+                                </Button.CommandParameter>
+                            </Button>
                         </StackPanel>
                     </Border>
                 </StackPanel>
@@ -120,7 +130,7 @@
                                         <TextBlock Text="Ключ API" Style="{StaticResource FormFieldLabel}"/>
                                         <PasswordBox x:Name="ApiKeyInput" AutomationProperties.Name="Ключ API"
                                                      PasswordChanged="ApiKey_PasswordChanged"/>
-                                        <Button Content="Подключиться" Style="{StaticResource FormAction}"
+                                        <Button Content="Подключиться" Style="{StaticResource FormPrimaryAction}"
                                                 Click="SaveServerConnection_Click"/>
                                     </StackPanel>
                                 </StackPanel>
@@ -196,7 +206,7 @@
                             <StackPanel>
                                 <TextBlock Text="Конфигурация сервера" Style="{StaticResource SettingsGroupTitle}"/>
                                 <WrapPanel Margin="-4,0">
-                                    <Button Content="Сохранить настройки" Style="{StaticResource FormAction}"
+                                    <Button Content="Сохранить настройки" Style="{StaticResource FormPrimaryAction}"
                                             Margin="4,0,4,4" IsEnabled="{Binding CanSave}" Click="SaveServerSettings_Click"/>
                                     <Button Content="Перечитать настройки" Style="{StaticResource FormAction}"
                                             Margin="4,0,4,4" IsEnabled="{Binding CanReload}" Click="ReloadServerSettings_Click"/>
@@ -288,6 +298,11 @@
                     </StackPanel>
                 </Grid>
                 <Grid Visibility="Collapsed">
+                    <StackPanel x:Name="LocalAiSection">
+                        <ContentControl x:Name="LocalAiSettingsHost" HorizontalContentAlignment="Stretch" Focusable="False"/>
+                    </StackPanel>
+                </Grid>
+                <Grid Visibility="Collapsed">
                     <StackPanel x:Name="UsersSection">
                         <Border Style="{StaticResource SettingsGroup}">
                             <StackPanel>
@@ -339,7 +354,7 @@
                                 </ListView>
                                 <Button Content="Добавить" AutomationProperties.Name="Добавить пользователя"
                                         IsEnabled="{Binding UsersAvailable}"
-                                        Style="{StaticResource FormAction}" Click="NewUserButton_Click"/>
+                                        Style="{StaticResource FormPrimaryAction}" Click="NewUserButton_Click"/>
                             </StackPanel>
                         </Border>
                     </StackPanel>
@@ -351,7 +366,7 @@
                             <TextBlock x:Name="NestedSettingsStatus" Style="{StaticResource ViewStatus}"
                                        AutomationProperties.LiveSetting="Polite"/>
                             <Button x:Name="ApplyNestedSettingsButton" Content="Применить" HorizontalAlignment="Left"
-                                    Style="{StaticResource FormAction}" Click="ApplyNestedSettings_Click"/>
+                                    Style="{StaticResource FormPrimaryAction}" Click="ApplyNestedSettings_Click"/>
                         </StackPanel>
                     </Border>
                 </Grid>

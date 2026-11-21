@@ -1,23 +1,85 @@
 using Castar.Api;
 using Castar.Currency;
+using System;
+using System.Collections.Generic;
 using System.Globalization;
+using System.Windows;
+using System.Windows.Automation;
 using System.Windows.Controls;
+using System.Windows.Media;
 
 namespace Castar.Compontents;
 
 public partial class PurchaseItemEditor : UserControl
 {
     private readonly string originalName;
+    private readonly Guid? originalCategoryId;
 
-    internal PurchaseItemEditor(PurchaseItemDto item, string? currency)
+    internal PurchaseItemEditor(PurchaseItemDto item, string? currency, bool manualEntry = false, bool usePurchaseFormStyle = false,
+        IReadOnlyList<BudgetCategoryDto>? categories = null)
     {
         originalName = item.Name;
+        originalCategoryId = item.BudgetCategoryId;
+        IsManualEntry = manualEntry;
+        UsesPurchaseFormStyle = manualEntry || usePurchaseFormStyle;
         InitializeComponent();
         ItemName.Text = item.Name;
         Quantity.Text = item.Quantity.ToString(CultureInfo.CurrentCulture);
         UnitPrice.Text = item.Price.ToString(CultureInfo.CurrentCulture);
+        ItemCategory.Load(categories, originalCategoryId);
+        if (categories is { Count: > 0 } && item.Id != Guid.Empty && !item.CategoryConfirmed)
+            ConfirmCategory.Visibility = Visibility.Visible;
         if (HistoricalExchangeRates.IsCurrencyCode(currency))
             PriceLabel.Text = $"Цена ({currency})";
+        if (manualEntry)
+        {
+            Quantity.Background = Brushes.Transparent;
+            Quantity.BorderThickness = new Thickness(0);
+            Quantity.Padding = new Thickness(3, 7, 3, 7);
+            Quantity.HorizontalContentAlignment = HorizontalAlignment.Center;
+            Quantity.TextChanged += (_, _) => UpdateStepper();
+            UpdateStepper();
+        }
+    }
+
+    public bool IsManualEntry { get; }
+    public bool UsesPurchaseFormStyle { get; }
+    internal void FocusItemName() => ItemName.Focus();
+
+    internal void ShowHeadings(bool show)
+    {
+        NameLabel.Visibility = QuantityLabel.Visibility = PriceLabel.Visibility = show ? Visibility.Visible : Visibility.Collapsed;
+        AutomationProperties.SetName(ItemName, NameLabel.Text);
+        AutomationProperties.SetName(Quantity, QuantityLabel.Text);
+        AutomationProperties.SetName(UnitPrice, PriceLabel.Text);
+    }
+
+    private void DecreaseQuantity_Click(object sender, RoutedEventArgs e) => ChangeQuantity(-1);
+    private void IncreaseQuantity_Click(object sender, RoutedEventArgs e) => ChangeQuantity(1);
+
+    private void ChangeQuantity(int step)
+    {
+        if (TryStepQuantity(step, out var next))
+            Quantity.Text = next.ToString(CultureInfo.CurrentCulture);
+    }
+
+    private void UpdateStepper()
+    {
+        DecreaseQuantityButton.IsEnabled = TryStepQuantity(-1, out _);
+        IncreaseQuantityButton.IsEnabled = TryStepQuantity(1, out _);
+    }
+
+    private bool TryStepQuantity(int step, out decimal next)
+    {
+        next = step;
+        if (string.IsNullOrWhiteSpace(Quantity.Text))
+            return true;
+        if (!decimal.TryParse(Quantity.Text, NumberStyles.Float, CultureInfo.CurrentCulture, out var value)
+            || value <= -1_000_000 || value >= 1_000_000)
+            return false;
+
+        next = value + step;
+        return next is > -1_000_000 and < 1_000_000 and not 0;
     }
 
     internal PurchaseItemWriteDto? Result { get; private set; }
@@ -35,7 +97,10 @@ public partial class PurchaseItemEditor : UserControl
             || decimal.Abs(price) >= 10_000_000_000_000_000_000_000m)
             return new(false, "Укажите цену в допустимом диапазоне.");
 
-        Result = new(name, quantity, price);
+        Result = new(name, quantity, price)
+        {
+            Category = ItemCategory.GetChange(originalCategoryId, ConfirmCategory.IsChecked == true)
+        };
         return new(true, null);
     }
 }

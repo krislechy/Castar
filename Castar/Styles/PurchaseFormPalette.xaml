@@ -1,0 +1,28 @@
+<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <LinearGradientBrush x:Key="PurchaseForm.DialogBackground" StartPoint="0,0" EndPoint="1,1">
+        <GradientStop Color="#191D28" Offset="0"/>
+        <GradientStop Color="#131720" Offset="1"/>
+    </LinearGradientBrush>
+    <LinearGradientBrush x:Key="PurchaseForm.Badge" StartPoint="0,0" EndPoint="1,1">
+        <GradientStop Color="#2D303D" Offset="0"/>
+        <GradientStop Color="#202530" Offset="1"/>
+    </LinearGradientBrush>
+    <LinearGradientBrush x:Key="PurchaseForm.PrimaryAction" StartPoint="0,0" EndPoint="1,1">
+        <GradientStop Color="#7652F1" Offset="0"/>
+        <GradientStop Color="#623BEA" Offset="1"/>
+    </LinearGradientBrush>
+    <SolidColorBrush x:Key="PurchaseForm.PanelBorder" Color="#282D3C"/>
+    <SolidColorBrush x:Key="PurchaseForm.PrimaryBorder" Color="#835FF5"/>
+    <SolidColorBrush x:Key="PurchaseForm.Field" Color="#1E222E"/>
+    <SolidColorBrush x:Key="PurchaseForm.FieldBorder" Color="#383D4D"/>
+    <SolidColorBrush x:Key="PurchaseForm.Divider" Color="#2D3241"/>
+    <SolidColorBrush x:Key="PurchaseForm.Foreground" Color="#F3F4F9"/>
+    <SolidColorBrush x:Key="PurchaseForm.Muted" Color="#ADB4C7"/>
+    <SolidColorBrush x:Key="PurchaseForm.Accent" Color="#AF91FA"/>
+    <SolidColorBrush x:Key="PurchaseForm.Focus" Color="#A67BF4"/>
+    <SolidColorBrush x:Key="PurchaseForm.Selection" Color="#2B2640"/>
+    <SolidColorBrush x:Key="PurchaseForm.Action" Color="#212531"/>
+    <SolidColorBrush x:Key="PurchaseForm.Hover" Color="#22936AF3"/>
+    <SolidColorBrush x:Key="PurchaseForm.Pressed" Color="#40936AF3"/>
+</ResourceDictionary>

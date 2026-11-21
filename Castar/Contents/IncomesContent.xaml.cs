@@ -40,7 +40,7 @@ public partial class IncomesContent : UserControl
     private bool dataStale = true;
     private (DateTime Start, DateTime Finish, string Currency, string TimeZone)? renderedQuery;
     private Guid? notificationTarget;
-    private readonly Dictionary<string, bool> expandedGroups = new(StringComparer.CurrentCultureIgnoreCase);
+    private readonly HashSet<string> expandedGroups = new(StringComparer.CurrentCultureIgnoreCase);
     private string incomeSearch = "";
     private bool applyingIncomes;
     private long revealGeneration;
@@ -111,6 +111,7 @@ public partial class IncomesContent : UserControl
     {
         incomeConnectionRevision++;
         notificationTarget = null;
+        expandedGroups.Clear();
         CancelRefresh();
         dataStale = true;
         renderedQuery = null;
@@ -347,7 +348,7 @@ public partial class IncomesContent : UserControl
             return false;
         notificationTarget = null;
         IncomeSearchBox.Clear();
-        expandedGroups[selected.Income.Source ?? ""] = true;
+        expandedGroups.Add(selected.Income.Source ?? "");
         IncomesListView.UpdateLayout();
         foreach (var expander in VisualChildren<Expander>(IncomesListView))
             if (expander.DataContext is CollectionViewGroup group &&
@@ -386,6 +387,7 @@ public partial class IncomesContent : UserControl
         var first = previous.Income;
         var second = next.Income;
         return first.Id == second.Id && first.Sum == second.Sum && first.Currency == second.Currency
+            && first.CategoryId == second.CategoryId
             && first.AddedOn == second.AddedOn && first.Source == second.Source && first.UserId == second.UserId
             && first.User.Name == second.User.Name && first.User.Sex == second.User.Sex
             && first.User.ColorRaw.AsSpan().SequenceEqual(second.User.ColorRaw)
@@ -439,13 +441,14 @@ public partial class IncomesContent : UserControl
             {
                 var currencyTask = LoadManualCurrencyAsync();
                 var usersTask = server.GetUsersAsync();
-                await Task.WhenAll(currencyTask, usersTask);
+                var categoriesTask = server.GetOperationCategoriesAsync(BudgetEvents.Income);
+                await Task.WhenAll(currencyTask, usersTask, categoriesTask);
                 if (revision != incomeConnectionRevision)
                     return;
                 var currency = await currencyTask;
                 if (isNew && currency is not null)
                     income.Currency = currency.DefaultCurrency;
-                editor = new IncomePanel(income, currency?.Currencies) { Users = await usersTask };
+                editor = new IncomePanel(income, currency?.Currencies, await categoriesTask) { Users = await usersTask };
             });
             if (editor is null || revision != incomeConnectionRevision)
                 return;
@@ -456,6 +459,7 @@ public partial class IncomesContent : UserControl
                 options.SuccessButton.SuccessConfirmButtonText = isNew ? "Добавить" : "Сохранить";
                 options.AllowMissClick = false;
                 options.Title = isNew ? "Новый доход" : "Изменить доход";
+                options.EditorIcon = editor.EditorIcon;
                 return options;
             }, () => ValidateIncome(income, editor));
             if (accepted != true || revision != incomeConnectionRevision)
@@ -464,9 +468,9 @@ public partial class IncomesContent : UserControl
             await ButtonLoading.RunAsync(source, async () =>
             {
                 if (isNew)
-                    await server.AddIncomeAsync(income);
+                    await server.AddIncomeAsync(income, editor.CategoryChange);
                 else
-                    await server.UpdateIncomeAsync(income, income.AddedOn == initialDate ? instant : null);
+                    await server.UpdateIncomeAsync(income, income.AddedOn == initialDate ? instant : null, editor.CategoryChange);
                 await RefreshAfterServerChangeAsync();
             });
         }
@@ -570,6 +574,12 @@ public partial class IncomesContent : UserControl
         return snapshot.ConnectionRevision == incomeConnectionRevision ? snapshot.Row : null;
     }
 
+    private void ClearIncomeSearch_Click(object sender, RoutedEventArgs e)
+    {
+        IncomeSearchBox.Clear();
+        IncomeSearchBox.Focus();
+    }
+
     private void IncomeSearch_TextChanged(object sender, TextChangedEventArgs e)
     {
         incomeSearch = (sender as TextBox)?.Text.Trim() ?? "";
@@ -590,25 +600,25 @@ public partial class IncomesContent : UserControl
             .Any(value => value?.Contains(incomeSearch, StringComparison.CurrentCultureIgnoreCase) == true);
     }
 
-    private void IncomeGroup_Loaded(object sender, RoutedEventArgs e)
+    private void IncomeGroup_Loaded(object sender, RoutedEventArgs e) => RestoreGroupState((Expander)sender);
+
+    private void IncomeGroup_DataContextChanged(object sender, DependencyPropertyChangedEventArgs e) =>
+        RestoreGroupState((Expander)sender);
+
+    private void RestoreGroupState(Expander expander) =>
+        expander.SetCurrentValue(Expander.IsExpandedProperty,
+            expander.DataContext is CollectionViewGroup group && expandedGroups.Contains(group.Name?.ToString() ?? ""));
+
+    private void IncomeGroup_Expanded(object sender, RoutedEventArgs e)
     {
-        if (sender is not Expander { DataContext: CollectionViewGroup group } expander)
-            return;
-        var key = group.Name?.ToString() ?? "";
-        if (!expandedGroups.TryGetValue(key, out var expanded))
-        {
-            expanded = (Resources["IncomesSRC"] as CollectionViewSource)?.View.Groups?.Cast<CollectionViewGroup>().FirstOrDefault() == group;
-            expandedGroups[key] = expanded;
-        }
-        expander.IsExpanded = expanded;
+        if (ReferenceEquals(sender, e.OriginalSource) && sender is Expander { DataContext: CollectionViewGroup group })
+            expandedGroups.Add(group.Name?.ToString() ?? "");
     }
 
-    private void IncomeGroup_Expanded(object sender, RoutedEventArgs e) => RememberGroup(sender, true);
-    private void IncomeGroup_Collapsed(object sender, RoutedEventArgs e) => RememberGroup(sender, false);
-    private void RememberGroup(object sender, bool expanded)
+    private void IncomeGroup_Collapsed(object sender, RoutedEventArgs e)
     {
-        if (sender is Expander { DataContext: CollectionViewGroup group })
-            expandedGroups[group.Name?.ToString() ?? ""] = expanded;
+        if (ReferenceEquals(sender, e.OriginalSource) && sender is Expander { DataContext: CollectionViewGroup group })
+            expandedGroups.Remove(group.Name?.ToString() ?? "");
     }
 
     private static bool IsActionElement(DependencyObject element)

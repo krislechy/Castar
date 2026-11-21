@@ -47,7 +47,7 @@ namespace Castar.BL
             await incomesRepository.SaveMessageIncomes(user.Id, messageId, incomes, cancellationToken);
         }
 
-        public Task Update(Income income)
+        public Task Update(Income income, bool updateCategory = false)
         {
             if (income.User is { } owner && owner.Id != income.UserId)
             {
@@ -56,7 +56,7 @@ namespace Castar.BL
             }
 
             RoundLegacyAmount(income);
-            return incomesRepository.Update(income);
+            return incomesRepository.Update(income, updateCategory);
         }
 
         public Task<bool> Delete(Guid id) => incomesRepository.Delete(id);

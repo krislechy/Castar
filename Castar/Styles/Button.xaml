@@ -93,9 +93,31 @@
             </ControlTemplate.Triggers>
         </ControlTemplate></Setter.Value></Setter>
     </Style>
+    <Style x:Key="Castar.SecondaryButton" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
+        <Setter Property="Background" Value="{DynamicResource PurchaseForm.Action}"/>
+        <Setter Property="Foreground" Value="{DynamicResource Foreground.White}"/>
+        <Setter Property="BorderBrush" Value="{DynamicResource Castar.FieldBorder}"/>
+        <Setter Property="BorderThickness" Value="1"/>
+    </Style>
+    <Style x:Key="Castar.PrimaryButton" TargetType="Button" BasedOn="{StaticResource Castar.SecondaryButton}">
+        <Setter Property="Background" Value="{DynamicResource PurchaseForm.PrimaryAction}"/>
+        <Setter Property="BorderBrush" Value="{DynamicResource PurchaseForm.PrimaryBorder}"/>
+    </Style>
     <Style x:Key="System.Button" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
+        <Setter Property="WindowChrome.IsHitTestVisibleInChrome" Value="True"/>
         <Setter Property="Width" Value="40"/><Setter Property="Height" Value="30"/>
         <Setter Property="Margin" Value="0"/><Setter Property="Padding" Value="5"/>
         <Setter Property="Border.CornerRadius" Value="0"/><Setter Property="Cursor" Value="Arrow"/>
+    </Style>
+    <Style x:Key="System.CloseButton" TargetType="Button" BasedOn="{StaticResource System.Button}">
+        <Style.Triggers>
+            <Trigger Property="IsMouseOver" Value="True">
+                <Setter Property="Foreground" Value="White"/>
+                <Setter Property="Background" Value="#C42B3B"/>
+            </Trigger>
+            <Trigger Property="IsPressed" Value="True">
+                <Setter Property="Background" Value="#A52230"/>
+            </Trigger>
+        </Style.Triggers>
     </Style>
 </ResourceDictionary>

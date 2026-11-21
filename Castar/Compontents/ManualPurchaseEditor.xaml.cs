@@ -5,6 +5,8 @@ using System.Collections.Generic;
 using System.Windows;
 using System.Windows.Automation;
 using System.Windows.Controls;
+using System.Windows.Media;
+using System.Windows.Shapes;
 
 namespace Castar.Compontents;
 
@@ -14,13 +16,14 @@ public partial class ManualPurchaseEditor : UserControl
     private readonly string defaultCurrency;
     private readonly Guid purchaseId = Guid.NewGuid();
 
-    internal ManualPurchaseEditor(DateTime localDate, ManualCurrencySettingsDto currencies, IReadOnlyList<User> owners)
+    internal ManualPurchaseEditor(DateTime localDate, ManualCurrencySettingsDto currencies, IReadOnlyList<User> owners,
+        IReadOnlyList<BudgetCategoryDto>? categories = null)
     {
         defaultCurrency = currencies.DefaultCurrency;
         InitializeComponent();
         header = new PurchaseEditor(
             new(purchaseId, Guid.Empty, "", 0, defaultCurrency, 0, localDate, null, null, []),
-            currencies.Currencies, owners);
+            currencies.Currencies, owners, manualEntry: true, categories: categories);
         HeaderFields.Content = header;
         AddItem();
     }
@@ -49,24 +52,41 @@ public partial class ManualPurchaseEditor : UserControl
         return new(true, null);
     }
 
-    private void AddItem_Click(object sender, RoutedEventArgs e) => AddItem();
+    private void AddItem_Click(object sender, RoutedEventArgs e) => AddItem()?.FocusItemName();
 
-    private void AddItem()
+    private PurchaseItemEditor? AddItem()
     {
         if (ItemFields.Children.Count >= 250)
-            return;
+            return null;
 
         var row = new DockPanel();
+        var editor = new PurchaseItemEditor(new(Guid.Empty, "", null, 1, 0, 0), null, manualEntry: true);
+        editor.ShowHeadings(ItemFields.Children.Count == 0);
+        var icon = new Path
+        {
+            Data = (Geometry)FindResource("PurchaseForm.RemoveIcon"),
+            Width = 12, Height = 12, Stretch = Stretch.Uniform, StrokeThickness = 1.5,
+            StrokeStartLineCap = PenLineCap.Round, StrokeEndLineCap = PenLineCap.Round
+        };
+        icon.SetResourceReference(Shape.StrokeProperty, "PurchaseForm.Muted");
         var remove = new Button
         {
-            Content = FindResource("Svg.Remove"), Margin = new Thickness(8, 0, 0, 0),
-            VerticalAlignment = VerticalAlignment.Bottom
+            Content = icon, Width = 26, Height = 26, Padding = new Thickness(4),
+            Margin = new Thickness(8, 0, 0, 8), IsTabStop = false, VerticalAlignment = VerticalAlignment.Bottom
         };
+        remove.SetValue(Border.CornerRadiusProperty, new CornerRadius(13));
+        remove.SetResourceReference(BackgroundProperty, "PurchaseForm.RemoveSurface");
         AutomationProperties.SetName(remove, "Удалить товар");
-        remove.Click += (_, _) => ItemFields.Children.Remove(row);
+        remove.Click += (_, _) =>
+        {
+            ItemFields.Children.Remove(row);
+            if (ItemFields.Children.Count > 0 && ItemFields.Children[0] is DockPanel first)
+                ((PurchaseItemEditor)first.Children[1]).ShowHeadings(true);
+        };
         DockPanel.SetDock(remove, Dock.Right);
         row.Children.Add(remove);
-        row.Children.Add(new PurchaseItemEditor(new(Guid.Empty, "", null, 1, 0, 0), null));
+        row.Children.Add(editor);
         ItemFields.Children.Add(row);
+        return editor;
     }
 }

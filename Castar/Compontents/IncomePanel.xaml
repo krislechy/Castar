@@ -6,28 +6,29 @@
              xmlns:local="clr-namespace:Castar.Compontents"
              mc:Ignorable="d" Loaded="UserControl_Loaded"
              d:DesignHeight="450" d:DesignWidth="800">
-    <Grid>
+    <Grid x:Name="IncomeLayout">
         <Grid.ColumnDefinitions>
-            <ColumnDefinition/>
+            <ColumnDefinition x:Name="OwnerColumn"/>
             <ColumnDefinition/>
         </Grid.ColumnDefinitions>
         <local:BudgetUserPicker x:Name="UsersPicker" SelectedUser="{Binding User}"
                                 Users="{Binding Users,RelativeSource={RelativeSource AncestorType=local:IncomePanel}}"/>
-        <StackPanel Grid.Column="1" Margin="16,0,0,0">
+        <StackPanel x:Name="IncomeFields" Grid.Column="1" Margin="16,0,0,0">
             <TextBlock x:Name="IncomeSourceLabel" Text="Источник" Style="{StaticResource FormFieldLabel}"/>
-            <TextBox Text="{Binding Source,UpdateSourceTrigger=PropertyChanged}"
+            <TextBox x:Name="IncomeSource" Text="{Binding Source,UpdateSourceTrigger=PropertyChanged}"
                      AutomationProperties.LabeledBy="{Binding ElementName=IncomeSourceLabel}"/>
             <TextBlock x:Name="IncomeSumLabel" Text="Сумма" Style="{StaticResource FormFieldLabel}"/>
             <local:DecimalInput x:Name="IncomeAmount" FractionDigits="-1" Text="{Binding Sum,ValidatesOnExceptions=True}"
                                 AutomationProperties.LabeledBy="{Binding ElementName=IncomeSumLabel}"/>
             <TextBlock x:Name="IncomeCurrencyLabel" Text="Валюта" Style="{StaticResource FormFieldLabel}"/>
-            <local:CastarComboBox ItemsSource="{Binding CurrencyOptions,RelativeSource={RelativeSource AncestorType=UserControl}}"
+            <local:CastarComboBox x:Name="IncomeCurrency" ItemsSource="{Binding CurrencyOptions,RelativeSource={RelativeSource AncestorType=UserControl}}"
                                   SelectedItem="{Binding Currency,Mode=TwoWay,UpdateSourceTrigger=PropertyChanged}"
                                   AutomationProperties.LabeledBy="{Binding ElementName=IncomeCurrencyLabel}"/>
             <TextBlock x:Name="IncomeDateLabel" Text="Дата" Style="{StaticResource FormFieldLabel}"/>
             <local:CastarDatePicker x:Name="IncomeDate" AutomationProperties.LabeledBy="{Binding ElementName=IncomeDateLabel}"/>
             <TextBlock x:Name="IncomeTimeLabel" Text="Время" Style="{StaticResource FormFieldLabel}"/>
             <TextBox x:Name="IncomeTime" AutomationProperties.LabeledBy="{Binding ElementName=IncomeTimeLabel}"/>
+            <local:BudgetCategoryPicker x:Name="IncomeCategory"/>
         </StackPanel>
     </Grid>
 </UserControl>

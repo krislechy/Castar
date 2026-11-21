@@ -1,0 +1,99 @@
+<UserControl x:Class="Castar.Contents.CategoriesContent"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:local="clr-namespace:Castar.Contents"
+             Loaded="Categories_Loaded" IsVisibleChanged="Categories_IsVisibleChanged"
+             Width="420" Height="380" UseLayoutRounding="True" SnapsToDevicePixels="True">
+    <UserControl.Resources>
+        <ResourceDictionary>
+            <ResourceDictionary.MergedDictionaries>
+                <ResourceDictionary Source="/Castar;component/Styles/LedgerCards.xaml"/>
+            </ResourceDictionary.MergedDictionaries>
+            <Geometry x:Key="CategoryTagIcon">M2,8 L8,2 H15 V9 L8,16 Q7,17 6,16 L2,12 Q0,10 2,8 Z M11,5 H12</Geometry>
+            <BooleanToVisibilityConverter x:Key="CategoryVisibility"/>
+            <Style x:Key="CategoryRow" TargetType="ListViewItem" BasedOn="{StaticResource BudgetListItem}">
+                <Setter Property="MinHeight" Value="42"/>
+                <Setter Property="Margin" Value="0,0,0,2"/>
+                <Setter Property="Padding" Value="10,7"/>
+                <Setter Property="Cursor" Value="Arrow"/>
+            </Style>
+            <DataTemplate x:Key="CategoryPanel">
+                <Border Style="{StaticResource Castar.Panel}" Padding="16">
+                    <Grid>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition/>
+                        </Grid.RowDefinitions>
+                        <Button HorizontalAlignment="Right" Style="{StaticResource LedgerPrimaryActionButton}"
+                                AutomationProperties.Name="{Binding AddActionName}" Click="AddCategory_Click"
+                                IsEnabled="{Binding DataContext.CanAdd, RelativeSource={RelativeSource AncestorType=local:CategoriesContent}}">
+                            <StackPanel Orientation="Horizontal">
+                                <Path Width="12" Height="12" Margin="0,0,8,0" Stretch="Uniform" Data="M1,6 H11 M6,1 V11"
+                                      Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
+                                      StrokeThickness="1.5" StrokeStartLineCap="Round" StrokeEndLineCap="Round"
+                                      VerticalAlignment="Center"/>
+                                <TextBlock Text="Добавить" VerticalAlignment="Center"/>
+                            </StackPanel>
+                        </Button>
+                        <Separator Grid.Row="1" Margin="0,12,0,6"/>
+                        <Grid Grid.Row="2">
+                            <ListView x:Name="CategoryList" Style="{StaticResource BudgetLedgerList}" ItemsSource="{Binding Categories}"
+                                      Background="Transparent" ItemContainerStyle="{StaticResource CategoryRow}"
+                                      AutomationProperties.Name="{Binding Title}" VirtualizingPanel.ScrollUnit="Pixel">
+                                <ListView.ItemsPanel>
+                                    <ItemsPanelTemplate>
+                                        <VirtualizingStackPanel/>
+                                    </ItemsPanelTemplate>
+                                </ListView.ItemsPanel>
+                                <ListView.ItemTemplate>
+                                    <DataTemplate>
+                                        <TextBlock Text="{Binding Name}" TextTrimming="CharacterEllipsis"/>
+                                    </DataTemplate>
+                                </ListView.ItemTemplate>
+                            </ListView>
+                            <TextBlock Text="Категорий пока нет" IsHitTestVisible="False" HorizontalAlignment="Center"
+                                       VerticalAlignment="Top" Margin="12,28" Foreground="{DynamicResource Foreground.Gray}">
+                                <TextBlock.Style>
+                                    <Style TargetType="TextBlock">
+                                        <Setter Property="Visibility" Value="Collapsed"/>
+                                        <Style.Triggers>
+                                            <MultiDataTrigger>
+                                                <MultiDataTrigger.Conditions>
+                                                    <Condition Binding="{Binding HasItems, ElementName=CategoryList}" Value="False"/>
+                                                    <Condition Binding="{Binding DataContext.HasLoaded, RelativeSource={RelativeSource AncestorType=local:CategoriesContent}}" Value="True"/>
+                                                </MultiDataTrigger.Conditions>
+                                                <Setter Property="Visibility" Value="Visible"/>
+                                            </MultiDataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </TextBlock.Style>
+                            </TextBlock>
+                            <ProgressBar Width="104" Height="4" HorizontalAlignment="Center" VerticalAlignment="Top"
+                                         Margin="0,24,0,0" IsIndeterminate="True"
+                                         AutomationProperties.Name="Загрузка категорий"
+                                         Visibility="{Binding DataContext.ShowInitialLoading, RelativeSource={RelativeSource AncestorType=local:CategoriesContent}, Converter={StaticResource CategoryVisibility}}"/>
+                        </Grid>
+                    </Grid>
+                </Border>
+            </DataTemplate>
+        </ResourceDictionary>
+    </UserControl.Resources>
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition/>
+        </Grid.RowDefinitions>
+        <Border Style="{StaticResource Castar.Panel}" Padding="12,8" Margin="0,0,0,12"
+                Visibility="{Binding HasError, Converter={StaticResource CategoryVisibility}}">
+            <DockPanel>
+                <Button DockPanel.Dock="Right" Style="{StaticResource Castar.SecondaryButton}" Margin="12,0,0,0"
+                        Content="Повторить" Click="RetryCategories_Click"/>
+                <TextBlock Text="{Binding Error}" Foreground="{DynamicResource Warning.Svg.Brush}"
+                           VerticalAlignment="Center" TextWrapping="Wrap" AutomationProperties.LiveSetting="Polite"/>
+            </DockPanel>
+        </Border>
+        <ContentControl x:Name="CategoryListPanel" Grid.Row="1" ContentTemplate="{StaticResource CategoryPanel}"
+                        HorizontalContentAlignment="Stretch" VerticalContentAlignment="Stretch" Focusable="False"/>
+    </Grid>
+</UserControl>

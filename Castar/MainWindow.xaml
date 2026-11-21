@@ -27,8 +27,10 @@
         </ResourceDictionary.MergedDictionaries></ResourceDictionary>
     </Window.Resources>
     <Window.CommandBindings>
-        <CommandBinding Command="{x:Static SystemCommands.MinimizeWindowCommand}" CanExecute="SystemCommandBinding_CanExecute_Default" Executed="SystemCommandBinding_Executed_Minimize"/>
-        <CommandBinding Command="{x:Static SystemCommands.MaximizeWindowCommand}" CanExecute="SystemCommandBinding_CanExecute_Default" Executed="SystemCommandBinding_Executed_Maximize"/>
+        <CommandBinding Command="{x:Static SystemCommands.MinimizeWindowCommand}" Executed="MinimizeWindow_Executed"/>
+        <CommandBinding Command="{x:Static SystemCommands.MaximizeWindowCommand}" Executed="MaximizeWindow_Executed"/>
+        <CommandBinding Command="{x:Static SystemCommands.RestoreWindowCommand}" Executed="RestoreWindow_Executed"/>
+        <CommandBinding Command="{x:Static SystemCommands.CloseWindowCommand}" Executed="CloseWindow_Executed"/>
 
         <CommandBinding Command="{x:Static menuCommands:MenuSelector.MenuSelect}" Executed="MenuSelectorCommandBinding_Executed"/>
     </Window.CommandBindings>
@@ -39,7 +41,7 @@
                 <RowDefinition/>
             </Grid.RowDefinitions>
             <!--#region Top-->
-            <Grid Grid.Row="0" Background="{DynamicResource Main.Top.Panel}" MouseMove="Grid_MouseMove" MouseLeftButtonDown="Grid_MouseLeftButtonDown">
+            <Grid x:Name="WindowCaption" Grid.Row="0" Background="{DynamicResource PurchaseForm.Action}">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition/>
                     <ColumnDefinition/>
@@ -60,18 +62,20 @@
                         <ColumnDefinition/>
                         <ColumnDefinition/>
                     </Grid.ColumnDefinitions>
-                    <Button Style="{DynamicResource System.Button}" Command="{x:Static SystemCommands.MinimizeWindowCommand}"
-                            Grid.Column="0" Content="{DynamicResource Svg.Minimize}" AutomationProperties.Name="Свернуть"/>
-                    <Button Command="{x:Static SystemCommands.MaximizeWindowCommand}" Grid.Column="1">
+                    <Button x:Name="MinimizeWindowButton" Style="{StaticResource System.Button}" Command="{x:Static SystemCommands.MinimizeWindowCommand}"
+                            Grid.Column="0" AutomationProperties.Name="Свернуть">
+                        <Path Data="M 1,6 H 11" Width="12" Height="12" StrokeThickness="1"
+                              Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"/>
+                    </Button>
+                    <Button x:Name="ResizeWindowButton" Grid.Column="1">
                         <Button.Style>
                             <Style TargetType="{x:Type Button}" BasedOn="{StaticResource System.Button}">
+                                <Setter Property="Command" Value="{x:Static SystemCommands.MaximizeWindowCommand}"/>
                                 <Setter Property="Content" Value="{DynamicResource Svg.Maximize.1}"/>
                                 <Setter Property="AutomationProperties.Name" Value="Развернуть"/>
                                 <Style.Triggers>
-                                    <DataTrigger Binding="{Binding WindowState,RelativeSource={RelativeSource AncestorType=Window}}" Value="Normal">
-                                        <Setter Property="Content" Value="{DynamicResource Svg.Maximize.1}"/>
-                                    </DataTrigger>
                                     <DataTrigger Binding="{Binding WindowState,RelativeSource={RelativeSource AncestorType=Window}}" Value="Maximized">
+                                        <Setter Property="Command" Value="{x:Static SystemCommands.RestoreWindowCommand}"/>
                                         <Setter Property="Content" Value="{DynamicResource Svg.Maximize.2}"/>
                                         <Setter Property="AutomationProperties.Name" Value="Восстановить размер"/>
                                     </DataTrigger>
@@ -79,7 +83,7 @@
                             </Style>
                         </Button.Style>
                     </Button>
-                    <Button Style="{DynamicResource System.Button}" Click="SystemButtonClose" Grid.Column="2" Foreground="OrangeRed"
+                    <Button x:Name="CloseWindowButton" Style="{StaticResource System.CloseButton}" Command="{x:Static SystemCommands.CloseWindowCommand}" Grid.Column="2"
                             Content="{DynamicResource Svg.Close}" AutomationProperties.Name="Закрыть"/>
                 </Grid>
             </Grid>
@@ -91,11 +95,10 @@
                         <ColumnDefinition Width="*"/>
                     </Grid.ColumnDefinitions>
                     <!--#region Content-->
-                    <Grid Grid.Column="1" Background="{StaticResource Main.Background.lvl2}">
+                    <Grid Grid.Column="1" Background="{DynamicResource Castar.Canvas}">
                         <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/></Grid.RowDefinitions>
                         <Border x:Name="SharedPeriodSurface" Grid.Row="0" Margin="24,16,24,0" Padding="16,12"
-                                Background="{StaticResource LedgerSurface}" BorderBrush="{StaticResource LedgerBorder}"
-                                BorderThickness="1" CornerRadius="12">
+                                Style="{StaticResource Castar.Panel}">
                             <c:SelectorRangeDates x:Name="SharedPeriodSelector" UseLedgerStyle="True"
                                                   HorizontalAlignment="Center" VerticalAlignment="Center"/>
                         </Border>
@@ -156,6 +159,21 @@
                                               Command="{x:Static menuCommands:MenuSelector.MenuSelect}" CommandParameter="Statistics"/>
                             </StackPanel>
                             <StackPanel Grid.Row="2" Margin="0,0,0,12">
+                                <TextBlock x:Name="NavigationVersionLabel" Text="{x:Static local:MainWindow.NavigationVersionText}"
+                                           Margin="63,0,12,8" Foreground="{DynamicResource Foreground.Gray}"
+                                           FontSize="{StaticResource Castar.Font.Caption}" TextTrimming="CharacterEllipsis"
+                                           IsHitTestVisible="False">
+                                    <TextBlock.Style>
+                                        <Style TargetType="TextBlock">
+                                            <Setter Property="Visibility" Value="Collapsed"/>
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding IsNavigationExpanded, RelativeSource={RelativeSource AncestorType=Window}}" Value="True">
+                                                    <Setter Property="Visibility" Value="Visible"/>
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </TextBlock.Style>
+                                </TextBlock>
                                 <ToggleButton x:Name="SettingsMenuButton" Style="{StaticResource NavigationItem}" Content="{StaticResource Svg.Menu.Settings}" Tag="Настройки"
                                               ToolTip="Настройки" AutomationProperties.Name="Настройки"
                                               Command="{x:Static menuCommands:MenuSelector.MenuSelect}" CommandParameter="Settings"/>
@@ -167,9 +185,8 @@
                 <Grid x:Name="SettingsOverlay" Visibility="Collapsed"
                       PreviewKeyDown="SettingsOverlay_PreviewKeyDown">
                     <Border x:Name="SettingsBackdrop" Background="Transparent" MouseLeftButtonDown="SettingsBackdrop_Click"/>
-                    <Border x:Name="SettingsShell" Margin="16,12" MaxWidth="510" CornerRadius="12" VerticalAlignment="Top"
-                            Background="{DynamicResource Main.Background.lvl1}"
-                            BorderBrush="{DynamicResource Main.Top.Panel}" BorderThickness="1"
+                    <Border x:Name="SettingsShell" Margin="16,12" MaxWidth="510" VerticalAlignment="Top"
+                            Style="{StaticResource Castar.Panel}"
                             ClipToBounds="True">
                         <ContentPresenter x:Name="SettingsPresenter" SizeChanged="SettingsPresenter_SizeChanged"/>
                     </Border>

@@ -7,7 +7,12 @@
         <Setter Property="FontWeight" Value="SemiBold"/>
     </Style>
 
-    <Style x:Key="FormAction" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
+    <Style x:Key="FormAction" TargetType="Button" BasedOn="{StaticResource Castar.SecondaryButton}">
+        <Setter Property="Padding" Value="12,8"/>
+        <Setter Property="MinHeight" Value="36"/>
+        <Setter Property="Margin" Value="0,8,0,0"/>
+    </Style>
+    <Style x:Key="FormPrimaryAction" TargetType="Button" BasedOn="{StaticResource Castar.PrimaryButton}">
         <Setter Property="Padding" Value="12,8"/>
         <Setter Property="MinHeight" Value="36"/>
         <Setter Property="Margin" Value="0,8,0,0"/>
@@ -26,7 +31,7 @@
                         <Setter.Value>
                             <ControlTemplate TargetType="Control">
                                 <Border Margin="2" CornerRadius="4" BorderThickness="1"
-                                        BorderBrush="{DynamicResource Highlight}"/>
+                                        BorderBrush="{DynamicResource Castar.Focus}"/>
                             </ControlTemplate>
                         </Setter.Value>
                     </Setter>

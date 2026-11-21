@@ -4,7 +4,7 @@
              xmlns:c="clr-namespace:Castar.Compontents">
     <StackPanel>
         <TextBlock x:Name="UserLabel" Text="Пользователь" Style="{StaticResource FormFieldLabel}"/>
-        <ListView ItemsSource="{Binding Users, ElementName=Picker}"
+        <ListView x:Name="UserList" ItemsSource="{Binding Users, ElementName=Picker}"
                   SelectedItem="{Binding SelectedUser, ElementName=Picker, Mode=TwoWay}"
                   Style="{StaticResource BudgetList}" MaxHeight="200" ScrollViewer.HorizontalScrollBarVisibility="Disabled" SelectionMode="Single"
                   AutomationProperties.LabeledBy="{Binding ElementName=UserLabel}">

@@ -22,7 +22,10 @@ namespace Castar.DAL.Repositories.DataBase
                 .ThenBy(x => x.CreatedOn).ThenBy(x => x.Id).ToListAsync(cancellationToken);
         }
 
-        public override async Task Update(Income income, CancellationToken cancellationToken = default)
+        public override Task Update(Income income, CancellationToken cancellationToken = default) =>
+            Update(income, updateCategory: false, cancellationToken);
+
+        public async Task Update(Income income, bool updateCategory, CancellationToken cancellationToken = default)
         {
             var current = await FindForUpdate(income.Id, cancellationToken);
             current.UserId = income.UserId;
@@ -31,9 +34,12 @@ namespace Castar.DAL.Repositories.DataBase
             current.Sum = income.Sum;
             current.Currency = income.Currency ?? current.Currency;
             current.AddedOn = income.AddedOn;
+            if (updateCategory)
+                current.CategoryId = income.CategoryId;
             await Context.SaveChangesAsync(cancellationToken);
             income.Currency = current.Currency;
             income.RateDate = current.RateDate;
+            income.CategoryId = current.CategoryId;
         }
 
         public async Task SaveMessageIncomes(

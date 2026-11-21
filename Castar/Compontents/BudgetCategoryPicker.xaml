@@ -1,0 +1,17 @@
+<UserControl x:Class="Castar.Compontents.BudgetCategoryPicker"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:c="clr-namespace:Castar.Compontents"
+             Visibility="Collapsed" Focusable="False">
+    <UserControl.Resources>
+        <ResourceDictionary Source="/Castar;component/Styles/ManualPurchaseForm.xaml"/>
+    </UserControl.Resources>
+    <StackPanel>
+        <TextBlock x:Name="CategoryLabel" Text="Категория" Style="{StaticResource FormFieldLabel}"/>
+        <Grid>
+            <c:CastarComboBox x:Name="CategoryInput" DisplayMemberPath="Name" Padding="34,7,8,7"
+                              AutomationProperties.LabeledBy="{Binding ElementName=CategoryLabel}"/>
+            <Path Style="{StaticResource PurchaseFormFieldIcon}" Data="{StaticResource PurchaseForm.NameIcon}"/>
+        </Grid>
+    </StackPanel>
+</UserControl>

@@ -13,6 +13,7 @@ public sealed record UserWriteDto(long TelegramId, string Name, int Sex, byte[] 
 
 public sealed record IncomeDto(Guid Id, Guid UserId, UserDto User, long MessageId, decimal Sum, string Source, DateTime AddedOn)
 {
+    public Guid? CategoryId { get; init; }
     public string? Currency { get; init; }
     public DateTimeOffset? AddedOnUtc { get; init; }
     public DateOnly? RateDate { get; init; }
@@ -20,6 +21,7 @@ public sealed record IncomeDto(Guid Id, Guid UserId, UserDto User, long MessageI
 
 public sealed record IncomeWriteDto(Guid UserId, decimal Sum, string Source, DateTime AddedOn)
 {
+    public CategorySelectionDto? Category { get; init; }
     public string? Currency { get; init; }
     public DateTimeOffset? AddedOnUtc { get; init; }
 }
@@ -28,6 +30,7 @@ public sealed record PurchaseDto(Guid Id, Guid UserId, string Name, decimal Tota
     long MessageId, DateTime? AddedOn, string? RetailPlace, string? RetailPlaceAddress,
     IReadOnlyList<PurchaseItemDto> Items)
 {
+    public Guid? CategoryId { get; init; }
     public DateOnly? ReceiptDate { get; init; }
     public DateTimeOffset? AddedOnUtc { get; init; }
     public DateOnly? RateDate { get; init; }
@@ -52,17 +55,24 @@ public sealed record PurchaseOwnerDto(string Name, bool HasAvatar);
 
 public sealed record PurchaseItemDto(Guid Id, string Name, int? Category, double Quantity, decimal Price, decimal Sum)
 {
+    public Guid? BudgetCategoryId { get; init; }
+    public string? BudgetCategoryName { get; init; }
+    public bool CategoryConfirmed { get; init; }
     public bool IsEdited { get; init; }
 }
 
 public sealed record PurchaseWriteDto(string Name, string? RetailPlace, string? RetailPlaceAddress, DateTime AddedOn)
 {
+    public CategorySelectionDto? Category { get; init; }
     public string? Currency { get; init; }
     public Guid? UserId { get; init; }
     public DateTimeOffset? AddedOnUtc { get; init; }
 }
 
-public sealed record PurchaseItemWriteDto(string Name, double Quantity, decimal Price);
+public sealed record PurchaseItemWriteDto(string Name, double Quantity, decimal Price)
+{
+    public CategorySelectionDto? Category { get; init; }
+}
 
 public sealed record PurchaseCreateDto(Guid Id, PurchaseWriteDto Purchase, PurchaseItemWriteDto[] Items);
 

@@ -2,7 +2,6 @@ using Castar.Settings;
 using Castar.Api;
 using Castar.Commands;
 using Castar.Contents;
-using Castar.Externs;
 using Castar.TrayNotify.Windows;
 using System;
 using System.Collections.Generic;
@@ -34,6 +33,7 @@ namespace Castar
         private readonly SettingsContent settingsContent;
         private readonly IncomesContent incomesContent;
         private readonly PurchasesContent purchasesContent;
+        private readonly CategoriesContent categoriesContent;
         private readonly Lazy<StatisticsContent>? statisticsContent;
         private readonly ClientSettings settings;
         private bool statisticsNavigationAttached;
@@ -42,6 +42,9 @@ namespace Castar
         private const double CollapsedNavigationWidth = 64;
         private const double ExpandedNavigationWidth = 240;
         private bool skipNavigationAnimation;
+
+        internal UIElement FieldNavigationScope => MainDialog is { IsVisible: true, ActiveDialog: not null }
+            ? MainDialog : SettingsOverlay.IsVisible ? SettingsOverlay : this;
 
         public static readonly DependencyProperty IsNavigationExpandedProperty = DependencyProperty.Register(
             nameof(IsNavigationExpanded), typeof(bool), typeof(MainWindow),
@@ -53,14 +56,17 @@ namespace Castar
             set => SetValue(IsNavigationExpandedProperty, value);
         }
         public MainWindow(SettingsContent settingsContent, ClientSettings settings, IncomesContent incomesContent,
-            PurchasesContent purchasesContent, Lazy<StatisticsContent>? statisticsContent = null)
+            PurchasesContent purchasesContent, CategoriesContent categoriesContent, Lazy<StatisticsContent>? statisticsContent = null)
         {
             this.settingsContent = settingsContent;
             this.settings = settings;
             this.incomesContent = incomesContent;
             this.purchasesContent = purchasesContent;
+            this.categoriesContent = categoriesContent;
             this.statisticsContent = statisticsContent;
             InitializeComponent();
+            StateChanged += (_, _) => UpdateMaximizedBorder(VisualTreeHelper.GetDpi(this));
+            DpiChanged += (_, e) => UpdateMaximizedBorder(e.NewDpi);
             SharedPeriodSelector.DisplayTimeZone = () => settings.DisplayTimeZone;
             SharedPeriodSelector.SetCurrentMonth();
             incomesContent.BindPeriodSelector(SharedPeriodSelector);
@@ -82,48 +88,33 @@ namespace Castar
         }
 
         #region TopControls
-        private void Grid_MouseMove(object sender, MouseEventArgs e)
+        private const int HorizontalSizingFrame = 32;
+        private const int VerticalSizingFrame = 33;
+        private const int PaddedBorder = 92;
+
+        [DllImport("user32.dll", ExactSpelling = true)]
+        private static extern int GetSystemMetricsForDpi(int metric, uint dpi);
+
+        private void UpdateMaximizedBorder(DpiScale scale)
         {
-            if (e.LeftButton == MouseButtonState.Pressed)
+            if (WindowState != WindowState.Maximized)
             {
-                if (this.WindowState == WindowState.Maximized)
-                {
-                    double percentHorizontal = e.GetPosition(this).X / ActualWidth;
-                    double targetHorizontal = RestoreBounds.Width * percentHorizontal;
-
-                    double percentVertical = e.GetPosition(this).Y / ActualHeight;
-                    double targetVertical = RestoreBounds.Height * percentVertical;
-
-                    WindowState = WindowState.Normal;
-
-                    var scale = ScalingDpi.GetScalingFactor();
-                    var cursorPos = CursorPosition.GetCursorPosition();
-
-                    var difX = cursorPos.X / scale - targetHorizontal;
-                    Left = difX;
-
-                    var difY = cursorPos.Y / scale - targetVertical;
-                    Top = difY;
-                }
-                try
-                {
-                    DragMove();
-                }
-                catch { }
+                ClearValue(BorderThicknessProperty);
+                return;
             }
+
+            // Windows maximizes the outer resize frame beyond the monitor work area.
+            var dpi = (uint)Math.Round(scale.PixelsPerInchX);
+            var padding = GetSystemMetricsForDpi(PaddedBorder, dpi);
+            var horizontal = (GetSystemMetricsForDpi(HorizontalSizingFrame, dpi) + padding) / scale.DpiScaleX;
+            var vertical = (GetSystemMetricsForDpi(VerticalSizingFrame, dpi) + padding) / scale.DpiScaleY;
+            BorderThickness = new Thickness(horizontal, vertical, horizontal, vertical);
         }
 
-        private void SystemCommandBinding_Executed_Minimize(object sender, ExecutedRoutedEventArgs e) => SystemCommands.MinimizeWindow(this);
-        private void SystemCommandBinding_Executed_Maximize(object sender, ExecutedRoutedEventArgs e) => ReStateWindow();
-        private void ReStateWindow()
-        {
-            if (WindowState == WindowState.Normal)
-                SystemCommands.MaximizeWindow(this);
-            else
-                SystemCommands.RestoreWindow(this);
-        }
-        private void SystemCommandBinding_CanExecute_Default(object sender, CanExecuteRoutedEventArgs e)=> e.CanExecute = true;
-        private void SystemButtonClose(object sender, RoutedEventArgs e) => Close();
+        private void MinimizeWindow_Executed(object sender, ExecutedRoutedEventArgs e) => SystemCommands.MinimizeWindow(this);
+        private void MaximizeWindow_Executed(object sender, ExecutedRoutedEventArgs e) => SystemCommands.MaximizeWindow(this);
+        private void RestoreWindow_Executed(object sender, ExecutedRoutedEventArgs e) => SystemCommands.RestoreWindow(this);
+        private void CloseWindow_Executed(object sender, ExecutedRoutedEventArgs e) => SystemCommands.CloseWindow(this);
 
         private void thisClosing(object? sender, System.ComponentModel.CancelEventArgs e)
         {
@@ -138,16 +129,6 @@ namespace Castar
         {
             Closing -= thisClosing;
             Application.Current.Shutdown();
-        }
-        private bool IsBusyRestateWindow = false;
-        private async void Grid_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
-        {
-            if (e.ClickCount == 2 && !IsBusyRestateWindow) { 
-                IsBusyRestateWindow = true;
-                await Task.Delay(150); 
-                ReStateWindow(); 
-                IsBusyRestateWindow = false; 
-            }
         }
         #endregion
 
@@ -209,6 +190,21 @@ namespace Castar
 
             if (ResetMenuToggleButtons((ToggleButton)e.Source) && e.Parameter is string section)
                 SelectSection(section);
+        }
+
+        internal async Task OpenCategorySettingsAsync(string kind)
+        {
+            if (MainDialog.ActiveDialog is not null)
+                return;
+
+            var title = categoriesContent.SelectKind(kind);
+            await Compontents.PopupDialog.Show(categoriesContent, Compontents.PopupDialog.TypeDialogEnum.Default, options =>
+            {
+                options.Title = title;
+                options.EditorIcon = (Geometry)categoriesContent.FindResource("CategoryTagIcon");
+                options.DefaultButton.DefaultButtonText = "Закрыть";
+                return options;
+            });
         }
 
         private void ShowSettings()

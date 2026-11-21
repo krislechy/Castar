@@ -569,6 +569,12 @@ public partial class PurchasesContent : UserControl
 
     private sealed record ActionMenuSnapshot(object Row, long ConnectionRevision);
 
+    private void ClearPurchaseSearch_Click(object sender, RoutedEventArgs e)
+    {
+        PurchaseSearchBox.Clear();
+        PurchaseSearchBox.Focus();
+    }
+
     private void PurchaseSearch_TextChanged(object sender, TextChangedEventArgs e)
     {
         purchaseSearch = PurchaseSearchBox.Text.Trim();
@@ -626,17 +632,20 @@ public partial class PurchasesContent : UserControl
             PurchaseEditor? editor = null;
             await ButtonLoading.RunAsync(source, async () =>
             {
-                var currencies = row.Source.SupportsCurrencyEdit
-                    ? (await server.GetServerSettingsAsync(token)).ManualCurrency?.Currencies
-                    : null;
-                var owners = row.Source.Owner is not null ? await server.GetUsersAsync(token) : null;
+                var configuration = row.Source.SupportsCurrencyEdit ? server.GetServerSettingsAsync(token) : null;
+                var owners = row.Source.Owner is not null ? server.GetUsersAsync(token) : null;
+                var categories = server.GetOperationCategoriesAsync(BudgetEvents.Purchase, token);
+                await Task.WhenAll(configuration ?? Task.CompletedTask, owners ?? Task.CompletedTask, categories);
                 token.ThrowIfCancellationRequested();
-                editor = new PurchaseEditor(row.Source, currencies, owners);
+                editor = new PurchaseEditor(row.Source,
+                    configuration is null ? null : (await configuration).ManualCurrency?.Currencies,
+                    owners is null ? null : await owners, categories: await categories);
             });
             if (editor is null || token.IsCancellationRequested)
                 return;
             await ConfirmAndApplyAsync("Изменить покупку", editor, "Сохранить",
-                request => server.EditPurchaseAsync(row.Id, revision, editor.Result!, request), token, editor.Validate, source: source);
+                request => server.EditPurchaseAsync(row.Id, revision, editor.Result!, request), token, editor.Validate, source: source,
+                editorIcon: (Geometry)editor.FindResource("PurchaseForm.EditIcon"));
         });
     }
 
@@ -660,10 +669,23 @@ public partial class PurchasesContent : UserControl
     {
         if (row.Revision is not { } revision || purchaseAction is not null)
             return Task.CompletedTask;
-        var editor = new PurchaseItemEditor(row.Source, row.Currency);
-        return ConfirmMutationAsync("Изменить товар", editor, "Сохранить",
-            token => server.EditPurchaseItemAsync(row.PurchaseId, row.Id, revision, editor.Result!, token), validate: editor.Validate, source: source);
+        return ShowPurchaseItemEditorAsync(row.Source, row.Currency, "Изменить товар", "Сохранить",
+            (item, token) => server.EditPurchaseItemAsync(row.PurchaseId, row.Id, revision, item, token), source);
     }
+
+    private Task ShowPurchaseItemEditorAsync(PurchaseItemDto item, string? currency, string title, string action,
+        Func<PurchaseItemWriteDto, CancellationToken, Task<bool>> mutate, object? source) =>
+        RunPurchaseActionAsync(async token =>
+        {
+            IReadOnlyList<BudgetCategoryDto>? categories = null;
+            await ButtonLoading.RunAsync(source, async () =>
+                categories = await server.GetOperationCategoriesAsync(BudgetEvents.Purchase, token));
+            token.ThrowIfCancellationRequested();
+
+            var editor = new PurchaseItemEditor(item, currency, usePurchaseFormStyle: true, categories: categories);
+            await ConfirmAndApplyAsync(title, editor, action, request => mutate(editor.Result!, request),
+                token, editor.Validate, source: source, editorIcon: (Geometry)editor.FindResource("PurchaseForm.ItemIcon"));
+        });
 
     private async void DeletePurchase_Click(object sender, RoutedEventArgs e)
     {
@@ -687,16 +709,18 @@ public partial class PurchasesContent : UserControl
     }
 
     private Task ConfirmMutationAsync(string title, object content, string action, Func<CancellationToken, Task<bool>> mutate,
-        Func<ValidatePopupDialog>? validate = null, Brush? foreground = null, object? source = null) =>
-        RunPurchaseActionAsync(token => ConfirmAndApplyAsync(title, content, action, mutate, token, validate, foreground, source));
+        Func<ValidatePopupDialog>? validate = null, Brush? foreground = null, object? source = null, Geometry? editorIcon = null) =>
+        RunPurchaseActionAsync(token => ConfirmAndApplyAsync(title, content, action, mutate, token, validate, foreground, source, editorIcon));
 
     private async Task ConfirmAndApplyAsync(string title, object content, string action,
         Func<CancellationToken, Task<bool>> mutate, CancellationToken token,
-        Func<ValidatePopupDialog>? validate = null, Brush? foreground = null, object? source = null)
+        Func<ValidatePopupDialog>? validate = null, Brush? foreground = null, object? source = null,
+        Geometry? editorIcon = null)
     {
         var accepted = await PopupDialog.Show(content, PopupDialog.TypeDialogEnum.Confirm, options =>
         {
             options.Title = title;
+            options.EditorIcon = editorIcon;
             options.SuccessButton.SuccessConfirmButtonText = action;
             if (foreground is not null)
                 options.SuccessButton.SuccessConfirmButtonForeground = foreground;
@@ -856,5 +880,6 @@ public partial class PurchasesContent : UserControl
         public string Name => Source.Name;
         public double Quantity => Source.Quantity;
         public bool IsEdited => Source.IsEdited;
+        public string? CategoryName => Source.BudgetCategoryName;
     }
 }

@@ -1,8 +1,8 @@
 <ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
                     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
                     xmlns:c="clr-namespace:Castar.Compontents">
-    <SolidColorBrush x:Key="NavigationSurface" Color="#18191d"/>
-    <SolidColorBrush x:Key="NavigationBorder" Color="#313b43"/>
+    <SolidColorBrush x:Key="NavigationSurface" Color="{Binding GradientStops[0].Color, Source={StaticResource PurchaseForm.DialogBackground}, Mode=OneTime}"/>
+    <SolidColorBrush x:Key="NavigationBorder" Color="{Binding Color, Source={StaticResource PurchaseForm.PanelBorder}, Mode=OneTime}"/>
     <Style x:Key="NavigationItem" TargetType="ToggleButton" BasedOn="{StaticResource {x:Type ToggleButton}}">
         <Setter Property="HorizontalAlignment" Value="Stretch"/>
         <Setter Property="Height" Value="44"/>
@@ -16,7 +16,7 @@
         <Setter Property="Template">
             <Setter.Value>
                 <ControlTemplate TargetType="ToggleButton">
-                    <Border x:Name="Surface" Background="Transparent" BorderBrush="Transparent" BorderThickness="1" CornerRadius="8">
+                    <Border x:Name="Surface" Background="Transparent" BorderBrush="Transparent" BorderThickness="1" CornerRadius="{DynamicResource Castar.Corner.Control}">
                         <Grid>
                             <Grid.ColumnDefinitions><ColumnDefinition Width="42"/><ColumnDefinition/></Grid.ColumnDefinitions>
                             <ContentPresenter ContentSource="Content" Width="24" Height="24" HorizontalAlignment="Center" VerticalAlignment="Center" TextElement.Foreground="{TemplateBinding Foreground}"/>
@@ -32,10 +32,10 @@
                     </Border>
                     <ControlTemplate.Triggers>
                         <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="Surface" Property="Background" Value="{DynamicResource Main.MouseOver}"/></Trigger>
-                        <Trigger Property="IsKeyboardFocused" Value="True"><Setter TargetName="Surface" Property="BorderBrush" Value="{DynamicResource Highlight}"/></Trigger>
+                        <Trigger Property="IsKeyboardFocused" Value="True"><Setter TargetName="Surface" Property="BorderBrush" Value="{DynamicResource Castar.Focus}"/></Trigger>
                         <Trigger Property="IsChecked" Value="True">
-                            <Setter TargetName="Surface" Property="Background" Value="{DynamicResource Main.MouseOver}"/>
-                            <Setter TargetName="Surface" Property="BorderBrush" Value="{DynamicResource Highlight}"/>
+                            <Setter TargetName="Surface" Property="Background" Value="{DynamicResource Castar.Selection}"/>
+                            <Setter TargetName="Surface" Property="BorderBrush" Value="{DynamicResource Castar.Focus}"/>
                             <Setter Property="Foreground" Value="{DynamicResource Highlight}"/>
                             <Setter Property="FontWeight" Value="SemiBold"/>
                         </Trigger>

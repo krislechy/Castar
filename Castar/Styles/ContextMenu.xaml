@@ -11,7 +11,7 @@
         <Setter Property="Template">
             <Setter.Value>
                 <ControlTemplate TargetType="{x:Type ContextMenu}">
-                    <Border x:Name="Border" Background="{StaticResource Main.Background.lvl1}" BorderBrush="{DynamicResource Main.Background.lvl3}" BorderThickness="1" CornerRadius="12" Padding="4">
+                    <Border x:Name="Border" Background="{DynamicResource Castar.Surface}" BorderBrush="{DynamicResource Castar.FieldBorder}" BorderThickness="1" CornerRadius="{DynamicResource Castar.Corner.Panel}" Padding="4">
                         <StackPanel IsItemsHost="True" KeyboardNavigation.DirectionalNavigation="Cycle" />
                     </Border>
                     <ControlTemplate.Triggers>

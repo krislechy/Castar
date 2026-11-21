@@ -10,6 +10,7 @@ using System.Text;
 using System.Xml.Linq;
 using System.Xml.Serialization;
 using Castar.Currency;
+using Castar.LocalAi;
 
 namespace Castar.Settings;
 
@@ -40,10 +41,24 @@ public sealed class ClientSettings : INotifyPropertyChanged
     private int legacyHeatmapColorSensitivity = 50;
     private int? dailyHeatmapColorSensitivity;
     private int? monthlyHeatmapColorSensitivity;
+    private bool automaticCategorizationEnabled;
+    private LocalAiOptions localAi = LocalAiOptions.Default;
     private string settingsPath = Path.Combine(DataDirectory, "Castar.Client.xml");
 
     public string ServerUrl { get; set; } = DefaultServerUrl;
     public string? ProtectedApiKey { get; set; }
+
+    public bool AutomaticCategorizationEnabled
+    {
+        get => automaticCategorizationEnabled;
+        set => Set(ref automaticCategorizationEnabled, value);
+    }
+
+    public LocalAiOptions LocalAi
+    {
+        get => localAi;
+        set => Set(ref localAi, value ?? LocalAiOptions.Default);
+    }
 
     public bool IsHideInTray
     {

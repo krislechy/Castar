@@ -1,8 +1,10 @@
 using Castar.Compontents;
+using Castar.Api;
 using Castar.Domain.Models.DataBase;
 using System;
 using System.Threading.Tasks;
 using System.Windows;
+using System.Windows.Media;
 
 namespace Castar.Contents;
 
@@ -18,7 +20,8 @@ public partial class PurchasesContent
             {
                 var configuration = server.GetServerSettingsAsync(token);
                 var users = server.GetUsersAsync(token);
-                await Task.WhenAll(configuration, users);
+                var categories = server.GetOperationCategoriesAsync(BudgetEvents.Purchase, token);
+                await Task.WhenAll(configuration, users, categories);
                 token.ThrowIfCancellationRequested();
                 if ((await configuration).ManualCurrency is not { } currencies)
                 {
@@ -31,7 +34,7 @@ public partial class PurchasesContent
                     return;
                 }
                 editor = new ManualPurchaseEditor(BudgetTime.InZone(DateTime.UtcNow, settings.DisplayTimeZone),
-                    currencies, await users);
+                    currencies, await users, await categories);
             });
             if (message is not null)
             {
@@ -41,7 +44,8 @@ public partial class PurchasesContent
             if (editor is null || token.IsCancellationRequested)
                 return;
             await ConfirmAndApplyAsync("Добавить покупку", editor, "Добавить",
-                request => server.CreatePurchaseAsync(editor.Result!, request), token, editor.Validate, source: sender);
+                request => server.CreatePurchaseAsync(editor.Result!, request), token, editor.Validate, source: sender,
+                editorIcon: (Geometry)FindResource("Ledger.PurchaseAddIcon"));
         });
     }
 
@@ -49,8 +53,7 @@ public partial class PurchasesContent
     {
         if (PurchasesList.SelectedItem is not PurchaseRow { Source.Revision: { } revision } row)
             return;
-        var editor = new PurchaseItemEditor(new(Guid.Empty, "", null, 1, 0, 0), row.Source.Currency);
-        await ConfirmMutationAsync("Добавить товар", editor, "Добавить",
-            token => server.AddPurchaseItemAsync(row.Id, revision, editor.Result!, token), validate: editor.Validate, source: sender);
+        await ShowPurchaseItemEditorAsync(new(Guid.Empty, "", null, 1, 0, 0), row.Source.Currency, "Добавить товар", "Добавить",
+            (item, token) => server.AddPurchaseItemAsync(row.Id, revision, item, token), sender);
     }
 }

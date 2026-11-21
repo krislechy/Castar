@@ -2,8 +2,8 @@
                     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
 
     <Style TargetType="{x:Type ListView}">
-        <Setter Property="Background" Value="{DynamicResource Main.Background.lvl1}"/>
-        <Setter Property="Foreground" Value="{DynamicResource Foreground.Gray}"/>
+        <Setter Property="Background" Value="{DynamicResource Castar.Surface}"/>
+        <Setter Property="Foreground" Value="{DynamicResource Foreground.White}"/>
         <Setter Property="BorderThickness" Value="0"/>
         <Setter Property="ScrollViewer.HorizontalScrollBarVisibility" Value="Auto"/>
         <Setter Property="ScrollViewer.VerticalScrollBarVisibility" Value="Auto"/>
@@ -14,7 +14,7 @@
         <Setter Property="Template">
             <Setter.Value>
                 <ControlTemplate TargetType="{x:Type ListView}">
-                    <Border x:Name="Bd" Background="{TemplateBinding Background}" CornerRadius="8"
+                    <Border x:Name="Bd" Background="{TemplateBinding Background}" CornerRadius="{DynamicResource Castar.Corner.Control}"
                             BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}" Padding="1" SnapsToDevicePixels="true">
                         <ScrollViewer Focusable="false" Padding="{TemplateBinding Padding}">
                             <ItemsPresenter SnapsToDevicePixels="{TemplateBinding SnapsToDevicePixels}"/>
@@ -62,22 +62,22 @@
                             <MultiTrigger.Conditions>
                                 <Condition Property="IsMouseOver" Value="True"/>
                             </MultiTrigger.Conditions>
-                            <Setter Property="Background" TargetName="Bd" Value="{StaticResource Main.MouseOver}"/>
+                            <Setter Property="Background" TargetName="Bd" Value="{DynamicResource Main.MouseOver}"/>
                         </MultiTrigger>
                         <MultiTrigger>
                             <MultiTrigger.Conditions>
                                 <Condition Property="Selector.IsSelectionActive" Value="False"/>
                                 <Condition Property="IsSelected" Value="True"/>
                             </MultiTrigger.Conditions>
-                            <Setter Property="Background" TargetName="Bd" Value="{StaticResource Main.Disabled}"/>
+                            <Setter Property="Background" TargetName="Bd" Value="{DynamicResource Castar.Selection}"/>
                         </MultiTrigger>
                         <MultiTrigger>
                             <MultiTrigger.Conditions>
                                 <Condition Property="Selector.IsSelectionActive" Value="True"/>
                                 <Condition Property="IsSelected" Value="True"/>
                             </MultiTrigger.Conditions>
-                            <Setter Property="Background" TargetName="Bd" Value="{StaticResource Main.Background.lvl2}"/>
-                            <Setter Property="TextElement.Foreground" TargetName="Bd" Value="{StaticResource Foreground.White}"/>
+                            <Setter Property="Background" TargetName="Bd" Value="{DynamicResource Castar.Selection}"/>
+                            <Setter Property="TextElement.Foreground" TargetName="Bd" Value="{DynamicResource Foreground.White}"/>
                         </MultiTrigger>
                         <Trigger Property="IsEnabled" Value="False">
                             <Setter Property="TextElement.Foreground" TargetName="Bd" Value="{StaticResource Foreground.Gray}"/>

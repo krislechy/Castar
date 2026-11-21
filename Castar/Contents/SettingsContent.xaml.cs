@@ -3,6 +3,7 @@ using Castar.Compontents;
 using Castar.Currency;
 using Castar.Domain.Models.DataBase;
 using Castar.Domain.Models.SettingsModel;
+using Castar.LocalAi;
 using Castar.ServerConnection;
 using Castar.Settings;
 using Castar.Updates;
@@ -39,7 +40,8 @@ public partial class SettingsContent : UserControl
     private PasswordBox? telegramTokenInput;
 
     public SettingsContent(ClientSettings settings, CastarServerClient server, GitHubUpdateService updateService,
-        HistoricalExchangeRates exchangeRates, BudgetEventConnection? events = null)
+        HistoricalExchangeRates exchangeRates, BudgetEventConnection? events = null, LocalAiService? localAi = null,
+        ExpenseCategorizationService? categorization = null)
     {
         this.settings = settings;
         this.server = server;
@@ -74,6 +76,10 @@ public partial class SettingsContent : UserControl
         }
         DataContext = context;
         InitializeComponent();
+        if (localAi is null)
+            LocalAiSectionButton.Visibility = Visibility.Collapsed;
+        else
+            LocalAiSettingsHost.Content = new LocalAiSettingsContent(settings, localAi, categorization);
     }
 
     internal Task PreloadAsync()

@@ -2,29 +2,71 @@
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:c="clr-namespace:Castar.Compontents">
-    <Grid MinWidth="450">
+    <UserControl.Resources>
+        <ResourceDictionary Source="/Castar;component/Styles/ManualPurchaseForm.xaml"/>
+    </UserControl.Resources>
+    <Grid MinWidth="536">
       <Grid.ColumnDefinitions>
           <ColumnDefinition x:Name="OwnerColumn" Width="0"/>
           <ColumnDefinition Width="*"/>
       </Grid.ColumnDefinitions>
-      <c:BudgetUserPicker x:Name="PurchaseOwner" Margin="0,0,16,0" Visibility="Collapsed"/>
+      <Border x:Name="OwnerSurface" Margin="0,0,16,0" VerticalAlignment="Top"
+              Background="{StaticResource PurchaseForm.OwnerSurface}" BorderBrush="{StaticResource PurchaseForm.PanelBorder}"
+              BorderThickness="1" CornerRadius="8" Padding="8,0,8,8"
+              Visibility="{Binding Visibility, ElementName=PurchaseOwner}">
+          <c:BudgetUserPicker x:Name="PurchaseOwner" Visibility="Collapsed"/>
+      </Border>
       <StackPanel Grid.Column="1">
         <TextBlock x:Name="NameLabel" Text="Название" Style="{StaticResource FormFieldLabel}"/>
-        <TextBox x:Name="PurchaseName" MaxLength="400" AutomationProperties.LabeledBy="{Binding ElementName=NameLabel}"/>
+        <Grid>
+            <TextBox x:Name="PurchaseName" MaxLength="400" AutomationProperties.LabeledBy="{Binding ElementName=NameLabel}"
+                     Style="{StaticResource PurchaseFormTextBox}" Tag="{StaticResource PurchaseForm.StyledInput}"/>
+            <TextBlock x:Name="PurchaseNamePlaceholder" Text="Например, Продукты"
+                       Style="{StaticResource PurchaseFormPlaceholder}" Tag="{Binding ElementName=PurchaseName}"/>
+            <Path Style="{StaticResource PurchaseFormFieldIcon}" Data="{StaticResource PurchaseForm.NameIcon}"/>
+        </Grid>
         <TextBlock x:Name="PlaceLabel" Text="Место покупки" Style="{StaticResource FormFieldLabel}"/>
-        <TextBox x:Name="RetailPlace" MaxLength="400" AutomationProperties.LabeledBy="{Binding ElementName=PlaceLabel}"/>
+        <Grid>
+            <TextBox x:Name="RetailPlace" MaxLength="400" AutomationProperties.LabeledBy="{Binding ElementName=PlaceLabel}"
+                     Style="{StaticResource PurchaseFormTextBox}" Tag="{StaticResource PurchaseForm.StyledInput}"/>
+            <TextBlock x:Name="RetailPlacePlaceholder" Text="Магазин, сервис, кафе…"
+                       Style="{StaticResource PurchaseFormPlaceholder}" Tag="{Binding ElementName=RetailPlace}"/>
+            <Path Style="{StaticResource PurchaseFormFieldIcon}" Data="{StaticResource PurchaseForm.RetailIcon}"/>
+        </Grid>
         <TextBlock x:Name="AddressLabel" Text="Адрес" Style="{StaticResource FormFieldLabel}"/>
-        <TextBox x:Name="RetailPlaceAddress" MaxLength="400" AutomationProperties.LabeledBy="{Binding ElementName=AddressLabel}"/>
+        <Grid>
+            <TextBox x:Name="RetailPlaceAddress" MaxLength="400" AutomationProperties.LabeledBy="{Binding ElementName=AddressLabel}"
+                     Style="{StaticResource PurchaseFormTextBox}" Tag="{StaticResource PurchaseForm.StyledInput}"/>
+            <TextBlock x:Name="RetailAddressPlaceholder" Text="Необязательно"
+                       Style="{StaticResource PurchaseFormPlaceholder}" Tag="{Binding ElementName=RetailPlaceAddress}"/>
+            <Path Style="{StaticResource PurchaseFormFieldIcon}" Data="{StaticResource PurchaseForm.AddressIcon}"/>
+        </Grid>
         <TextBlock x:Name="DateLabel" Text="Дата и время" Style="{StaticResource FormFieldLabel}"/>
-        <StackPanel Orientation="Horizontal">
-            <c:CastarDatePicker x:Name="OperationDate" AutomationProperties.Name="Дата"/>
-            <TextBox x:Name="OperationTime" Width="82" Margin="8,0,0,0" MaxLength="8" AutomationProperties.Name="Время"/>
-        </StackPanel>
-        <StackPanel x:Name="CurrencyField" Visibility="Collapsed">
-            <TextBlock x:Name="CurrencyLabel" Text="Валюта покупки" Style="{StaticResource FormFieldLabel}"/>
-            <c:CastarComboBox x:Name="PurchaseCurrency" DisplayMemberPath="Label"
-                              AutomationProperties.LabeledBy="{Binding ElementName=CurrencyLabel}"/>
-        </StackPanel>
+        <Grid>
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition/>
+                <ColumnDefinition Width="8"/>
+                <ColumnDefinition/>
+            </Grid.ColumnDefinitions>
+            <c:CastarDatePicker x:Name="OperationDate" AutomationProperties.Name="Дата"
+                                Foreground="{StaticResource PurchaseForm.Foreground}" BorderBrush="{StaticResource PurchaseForm.FieldBorder}"/>
+            <Grid Grid.Column="2">
+                <TextBox x:Name="OperationTime" MaxLength="8" AutomationProperties.Name="Время"
+                         Style="{StaticResource PurchaseFormTextBox}" Tag="{StaticResource PurchaseForm.StyledInput}"/>
+                <Path Style="{StaticResource PurchaseFormFieldIcon}" Data="{StaticResource PurchaseForm.TimeIcon}"/>
+            </Grid>
+        </Grid>
+        <UniformGrid Rows="1">
+            <StackPanel x:Name="CurrencyField" Visibility="Collapsed">
+                <TextBlock x:Name="CurrencyLabel" Text="Валюта покупки" Style="{StaticResource FormFieldLabel}"/>
+                <Grid>
+                    <c:CastarComboBox x:Name="PurchaseCurrency" DisplayMemberPath="Label" Padding="34,7,8,7"
+                                      AutomationProperties.LabeledBy="{Binding ElementName=CurrencyLabel}"/>
+                    <Path Style="{StaticResource PurchaseFormFieldIcon}" Data="{StaticResource PurchaseForm.CurrencyIcon}"/>
+                </Grid>
+            </StackPanel>
+            <c:BudgetCategoryPicker x:Name="PurchaseCategory"/>
+        </UniformGrid>
       </StackPanel>
     </Grid>
 </UserControl>

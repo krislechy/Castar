@@ -2,7 +2,7 @@
                     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
     
     <Style TargetType="{x:Type Separator}">
-        <Setter Property="Background" Value="{DynamicResource Main.Background.lvl3}"/>
+        <Setter Property="Background" Value="{DynamicResource Castar.Divider}"/>
         <Setter Property="Margin" Value="16,12"/>
         <Setter Property="Focusable" Value="false"/>
         <Setter Property="Template">

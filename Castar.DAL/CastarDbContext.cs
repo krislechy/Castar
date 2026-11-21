@@ -14,7 +14,9 @@ namespace Castar.DAL
         public DbSet<User> Users => Set<User>();
         public DbSet<Purchase> Purchases => Set<Purchase>();
         public DbSet<Item> Items => Set<Item>();
+        public DbSet<ItemCategoryHistory> ItemCategoryHistory => Set<ItemCategoryHistory>();
         public DbSet<Income> Incomes => Set<Income>();
+        public DbSet<BudgetCategory> BudgetCategories => Set<BudgetCategory>();
         public DbSet<ExchangeRateEntry> ExchangeRates => Set<ExchangeRateEntry>();
         public DbSet<QueuedReceipt> QueuedReceipts => Set<QueuedReceipt>();
 
@@ -28,6 +30,13 @@ namespace Castar.DAL
             users.Property(x => x.ImageRaw).HasColumnName("Image");
             users.Ignore(x => x.Color);
             users.Ignore(x => x.Items);
+
+            var categories = modelBuilder.Entity<BudgetCategory>();
+            MapTable(categories, "BudgetCategories");
+            categories.Property(x => x.Kind).HasMaxLength(16);
+            categories.Property(x => x.Name).HasMaxLength(100);
+            categories.Property(x => x.NormalizedName).HasMaxLength(100);
+            categories.HasIndex(x => new { x.Kind, x.NormalizedName }).IsUnique();
 
             var purchases = modelBuilder.Entity<Purchase>();
             MapTable(purchases, "Purchases");
@@ -48,6 +57,8 @@ namespace Castar.DAL
                 .HasFilter("[ReceiptKey] IS NOT NULL");
             purchases.HasOne(x => x.User).WithMany().HasForeignKey(x => x.UserId)
                 .OnDelete(DeleteBehavior.NoAction).HasConstraintName("FK_Purchases_Users");
+            purchases.HasOne<BudgetCategory>().WithMany().HasForeignKey(x => x.CategoryId)
+                .OnDelete(DeleteBehavior.Restrict);
 
             var items = modelBuilder.Entity<Item>();
             MapTable(items, "Items");
@@ -58,6 +69,19 @@ namespace Castar.DAL
             items.Ignore(x => x.Users);
             items.HasOne(x => x.Purchase).WithMany(x => x.Items).HasForeignKey(x => x.PurchaseId)
                 .OnDelete(DeleteBehavior.Cascade).HasConstraintName("FK_Items_Purchases");
+            items.HasOne<BudgetCategory>().WithMany().HasForeignKey(x => x.BudgetCategoryId)
+                .OnDelete(DeleteBehavior.Restrict);
+            items.Property(x => x.CategoryState).HasDefaultValue(ItemCategoryState.Archived)
+                .HasSentinel(ItemCategoryState.Archived);
+            items.HasIndex(x => new { x.CategoryState, x.CreatedOn, x.Id })
+                .HasFilter("[CategoryState] = 1");
+
+            var itemCategoryHistory = modelBuilder.Entity<ItemCategoryHistory>();
+            itemCategoryHistory.ToTable("ItemCategoryHistory");
+            itemCategoryHistory.HasKey(x => x.Key);
+            itemCategoryHistory.Property(x => x.Key).HasMaxLength(64);
+            itemCategoryHistory.HasOne<BudgetCategory>().WithMany().HasForeignKey(x => x.BudgetCategoryId)
+                .OnDelete(DeleteBehavior.Restrict);
 
             var incomes = modelBuilder.Entity<Income>();
             MapTable(incomes, "Incomes");
@@ -71,6 +95,8 @@ namespace Castar.DAL
             incomes.Property(x => x.Source).HasMaxLength(400);
             incomes.HasOne(x => x.User).WithMany().HasForeignKey(x => x.UserId)
                 .OnDelete(DeleteBehavior.NoAction).HasConstraintName("FK_Incomes_Users");
+            incomes.HasOne<BudgetCategory>().WithMany().HasForeignKey(x => x.CategoryId)
+                .OnDelete(DeleteBehavior.Restrict);
 
             var rates = modelBuilder.Entity<ExchangeRateEntry>();
             rates.ToTable("ExchangeRates");

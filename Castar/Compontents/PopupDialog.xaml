@@ -14,11 +14,65 @@
              MouseLeftButtonDown="ButtonOutsideClickEvent"
              d:DesignHeight="450" d:DesignWidth="800">
     <UserControl.Resources>
+      <ResourceDictionary>
+        <ResourceDictionary.MergedDictionaries>
+            <ResourceDictionary Source="/Castar;component/Styles/LedgerCards.xaml"/>
+            <ResourceDictionary Source="/Castar;component/Styles/PurchaseFormPalette.xaml"/>
+        </ResourceDictionary.MergedDictionaries>
         <Style x:Key="PopupDialogTitle" TargetType="TextBlock">
             <Setter Property="Foreground" Value="{DynamicResource Foreground.White}"/>
             <Setter Property="FontSize" Value="{StaticResource Castar.Font.Heading}"/>
             <Setter Property="FontWeight" Value="SemiBold"/>
             <Setter Property="TextWrapping" Value="Wrap"/>
+            <Style.Triggers>
+                <DataTrigger Binding="{Binding ActiveDialog.HasEditorHeader, RelativeSource={RelativeSource AncestorType=local:PopupDialog}}" Value="True">
+                    <Setter Property="Foreground" Value="{StaticResource PurchaseForm.Foreground}"/>
+                </DataTrigger>
+            </Style.Triggers>
+        </Style>
+        <Style x:Key="PopupEditorHeaderPart" TargetType="FrameworkElement">
+            <Setter Property="Visibility" Value="Collapsed"/>
+            <Style.Triggers>
+                <DataTrigger Binding="{Binding ActiveDialog.HasEditorHeader, RelativeSource={RelativeSource AncestorType=local:PopupDialog}}" Value="True">
+                    <Setter Property="Visibility" Value="Visible"/>
+                </DataTrigger>
+            </Style.Triggers>
+        </Style>
+        <ControlTemplate x:Key="PopupEditorActionTemplate" TargetType="Button">
+            <Border x:Name="Frame" Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}"
+                    BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="{TemplateBinding Border.CornerRadius}" SnapsToDevicePixels="True">
+                <Grid>
+                    <Border x:Name="Interaction" Background="Transparent" CornerRadius="{TemplateBinding Border.CornerRadius}" IsHitTestVisible="False"/>
+                    <ContentPresenter Margin="{TemplateBinding Padding}" RecognizesAccessKey="True"
+                                      HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"
+                                      VerticalAlignment="{TemplateBinding VerticalContentAlignment}"/>
+                </Grid>
+            </Border>
+            <ControlTemplate.Triggers>
+                <Trigger Property="IsMouseOver" Value="True">
+                    <Setter TargetName="Interaction" Property="Background" Value="{StaticResource PurchaseForm.Hover}"/>
+                </Trigger>
+                <Trigger Property="IsPressed" Value="True">
+                    <Setter TargetName="Interaction" Property="Background" Value="{StaticResource PurchaseForm.Pressed}"/>
+                </Trigger>
+                <Trigger Property="IsEnabled" Value="False">
+                    <Setter TargetName="Frame" Property="Opacity" Value="0.45"/>
+                </Trigger>
+            </ControlTemplate.Triggers>
+        </ControlTemplate>
+        <Style x:Key="PopupEditorAction" TargetType="Button" BasedOn="{StaticResource Castar.SecondaryButton}">
+            <Setter Property="MinWidth" Value="80"/>
+            <Style.Triggers>
+                <DataTrigger Binding="{Binding ActiveDialog.HasEditorHeader, RelativeSource={RelativeSource AncestorType=local:PopupDialog}}" Value="True">
+                    <Setter Property="Template" Value="{StaticResource PopupEditorActionTemplate}"/>
+                    <Setter Property="FocusVisualStyle" Value="{StaticResource Castar.FocusVisual}"/>
+                    <Setter Property="BorderThickness" Value="1"/>
+                    <Setter Property="MinHeight" Value="42"/>
+                    <Setter Property="MinWidth" Value="104"/>
+                    <Setter Property="Border.CornerRadius" Value="8"/>
+                    <Setter Property="Typography.Capitals" Value="Normal"/>
+                </DataTrigger>
+            </Style.Triggers>
         </Style>
         <Style x:Key="PopupDialogDescription" TargetType="TextBlock">
             <Setter Property="Foreground" Value="{DynamicResource Foreground.White}"/>
@@ -48,6 +102,7 @@
                 </Trigger>
             </Style.Triggers>
         </Style>
+      </ResourceDictionary>
     </UserControl.Resources>
     <Grid Background="Transparent">
         <Border Background="{Binding Background,ElementName=border}"
@@ -71,14 +126,22 @@
             MaxWidth="700"
             MinWidth="400"
             MinHeight="150"
-            BorderThickness="0"
-            CornerRadius="12"
             Padding="0"
             Margin="0"
             TextElement.Foreground="{DynamicResource Foreground.White}"
             TextElement.FontSize="14"
-            TextElement.FontWeight="Normal"
-            Background="{Binding ActiveDialog.Background,RelativeSource={RelativeSource AncestorType=local:PopupDialog}}">
+            TextElement.FontWeight="Normal">
+            <Border.Style>
+                <Style TargetType="Border" BasedOn="{StaticResource Castar.Panel}">
+                    <Setter Property="Background" Value="{Binding ActiveDialog.Background, RelativeSource={RelativeSource AncestorType=local:PopupDialog}}"/>
+                    <Setter Property="CornerRadius" Value="16"/>
+                    <Style.Triggers>
+                        <DataTrigger Binding="{Binding ActiveDialog.HasEditorHeader, RelativeSource={RelativeSource AncestorType=local:PopupDialog}}" Value="True">
+                            <Setter Property="Background" Value="{StaticResource PurchaseForm.DialogBackground}"/>
+                        </DataTrigger>
+                    </Style.Triggers>
+                </Style>
+            </Border.Style>
             <Grid>
                 <Grid.RowDefinitions>
                     <RowDefinition Height="auto"/>
@@ -96,7 +159,36 @@
                             </Style.Triggers>
                         </Style>
                     </Grid.Style>
-                    <TextBlock Text="{Binding ActiveDialog.Title,RelativeSource={RelativeSource AncestorType=local:PopupDialog}}" Style="{StaticResource PopupDialogTitle}"/>
+                    <DockPanel>
+                        <Button x:Name="EditorCloseButton" DockPanel.Dock="Right" Width="32" Height="32" MinHeight="32"
+                                VerticalAlignment="Center" ToolTip="Закрыть" AutomationProperties.Name="Закрыть"
+                                Click="CancelConfirmEvent" FocusVisualStyle="{StaticResource Castar.FocusVisual}" Background="Transparent"
+                                Template="{StaticResource PopupEditorActionTemplate}">
+                            <Button.Style>
+                                <Style TargetType="Button" BasedOn="{StaticResource LedgerIconButton}">
+                                    <Setter Property="Visibility" Value="Collapsed"/>
+                                    <Setter Property="Border.CornerRadius" Value="7"/>
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding ActiveDialog.HasEditorHeader, RelativeSource={RelativeSource AncestorType=local:PopupDialog}}" Value="True">
+                                            <Setter Property="Visibility" Value="Visible"/>
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </Button.Style>
+                            <Path Data="M2,2 L12,12 M12,2 L2,12" Stroke="{StaticResource PurchaseForm.Muted}"
+                                  StrokeThickness="1.7" StrokeStartLineCap="Round" StrokeEndLineCap="Round"/>
+                        </Button>
+                        <Border x:Name="EditorIconBadge" DockPanel.Dock="Left" Width="44" Height="44" CornerRadius="10"
+                                Margin="0,0,14,0" Background="{StaticResource PurchaseForm.Badge}"
+                                Style="{StaticResource PopupEditorHeaderPart}">
+                            <Path Width="23" Height="23" Stretch="Uniform" HorizontalAlignment="Center" VerticalAlignment="Center"
+                                  Data="{Binding ActiveDialog.EditorIcon, RelativeSource={RelativeSource AncestorType=local:PopupDialog}}"
+                                  Stroke="{StaticResource PurchaseForm.Accent}" StrokeThickness="1.55"
+                                  StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round"/>
+                        </Border>
+                        <TextBlock Text="{Binding ActiveDialog.Title,RelativeSource={RelativeSource AncestorType=local:PopupDialog}}"
+                                   VerticalAlignment="Center" Style="{StaticResource PopupDialogTitle}"/>
+                    </DockPanel>
                 </Grid>
                 <Border Grid.Row="1" Padding="24,16,24,20">
                     <Grid>
@@ -104,7 +196,24 @@
                             <RowDefinition Height="*"/>
                             <RowDefinition Height="auto"/>
                         </Grid.RowDefinitions>
-                        <ScrollViewer Grid.Row="0" VerticalScrollBarVisibility="Auto" MaxHeight="500">
+                        <ScrollViewer x:Name="DialogScroll" Grid.Row="0" VerticalScrollBarVisibility="Auto">
+                            <ScrollViewer.Style>
+                                <Style TargetType="ScrollViewer" BasedOn="{StaticResource {x:Type ScrollViewer}}">
+                                    <Setter Property="MaxHeight" Value="500"/>
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding ActiveDialog.HasEditorHeader, RelativeSource={RelativeSource AncestorType=local:PopupDialog}}" Value="True">
+                                            <Setter Property="MaxHeight" Value="535"/>
+                                        </DataTrigger>
+                                        <MultiDataTrigger>
+                                            <MultiDataTrigger.Conditions>
+                                                <Condition Binding="{Binding ActiveDialog.HasEditorHeader, RelativeSource={RelativeSource AncestorType=local:PopupDialog}}" Value="True"/>
+                                                <Condition Binding="{Binding ComputedVerticalScrollBarVisibility, RelativeSource={RelativeSource Self}}" Value="Visible"/>
+                                            </MultiDataTrigger.Conditions>
+                                            <Setter Property="Padding" Value="0,0,12,0"/>
+                                        </MultiDataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </ScrollViewer.Style>
                             <ContentPresenter x:Name="DialogContent" Content="{Binding ActiveDialog.Content,RelativeSource={RelativeSource AncestorType=local:PopupDialog}}">
                                 <ContentPresenter.Resources>
                                     <Style TargetType="TextBlock">
@@ -139,7 +248,19 @@
                         </Border>
                     </Grid>
                 </Border>
-                <Grid Tag="ButtonsGrid" Grid.Row="2" MinHeight="36" HorizontalAlignment="Right" Margin="24,0,24,20">
+                <Border Grid.Row="2" Height="1" Margin="24,0" VerticalAlignment="Top" IsHitTestVisible="False"
+                        Background="{StaticResource PurchaseForm.Divider}" Style="{StaticResource PopupEditorHeaderPart}"/>
+                <Grid Tag="ButtonsGrid" Grid.Row="2" MinHeight="36" HorizontalAlignment="Right">
+                    <Grid.Style>
+                        <Style TargetType="Grid">
+                            <Setter Property="Margin" Value="24,0,24,20"/>
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding ActiveDialog.HasEditorHeader, RelativeSource={RelativeSource AncestorType=local:PopupDialog}}" Value="True">
+                                    <Setter Property="Margin" Value="24,14,24,20"/>
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </Grid.Style>
                     <Grid>
                         <Grid.Style>
                             <Style TargetType="Grid">
@@ -152,7 +273,7 @@
                                 </Style.Triggers>
                             </Style>
                         </Grid.Style>
-                        <Button x:Name="DefaultButton" Foreground="{Binding ActiveDialog.DefaultButton.Foreground, RelativeSource={RelativeSource AncestorType=local:PopupDialog}}" IsDefault="True"
+                        <Button x:Name="DefaultButton" Style="{StaticResource Castar.SecondaryButton}" Foreground="{Binding ActiveDialog.DefaultButton.Foreground, RelativeSource={RelativeSource AncestorType=local:PopupDialog}}" IsDefault="True"
                                 Content="{Binding ActiveDialog.DefaultButton.Text,RelativeSource={RelativeSource AncestorType=local:PopupDialog}}" Click="DefaultEvent" Padding="16,8" MinWidth="80"/>
                     </Grid>
                     <Grid>
@@ -171,14 +292,47 @@
                                 </Style.Triggers>
                             </Style>
                         </Grid.Style>
-                        <Button x:Name="ConfirmButton" Foreground="{Binding ActiveDialog.ConfirmButton.Foreground, RelativeSource={RelativeSource AncestorType=local:PopupDialog}}" Grid.Column="0"
+                        <Button x:Name="ConfirmButton"
                                 Content="{Binding ActiveDialog.ConfirmButton.Text,RelativeSource={RelativeSource AncestorType=local:PopupDialog}}"
-                                Padding="16,8" MinWidth="80"
-                                Click="SuccessConfirmEvent"/>
-                        <Button x:Name="CancelButton" Margin="8,0,0,0" Foreground="{Binding ActiveDialog.CancelButton.Foreground, RelativeSource={RelativeSource AncestorType=local:PopupDialog}}" Grid.Column="1"
+                                Padding="16,8"
+                                Click="SuccessConfirmEvent">
+                            <Button.Style>
+                                <Style TargetType="Button" BasedOn="{StaticResource PopupEditorAction}">
+                                    <Setter Property="Foreground" Value="{Binding ActiveDialog.ConfirmButton.Foreground, RelativeSource={RelativeSource AncestorType=local:PopupDialog}}"/>
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding ActiveDialog.HasEditorHeader, RelativeSource={RelativeSource AncestorType=local:PopupDialog}}" Value="True">
+                                            <Setter Property="Grid.Column" Value="1"/>
+                                            <Setter Property="Margin" Value="8,0,0,0"/>
+                                            <Setter Property="Background" Value="{StaticResource PurchaseForm.PrimaryAction}"/>
+                                            <Setter Property="BorderBrush" Value="{StaticResource PurchaseForm.PrimaryBorder}"/>
+                                            <Setter Property="Foreground" Value="{StaticResource PurchaseForm.Foreground}"/>
+                                            <Setter Property="FontWeight" Value="SemiBold"/>
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </Button.Style>
+                        </Button>
+                        <Button x:Name="CancelButton"
                                 Content="{Binding ActiveDialog.CancelButton.Text,RelativeSource={RelativeSource AncestorType=local:PopupDialog}}"
-                                Padding="16,8" MinWidth="80"
-                                Click="CancelConfirmEvent"/>
+                                Padding="16,8"
+                                Click="CancelConfirmEvent">
+                            <Button.Style>
+                                <Style TargetType="Button" BasedOn="{StaticResource PopupEditorAction}">
+                                    <Setter Property="Grid.Column" Value="1"/>
+                                    <Setter Property="Margin" Value="8,0,0,0"/>
+                                    <Setter Property="Foreground" Value="{Binding ActiveDialog.CancelButton.Foreground, RelativeSource={RelativeSource AncestorType=local:PopupDialog}}"/>
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding ActiveDialog.HasEditorHeader, RelativeSource={RelativeSource AncestorType=local:PopupDialog}}" Value="True">
+                                            <Setter Property="Grid.Column" Value="0"/>
+                                            <Setter Property="Margin" Value="0"/>
+                                            <Setter Property="Background" Value="{StaticResource PurchaseForm.Action}"/>
+                                            <Setter Property="BorderBrush" Value="{StaticResource PurchaseForm.FieldBorder}"/>
+                                            <Setter Property="Foreground" Value="{StaticResource PurchaseForm.Foreground}"/>
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </Button.Style>
+                        </Button>
                     </Grid>
                 </Grid>
             </Grid>

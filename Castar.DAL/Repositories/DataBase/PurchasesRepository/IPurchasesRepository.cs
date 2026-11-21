@@ -19,13 +19,19 @@ namespace Castar.DAL.Repositories.DataBase
         Task<PurchaseMutationResult> EditPurchaseAsync(
             Guid purchaseId, long expectedRevision, string name, string? retailPlace, string? retailPlaceAddress,
             DateTime addedOn, string? currency = null, ManualCurrencySettings? currencyPolicy = null,
-            CancellationToken cancellationToken = default, Guid? userId = null, DateTime? legacyDate = null);
+            CancellationToken cancellationToken = default, Guid? userId = null, DateTime? legacyDate = null,
+            Guid? categoryId = null, bool updateCategory = false);
         Task<PurchaseMutationResult> EditPurchaseItemAsync(
             Guid purchaseId, Guid itemId, long expectedRevision, string name, double quantity, decimal price,
-            CancellationToken cancellationToken = default);
+            CancellationToken cancellationToken = default, Guid? categoryId = null, bool updateCategory = false);
         Task<PurchaseMutationResult> AddPurchaseItemAsync(
             Guid purchaseId, long expectedRevision, string name, double quantity, decimal price,
-            CancellationToken cancellationToken = default);
+            CancellationToken cancellationToken = default, Guid? categoryId = null, bool updateCategory = false);
+        Task<IReadOnlyList<PendingPurchaseClassification>> GetPendingClassificationAsync(
+            int limit, CancellationToken cancellationToken);
+        Task<(int QueuedCount, int PendingCount)> QueueUncategorizedItemsAsync(CancellationToken cancellationToken);
+        Task<PurchaseMutationResult> ApplyClassificationAsync(Guid purchaseId, long expectedRevision,
+            IReadOnlyDictionary<Guid, Guid?> results, CancellationToken cancellationToken);
     }
 
     public enum PurchaseMutationResult
@@ -34,6 +40,12 @@ namespace Castar.DAL.Repositories.DataBase
         NotFound,
         Conflict,
         InvalidCurrency,
-        InvalidOwner
+        InvalidOwner,
+        Unchanged
     }
+
+    public sealed record PendingPurchaseClassification(Guid PurchaseId, long Revision, string Merchant,
+        IReadOnlyList<PendingItemClassification> Items);
+
+    public sealed record PendingItemClassification(Guid ItemId, string Name, bool HasHistory, Guid? CategoryId);
 }

@@ -11,11 +11,9 @@
             <ResourceDictionary.MergedDictionaries>
                 <ResourceDictionary Source="/Castar;component/Styles/LedgerCards.xaml"/>
             </ResourceDictionary.MergedDictionaries>
-            <Style x:Key="StatisticsChartSurface" TargetType="Border">
+            <Style x:Key="StatisticsChartSurface" TargetType="Border" BasedOn="{StaticResource Castar.Panel}">
                 <Setter Property="Margin" Value="4"/>
                 <Setter Property="Padding" Value="16"/>
-                <Setter Property="CornerRadius" Value="12"/>
-                <Setter Property="Background" Value="{DynamicResource Main.Background.lvl1}"/>
             </Style>
             <Style x:Key="StatisticsChartTitle" TargetType="TextBlock" BasedOn="{StaticResource BudgetHeaderTitle}">
                 <Setter Property="Margin" Value="0"/>
@@ -81,8 +79,7 @@
                     </ItemsControl.ItemsPanel>
                     <ItemsControl.ItemTemplate>
                         <DataTemplate>
-                            <Border Margin="4" Padding="16" CornerRadius="12"
-                                    Background="{DynamicResource Main.Background.lvl1}">
+                            <Border Style="{StaticResource StatisticsChartSurface}">
                                 <Grid ToolTip="{Binding Warning}">
                                     <Grid.RowDefinitions>
                                         <RowDefinition Height="Auto"/>

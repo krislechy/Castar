@@ -798,14 +798,14 @@ public partial class StatisticsContent : UserControl
     private Axis DayAxis(DateOnly first, int count) => new() { MinLimit = -0.5, MaxLimit = Math.Max(0.5, count - 0.5), MinStep = 1,
         Labeler = day => day >= 0 && day < count ? first.AddDays((int)Math.Round(day)).ToString("dd.MM.yy") : "",
         LabelsPaint = Paint("Foreground.Gray") };
-    private Axis AmountAxis() => new() { LabelsPaint = Paint("Foreground.Gray"), SeparatorsPaint = Paint("Main.Background.lvl3", 1),
+    private Axis AmountAxis() => new() { LabelsPaint = Paint("Foreground.Gray"), SeparatorsPaint = Paint("Castar.Divider", 1),
         Labeler = StatisticsAxisLabels.Amount };
     private CartesianChart CreateChart(string name, bool legend = false)
     {
         var chart = new CartesianChart { LegendPosition = legend ? LegendPosition.Top : LegendPosition.Hidden,
             LegendTextPaint = Paint("Foreground.White"), TooltipTextPaint = Paint("Foreground.White"),
             TooltipBackgroundPaint = Paint("Main.Background.lvl3") };
-        chart.SetResourceReference(Control.BackgroundProperty, "Main.Background.lvl1");
+        chart.SetResourceReference(Control.BackgroundProperty, "Castar.Surface");
         AutomationProperties.SetName(chart, name);
         return chart;
     }

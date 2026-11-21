@@ -8,7 +8,7 @@
         <Setter Property="SelectedDateFormat" Value="Short"/>
         <Setter Property="Background" Value="Transparent"/>
         <Setter Property="Padding" Value="2"/>
-        <Setter Property="BorderBrush" Value="{StaticResource Main.Background.lvl3}"/>
+        <Setter Property="BorderBrush" Value="{DynamicResource Castar.FieldBorder}"/>
         <Setter Property="BorderThickness" Value="1"/>
         <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
         <Setter Property="VerticalContentAlignment" Value="Center"/>
@@ -183,7 +183,7 @@
                         </DataTemplate>
                     </ControlTemplate.Resources>
                     <Border Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}"
-                            BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="6" Padding="8"
+                            BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="{DynamicResource Castar.Corner.Panel}" Padding="8"
                             UseLayoutRounding="True" SnapsToDevicePixels="True">
                         <DockPanel>
                             <Grid DockPanel.Dock="Top" Margin="0,0,0,4">
@@ -259,8 +259,8 @@
 
     <Style x:Key="CastarCalendar" TargetType="Calendar">
         <Setter Property="MinWidth" Value="280"/>
-        <Setter Property="Background" Value="{DynamicResource Main.Background.lvl2}"/>
-        <Setter Property="BorderBrush" Value="{DynamicResource Main.Background.lvl3}"/>
+        <Setter Property="Background" Value="{DynamicResource Castar.Surface}"/>
+        <Setter Property="BorderBrush" Value="{DynamicResource Castar.FieldBorder}"/>
         <Setter Property="BorderThickness" Value="1"/>
         <Setter Property="CalendarItemStyle" Value="{StaticResource CastarCalendarItem}"/>
         <Setter Property="CalendarDayButtonStyle" Value="{StaticResource CastarCalendarDay}"/>
@@ -277,7 +277,7 @@
             <Setter.Value>
                 <ControlTemplate TargetType="c:CastarDatePicker">
                     <Border x:Name="Field" Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}"
-                            BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="6">
+                            BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="{DynamicResource InputCornerRadius}">
                         <Grid x:Name="PART_Root">
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition/>
@@ -295,7 +295,7 @@
                     </Border>
                     <ControlTemplate.Triggers>
                         <Trigger Property="IsKeyboardFocusWithin" Value="True">
-                            <Setter TargetName="Field" Property="BorderBrush" Value="{DynamicResource Highlight}"/>
+                            <Setter TargetName="Field" Property="BorderBrush" Value="{DynamicResource Castar.Focus}"/>
                         </Trigger>
                         <Trigger Property="HasInvalidInput" Value="True">
                             <Setter TargetName="Field" Property="BorderBrush" Value="{DynamicResource Warning.Svg.Brush}"/>

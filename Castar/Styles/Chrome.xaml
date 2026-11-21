@@ -3,17 +3,18 @@
     <Style x:Key="WithoutChrome" TargetType="{x:Type Window}">
         <Setter Property="WindowChrome.WindowChrome">
             <Setter.Value>
-                <WindowChrome CaptionHeight="0"
+                <!-- The 27 DIP caption starts below the 3 DIP top resize edge. -->
+                <WindowChrome CaptionHeight="27"
             CornerRadius="0"
             GlassFrameThickness="0"
             NonClientFrameEdges="None"
+            UseAeroCaptionButtons="False"
             ResizeBorderThickness="3"/>
             </Setter.Value>
         </Setter>
         <Setter Property="Window.BorderThickness" Value="0"/>
         <Style.Triggers>
             <Trigger Property="WindowState" Value="Maximized">
-                <Setter Property="BorderThickness" Value="6"/>
                 <Setter Property="BorderBrush" Value="{DynamicResource Main.Background.lvl2}"/>
             </Trigger>
         </Style.Triggers>

@@ -3,12 +3,12 @@
                     xmlns:c="clr-namespace:Castar.Compontents">
     <Style x:Key="BudgetListItem" TargetType="ListViewItem" BasedOn="{StaticResource {x:Type ListViewItem}}">
         <Setter Property="Margin" Value="0,2"/>
-        <Setter Property="Border.CornerRadius" Value="6"/>
+        <Setter Property="Border.CornerRadius" Value="{DynamicResource Castar.Corner.Control}"/>
         <Setter Property="BorderThickness" Value="1"/>
         <Setter Property="BorderBrush" Value="Transparent"/>
         <Style.Triggers>
             <Trigger Property="IsKeyboardFocusWithin" Value="True">
-                <Setter Property="BorderBrush" Value="{DynamicResource Highlight}"/>
+                <Setter Property="BorderBrush" Value="{DynamicResource Castar.Focus}"/>
             </Trigger>
         </Style.Triggers>
     </Style>

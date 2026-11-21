@@ -15,7 +15,7 @@ partial class CastarDbContextModelSnapshot : ModelSnapshot
     // If you encounter a merge conflict in the line below, it means you need to
     // discard one of the migration branches and recreate its migrations on top of
     // the other branch. See https://aka.ms/efcore-docs-migrations-conflicts for more info.
-    public override string LastMigrationId => "20261116174952_PersistReceiptRetryQueue";
+    public override string LastMigrationId => "20261121151330_ItemCategoryClassification";
 
     protected override void BuildModel(ModelBuilder modelBuilder)
     {
@@ -101,6 +101,41 @@ partial class CastarDbContextModelSnapshot : ModelSnapshot
                 b.ToTable("QueuedReceipts");
             });
 
+        modelBuilder.Entity("Castar.Domain.Models.DataBase.BudgetCategory", b =>
+            {
+                b.Property<Guid>("Id")
+                    .ValueGeneratedOnAdd()
+                    .HasColumnType("TEXT");
+
+                b.Property<DateTime>("CreatedOn")
+                    .HasColumnType("TEXT");
+
+                b.Property<string>("Kind")
+                    .IsRequired()
+                    .HasMaxLength(16)
+                    .HasColumnType("TEXT");
+
+                b.Property<DateTime?>("ModifiedOn")
+                    .HasColumnType("TEXT");
+
+                b.Property<string>("Name")
+                    .IsRequired()
+                    .HasMaxLength(100)
+                    .HasColumnType("TEXT");
+
+                b.Property<string>("NormalizedName")
+                    .IsRequired()
+                    .HasMaxLength(100)
+                    .HasColumnType("TEXT");
+
+                b.HasKey("Id");
+
+                b.HasIndex("Kind", "NormalizedName")
+                    .IsUnique();
+
+                b.ToTable("BudgetCategories");
+            });
+
         modelBuilder.Entity("Castar.Domain.Models.DataBase.Income", b =>
             {
                 b.Property<Guid>("Id")
@@ -108,6 +143,9 @@ partial class CastarDbContextModelSnapshot : ModelSnapshot
                     .HasColumnType("TEXT");
 
                 b.Property<DateTime>("AddedOn")
+                    .HasColumnType("TEXT");
+
+                b.Property<Guid?>("CategoryId")
                     .HasColumnType("TEXT");
 
                 b.Property<DateTime>("CreatedOn")
@@ -146,6 +184,8 @@ partial class CastarDbContextModelSnapshot : ModelSnapshot
 
                 b.HasIndex("AddedOn");
 
+                b.HasIndex("CategoryId");
+
                 b.HasIndex("UserId", "_messageId")
                     .HasDatabaseName("IX_Incomes_UserId_MessageId");
 
@@ -157,6 +197,14 @@ partial class CastarDbContextModelSnapshot : ModelSnapshot
                 b.Property<Guid>("Id")
                     .ValueGeneratedOnAdd()
                     .HasColumnType("TEXT");
+
+                b.Property<Guid?>("BudgetCategoryId")
+                    .HasColumnType("TEXT");
+
+                b.Property<int>("CategoryState")
+                    .ValueGeneratedOnAdd()
+                    .HasColumnType("INTEGER")
+                    .HasDefaultValue(0);
 
                 b.Property<DateTime>("CreatedOn")
                     .HasColumnType("TEXT");
@@ -188,9 +236,30 @@ partial class CastarDbContextModelSnapshot : ModelSnapshot
 
                 b.HasKey("Id");
 
+                b.HasIndex("BudgetCategoryId");
+
                 b.HasIndex("PurchaseId");
 
+                b.HasIndex("CategoryState", "CreatedOn", "Id")
+                    .HasFilter("[CategoryState] = 1");
+
                 b.ToTable("Items");
+            });
+
+        modelBuilder.Entity("Castar.Domain.Models.DataBase.ItemCategoryHistory", b =>
+            {
+                b.Property<string>("Key")
+                    .HasMaxLength(64)
+                    .HasColumnType("TEXT");
+
+                b.Property<Guid?>("BudgetCategoryId")
+                    .HasColumnType("TEXT");
+
+                b.HasKey("Key");
+
+                b.HasIndex("BudgetCategoryId");
+
+                b.ToTable("ItemCategoryHistory");
             });
 
         modelBuilder.Entity("Castar.Domain.Models.DataBase.Purchase", b =>
@@ -200,6 +269,9 @@ partial class CastarDbContextModelSnapshot : ModelSnapshot
                     .HasColumnType("TEXT");
 
                 b.Property<DateTime>("AddedOn")
+                    .HasColumnType("TEXT");
+
+                b.Property<Guid?>("CategoryId")
                     .HasColumnType("TEXT");
 
                 b.Property<DateTime>("CreatedOn")
@@ -268,6 +340,8 @@ partial class CastarDbContextModelSnapshot : ModelSnapshot
 
                 b.HasIndex("AddedOn");
 
+                b.HasIndex("CategoryId");
+
                 b.HasIndex("ReceiptKey")
                     .IsUnique()
                     .HasDatabaseName("UX_Purchases_ReceiptKey")
@@ -325,6 +399,11 @@ partial class CastarDbContextModelSnapshot : ModelSnapshot
 
         modelBuilder.Entity("Castar.Domain.Models.DataBase.Income", b =>
             {
+                b.HasOne("Castar.Domain.Models.DataBase.BudgetCategory", null)
+                    .WithMany()
+                    .HasForeignKey("CategoryId")
+                    .OnDelete(DeleteBehavior.Restrict);
+
                 b.HasOne("Castar.Domain.Models.DataBase.User", "User")
                     .WithMany()
                     .HasForeignKey("UserId")
@@ -337,6 +416,11 @@ partial class CastarDbContextModelSnapshot : ModelSnapshot
 
         modelBuilder.Entity("Castar.Domain.Models.DataBase.Item", b =>
             {
+                b.HasOne("Castar.Domain.Models.DataBase.BudgetCategory", null)
+                    .WithMany()
+                    .HasForeignKey("BudgetCategoryId")
+                    .OnDelete(DeleteBehavior.Restrict);
+
                 b.HasOne("Castar.Domain.Models.DataBase.Purchase", "Purchase")
                     .WithMany("Items")
                     .HasForeignKey("PurchaseId")
@@ -347,8 +431,21 @@ partial class CastarDbContextModelSnapshot : ModelSnapshot
                 b.Navigation("Purchase");
             });
 
+        modelBuilder.Entity("Castar.Domain.Models.DataBase.ItemCategoryHistory", b =>
+            {
+                b.HasOne("Castar.Domain.Models.DataBase.BudgetCategory", null)
+                    .WithMany()
+                    .HasForeignKey("BudgetCategoryId")
+                    .OnDelete(DeleteBehavior.Restrict);
+            });
+
         modelBuilder.Entity("Castar.Domain.Models.DataBase.Purchase", b =>
             {
+                b.HasOne("Castar.Domain.Models.DataBase.BudgetCategory", null)
+                    .WithMany()
+                    .HasForeignKey("CategoryId")
+                    .OnDelete(DeleteBehavior.Restrict);
+
                 b.HasOne("Castar.Domain.Models.DataBase.User", "User")
                     .WithMany()
                     .HasForeignKey("UserId")

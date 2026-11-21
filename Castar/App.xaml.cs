@@ -2,6 +2,7 @@ using Castar.Api;
 using Castar.Compontents;
 using Castar.Contents;
 using Castar.Currency;
+using Castar.LocalAi;
 using Castar.Logger;
 using Castar.Notifications;
 using Castar.ServerConnection;
@@ -14,6 +15,9 @@ using System;
 using System.Drawing;
 using System.IO;
 using System.Reflection;
+using System.Security.Cryptography;
+using System.Text;
+using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Threading;
@@ -26,6 +30,8 @@ public partial class App : Application
     private static readonly string LogPath = Path.Combine(ClientSettings.DataDirectory, "Logs", "castar.log");
     private readonly ICLogger cLogger = new CLogger(LogPath);
     private ServiceProvider? serviceProvider;
+    private Mutex? categorizationInstance;
+    private ITrayIcon? categorizationTray;
 
     public App()
     {
@@ -38,7 +44,7 @@ public partial class App : Application
         var version = typeof(App).Assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion;
         cLogger.Log<App>($"Запуск Castar {version}.", TypeLog.Info);
         base.OnStartup(e);
-        TabNavigationBlock.Install();
+        FieldTabNavigation.Install();
         InitializeCultures();
 
         ClientSettings settings;
@@ -59,6 +65,8 @@ public partial class App : Application
         services.AddSingleton<CastarServerClient>();
         services.AddSingleton<HistoricalExchangeRates>();
         services.AddSingleton<BudgetEventConnection>();
+        services.AddSingleton<LocalAiService>();
+        services.AddSingleton<ExpenseCategorizationService>();
         services.AddSingleton<Updates.GitHubUpdateService>();
         services.AddSingleton<ITrayIcon>(_ => new TrayIcon(
             Icon.ExtractAssociatedIcon(Environment.ProcessPath!) ?? SystemIcons.Application, "Castar",
@@ -71,6 +79,7 @@ public partial class App : Application
         services.AddSingleton<SettingsContent>();
         services.AddSingleton<IncomesContent>();
         services.AddSingleton<PurchasesContent>();
+        services.AddSingleton<CategoriesContent>();
         services.AddSingleton<BudgetStatistics>();
         services.AddSingleton(provider => new StatisticsContent(provider.GetRequiredService<BudgetStatistics>(),
             provider.GetRequiredService<CastarServerClient>(), settings));
@@ -83,6 +92,12 @@ public partial class App : Application
         });
 
         serviceProvider = services.BuildServiceProvider(validateScopes: true);
+        if (Array.Exists(e.Args, arg => arg == "--categorization-agent"))
+        {
+            StartCategorizationAgent(settings);
+            return;
+        }
+
         var tray = serviceProvider.GetRequiredService<ITrayIcon>();
         var notifications = serviceProvider.GetRequiredService<CastarNotificationCenter>();
         notifications.Configure(settings.NotificationCorner, settings.MaxVisibleNotifications);
@@ -122,6 +137,7 @@ public partial class App : Application
         var budgetEvents = serviceProvider.GetRequiredService<BudgetEventConnection>();
         var purchases = serviceProvider.GetRequiredService<PurchasesContent>();
         var incomes = serviceProvider.GetRequiredService<IncomesContent>();
+        var categories = serviceProvider.GetRequiredService<CategoriesContent>();
         var statistics = serviceProvider.GetRequiredService<Lazy<StatisticsContent>>();
         void RefreshOpenStatistics()
         {
@@ -160,10 +176,21 @@ public partial class App : Application
             serviceProvider.GetRequiredService<CastarServerClient>().ClearAvatarCache();
             _ = purchases.RefreshAfterServerChangeAsync();
             _ = incomes.RefreshAfterServerChangeAsync();
+            _ = categories.RefreshAfterServerChangeAsync();
             RefreshOpenStatistics();
         };
         budgetEvents.ConfigurationChanged += change =>
         {
+            if (change.Kind == ServerSynchronization.PurchaseClassification)
+            {
+                _ = purchases.RefreshAfterServerChangeAsync();
+                return;
+            }
+            if (change.Kind == ServerSynchronization.Categories)
+            {
+                _ = categories.RefreshAfterServerChangeAsync();
+                return;
+            }
             if (change.Kind == ServerSynchronization.Users)
             {
                 serviceProvider.GetRequiredService<CastarServerClient>().ClearAvatarCache();
@@ -171,7 +198,51 @@ public partial class App : Application
                 _ = incomes.RefreshAfterServerChangeAsync();
             }
         };
+        TryStartCategorization();
         budgetEvents.Start(new DispatcherSynchronizationContext(Dispatcher, DispatcherPriority.Background));
+    }
+
+    private void StartCategorizationAgent(ClientSettings settings)
+    {
+        ShutdownMode = ShutdownMode.OnExplicitShutdown;
+        if (!settings.AutomaticCategorizationEnabled || settings.ApiKey.Length == 0)
+        {
+            cLogger.Log<App>("Для агента категоризации включите классификацию и подключите клиент к Castar Server.", TypeLog.Warning);
+            Shutdown(1);
+            return;
+        }
+        if (!TryStartCategorization())
+        {
+            Shutdown();
+            return;
+        }
+
+        categorizationTray = new TrayIcon(Icon.ExtractAssociatedIcon(Environment.ProcessPath!) ?? SystemIcons.Application,
+            "Castar — остановить категоризацию", (_, _) => Dispatcher.InvokeAsync(() => Shutdown()));
+        categorizationTray.Show();
+        serviceProvider!.GetRequiredService<BudgetEventConnection>()
+            .Start(new DispatcherSynchronizationContext(Dispatcher, DispatcherPriority.Background));
+    }
+
+    private bool TryStartCategorization()
+    {
+        var profile = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(ClientSettings.DataDirectory.ToUpperInvariant())));
+        var instance = new Mutex(false, $@"Local\Castar.Categorization.{profile}");
+        try
+        {
+            if (!instance.WaitOne(0))
+            {
+                instance.Dispose();
+                return false;
+            }
+        }
+        catch (AbandonedMutexException)
+        {
+            // This process now owns the lock.
+        }
+        categorizationInstance = instance;
+        serviceProvider!.GetRequiredService<ExpenseCategorizationService>().Start();
+        return true;
     }
 
     private static Task<bool?> ShowSettingsWarning(string message) =>
@@ -202,10 +273,13 @@ public partial class App : Application
     {
         try
         {
+            categorizationTray?.Dispose();
             serviceProvider?.Dispose();
         }
         finally
         {
+            categorizationInstance?.ReleaseMutex();
+            categorizationInstance?.Dispose();
             cLogger.Log<App>($"Завершение Castar. Код {e.ApplicationExitCode}.", TypeLog.Info);
             AppDomain.CurrentDomain.UnhandledException -= CurrentDomain_UnhandledException;
             TaskScheduler.UnobservedTaskException -= TaskScheduler_UnobservedTaskException;

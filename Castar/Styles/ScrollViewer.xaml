@@ -38,7 +38,7 @@
                     <RepeatButton Style="{StaticResource ScrollBarPageButton}" Command="ScrollBar.PageUpCommand" />
                 </Track.DecreaseRepeatButton>
                 <Track.Thumb>
-                    <Thumb Style="{StaticResource ScrollBarThumb}" Margin="0,0,0,0" Width="8" Background="{StaticResource Foreground.Gray}"/>
+                    <Thumb Style="{StaticResource ScrollBarThumb}" Margin="0,0,0,0" Width="8" Background="{DynamicResource Castar.ScrollThumb}"/>
                 </Track.Thumb>
                 <Track.IncreaseRepeatButton>
                     <RepeatButton Style="{StaticResource ScrollBarPageButton}" Command="ScrollBar.PageDownCommand" />
@@ -57,7 +57,7 @@
                     <RepeatButton Style="{StaticResource ScrollBarPageButton}" Command="ScrollBar.PageLeftCommand" />
                 </Track.DecreaseRepeatButton>
                 <Track.Thumb>
-                    <Thumb Style="{StaticResource ScrollBarThumb}" Margin="0,0,0,0" Height="8" Background="{StaticResource Foreground.Gray}"/>
+                    <Thumb Style="{StaticResource ScrollBarThumb}" Margin="0,0,0,0" Height="8" Background="{DynamicResource Castar.ScrollThumb}"/>
                 </Track.Thumb>
                 <Track.IncreaseRepeatButton>
                     <RepeatButton Style="{StaticResource ScrollBarPageButton}" Command="ScrollBar.PageRightCommand" />

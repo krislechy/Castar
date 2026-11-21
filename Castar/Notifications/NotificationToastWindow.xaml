@@ -32,15 +32,14 @@
     </Window.Resources>
     <DockPanel>
         <Border x:Name="DismissAllPanel" DockPanel.Dock="Bottom" HorizontalAlignment="Right"
-                CornerRadius="8" Background="{DynamicResource Main.Background.lvl2}" Visibility="Collapsed">
+                Style="{StaticResource Castar.Panel}" Visibility="Collapsed">
             <Button x:Name="DismissAll" Style="{StaticResource NotificationButton}" FontSize="13"
                     Padding="12,0" Content="Закрыть все" Height="28" Click="DismissAll_Click"/>
         </Border>
         <ItemsControl x:Name="NotificationItems">
             <ItemsControl.ItemTemplate>
                 <DataTemplate>
-                    <Border Background="{DynamicResource Main.Background.lvl1}" BorderBrush="{DynamicResource Main.Top.Panel}"
-                            BorderThickness="1" CornerRadius="8" Height="56" Margin="0,0,0,8">
+                    <Border Style="{StaticResource Castar.Panel}" MinHeight="56" Margin="0,0,0,8">
                         <DockPanel LastChildFill="True">
                             <Button DockPanel.Dock="Right" Width="36" Padding="7"
                                     Style="{StaticResource NotificationButton}"

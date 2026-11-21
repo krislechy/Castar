@@ -27,4 +27,6 @@ public partial class BudgetUserPicker : UserControl
     }
 
     public BudgetUserPicker() => InitializeComponent();
+
+    internal void ApplyListStyle(Style style) => UserList.Style = style;
 }

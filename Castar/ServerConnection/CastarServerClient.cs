@@ -350,6 +350,32 @@ public sealed class CastarServerClient(ClientSettings settings) : IDisposable
         SendMutationAsync(HttpMethod.Put, FormattableString.Invariant($"api/purchases/{purchaseId:D}/items/{itemId:D}?revision={revision}"),
             cancellationToken, item);
 
+    internal async Task<(PurchaseClassificationWorkDto[] Work, int? Remaining)> GetPendingPurchaseClassificationAsync(
+        bool includeCount, CancellationToken token)
+    {
+        int? remaining = null;
+        var path = "api/purchases/classification/pending?limit=100";
+        if (includeCount)
+            path += "&includeCount=true";
+        var work = await SendAsync<PurchaseClassificationWorkDto[]>(HttpMethod.Get, path, cancellationToken: token,
+            observeResponse: includeCount ? response =>
+            {
+                if (response.Headers.TryGetValues("X-Castar-Classification-Pending", out var values)
+                    && int.TryParse(values.FirstOrDefault(), NumberStyles.None, CultureInfo.InvariantCulture, out var count))
+                    remaining = count;
+            } : null).ConfigureAwait(false);
+        return (work, remaining);
+    }
+
+    internal Task<PurchaseClassificationQueueDto> QueuePurchaseClassificationAsync(CancellationToken token) =>
+        SendAsync<PurchaseClassificationQueueDto>(HttpMethod.Post, "api/purchases/classification/queue",
+            cancellationToken: token, readProblemDetails: true);
+
+    internal Task<bool> ApplyPurchaseClassificationAsync(Guid purchaseId, long revision,
+        IReadOnlyList<PurchaseClassificationResultDto> items, CancellationToken token) =>
+        SendMutationAsync(HttpMethod.Post, FormattableString.Invariant($"api/purchases/{purchaseId:D}/classification?revision={revision}"),
+            token, new PurchaseClassificationWriteDto(items), modifiesAmounts: false);
+
     public Task<bool> DeletePurchaseAsync(Guid id, long revision, CancellationToken cancellationToken = default) =>
         DeleteAsync(FormattableString.Invariant($"api/purchases/{id:D}?revision={revision}"), cancellationToken);
 
@@ -412,11 +438,32 @@ public sealed class CastarServerClient(ClientSettings settings) : IDisposable
         return BudgetTime.FromLocal(local, zone);
     }
 
-    public async Task<Income> AddIncomeAsync(Income income) =>
-        ToIncome(await SendAsync<IncomeDto>(HttpMethod.Post, "api/incomes", IncomeWrite(income)), income.User);
+    public async Task<IReadOnlyList<BudgetCategoryDto>> GetBudgetCategoriesAsync(CancellationToken token = default) =>
+        await SendAsync<BudgetCategoryDto[]>(HttpMethod.Get, "api/categories", cancellationToken: token).ConfigureAwait(false);
 
-    public async Task<Income> UpdateIncomeAsync(Income income, DateTime? unchangedInstant = null) =>
-        ToIncome(await SendAsync<IncomeDto>(HttpMethod.Put, $"api/incomes/{income.Id:D}", IncomeWrite(income, unchangedInstant)), income.User);
+    public Task<BudgetCategoryDto> AddBudgetCategoryAsync(string kind, string name, CancellationToken token = default) =>
+        SendAsync<BudgetCategoryDto>(HttpMethod.Post, "api/categories", new BudgetCategoryWriteDto(kind, name), token,
+            readProblemDetails: true);
+
+    internal async Task<IReadOnlyList<BudgetCategoryDto>?> GetOperationCategoriesAsync(string kind, CancellationToken token = default)
+    {
+        try
+        {
+            var categories = await GetBudgetCategoriesAsync(token).ConfigureAwait(false);
+            return categories.Where(category => category.Kind == kind).ToArray();
+        }
+        catch (Exception error) when (!token.IsCancellationRequested && IsConnectionError(error))
+        {
+            // The optional catalog must not block a financial edit or clear its category.
+            return null;
+        }
+    }
+
+    public async Task<Income> AddIncomeAsync(Income income, CategorySelectionDto? category = null) =>
+        ToIncome(await SendAsync<IncomeDto>(HttpMethod.Post, "api/incomes", IncomeWrite(income, category: category)), income.User);
+
+    public async Task<Income> UpdateIncomeAsync(Income income, DateTime? unchangedInstant = null, CategorySelectionDto? category = null) =>
+        ToIncome(await SendAsync<IncomeDto>(HttpMethod.Put, $"api/incomes/{income.Id:D}", IncomeWrite(income, unchangedInstant, category)), income.User);
 
     public Task<bool> DeleteIncomeAsync(Guid id) => DeleteAsync($"api/incomes/{id:D}");
 
@@ -494,7 +541,7 @@ public sealed class CastarServerClient(ClientSettings settings) : IDisposable
         SendMutationAsync(HttpMethod.Delete, path, cancellationToken);
 
     private async Task<bool> SendMutationAsync(HttpMethod method, string path, CancellationToken cancellationToken,
-        object? payload = null)
+        object? payload = null, bool modifiesAmounts = true)
     {
         using var request = CreateRequest(method, ParseServerUrl(settings.ServerUrl), settings.ApiKey, path);
         if (payload is not null)
@@ -503,7 +550,8 @@ public sealed class CastarServerClient(ClientSettings settings) : IDisposable
         if (response.StatusCode == HttpStatusCode.NotFound)
             return false;
         await EnsureSuccessAsync(response, readProblemDetails: payload is not null, cancellationToken).ConfigureAwait(false);
-        MarkFinancialMutation(method, path);
+        if (modifiesAmounts)
+            MarkFinancialMutation(method, path);
         return true;
     }
 
@@ -511,6 +559,8 @@ public sealed class CastarServerClient(ClientSettings settings) : IDisposable
     {
         if (method != HttpMethod.Post && method != HttpMethod.Put && method != HttpMethod.Delete) return;
         var route = path.Split('?', 2)[0];
+        if (route == "api/purchases/classification/queue")
+            return;
         if (route is "api/incomes" or "api/purchases"
             || route.StartsWith("api/incomes/", StringComparison.Ordinal)
             || route.StartsWith("api/purchases/", StringComparison.Ordinal))
@@ -551,12 +601,12 @@ public sealed class CastarServerClient(ClientSettings settings) : IDisposable
     private static UserWriteDto UserWrite(User user) =>
         new(user.TelegramId, user.Name, user.Sex, user.ColorRaw, user.ImageRaw);
 
-    private IncomeWriteDto IncomeWrite(Income income, DateTime? unchangedInstant = null)
+    private IncomeWriteDto IncomeWrite(Income income, DateTime? unchangedInstant = null, CategorySelectionDto? category = null)
     {
         var instant = unchangedInstant ?? ReadSelectedTime(income.AddedOn);
         return new(income.User?.Id ?? income.UserId, income.Sum, income.Source, BudgetTime.InZone(instant, BudgetTime.Belgrade))
         {
-            Currency = income.Currency, AddedOnUtc = BudgetTime.AsUtc(instant)
+            Currency = income.Currency, AddedOnUtc = BudgetTime.AsUtc(instant), Category = category
         };
     }
 
@@ -592,7 +642,7 @@ public sealed class CastarServerClient(ClientSettings settings) : IDisposable
         Id = dto.Id, UserId = dto.UserId, User = user ?? ToUser(dto.User), MessageId = dto.MessageId,
         Sum = dto.Sum, Currency = dto.Currency, Source = dto.Source,
         AddedOn = dto.AddedOnUtc?.UtcDateTime ?? ReadLegacyDate(dto.AddedOn),
-        RateDate = dto.RateDate ?? DateOnly.FromDateTime(dto.AddedOn)
+        RateDate = dto.RateDate ?? DateOnly.FromDateTime(dto.AddedOn), CategoryId = dto.CategoryId
     };
 
     public void Dispose()

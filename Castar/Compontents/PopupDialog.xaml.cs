@@ -38,6 +38,7 @@ public partial class PopupDialog : UserControl
         public SolidColorBrush Background { get; set; } =
             (SolidColorBrush)Application.Current.FindResource("Main.Background.lvl3");
         public string? Title { get; set; }
+        public Geometry? EditorIcon { get; set; }
 
         public sealed class DefaultButtonClass
         {
@@ -131,7 +132,7 @@ public partial class PopupDialog : UserControl
             if (restoreFocus is UIElement { IsVisible: true, IsEnabled: true } element && IsAncestorOf(element)
                 && Keyboard.Focus(element) == element)
                 return;
-            if (request.Content is UIElement { } editor && editor.MoveFocus(new TraversalRequest(FocusNavigationDirection.First)))
+            if (request.Content is UIElement editor && FieldTabNavigation.MoveFocus(editor, backwards: false, fromStart: true))
                 return;
             (request.Type == TypeDialogEnum.Default ? DefaultButton : CancelButton).Focus();
         }, DispatcherPriority.Input);
@@ -250,6 +251,7 @@ public partial class PopupDialog : UserControl
             Content = content;
             Type = type;
             Title = options.Title;
+            EditorIcon = options.EditorIcon;
             Background = options.Background;
             DefaultButton = new(options.DefaultButton.DefaultButtonText, options.DefaultButton.DefaultButtonForeground);
             ConfirmButton = new(options.SuccessButton.SuccessConfirmButtonText, options.SuccessButton.SuccessConfirmButtonForeground);
@@ -261,6 +263,8 @@ public partial class PopupDialog : UserControl
         public object Content { get; }
         public TypeDialogEnum Type { get; }
         public string? Title { get; }
+        public Geometry? EditorIcon { get; }
+        public bool HasEditorHeader => EditorIcon is not null;
         public SolidColorBrush Background { get; }
         public ButtonPresentation DefaultButton { get; }
         public ButtonPresentation ConfirmButton { get; }

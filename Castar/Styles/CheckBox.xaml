@@ -29,7 +29,7 @@
                     <Setter TargetName="optionMark" Property="Visibility" Value="Visible"/>
                 </Trigger>
                 <Trigger Property="IsChecked" Value="{x:Null}"><Setter TargetName="MixedMark" Property="Visibility" Value="Visible"/></Trigger>
-                <Trigger Property="IsKeyboardFocused" Value="True"><Setter TargetName="checkBoxBorder" Property="BorderBrush" Value="{DynamicResource Foreground.White}"/></Trigger>
+                <Trigger Property="IsKeyboardFocused" Value="True"><Setter TargetName="checkBoxBorder" Property="BorderBrush" Value="{DynamicResource Castar.Focus}"/></Trigger>
                 <Trigger Property="IsEnabled" Value="False"><Setter Property="Opacity" Value="0.45"/><Setter TargetName="checkBoxBorder" Property="BorderBrush" Value="{DynamicResource Foreground.Gray}"/><Setter TargetName="checkBoxBorder" Property="Background" Value="{DynamicResource Main.Background.lvl3}"/><Setter TargetName="optionMark" Property="Stroke" Value="{DynamicResource Foreground.Gray}"/></Trigger>
             </ControlTemplate.Triggers>
         </ControlTemplate></Setter.Value></Setter>

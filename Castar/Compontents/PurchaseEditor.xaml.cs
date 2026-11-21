@@ -5,6 +5,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Input;
 
 namespace Castar.Compontents;
 
@@ -13,7 +14,7 @@ public partial class PurchaseEditor : UserControl
     private readonly PurchaseDto original;
 
     internal PurchaseEditor(PurchaseDto purchase, IReadOnlyList<string>? allowedCurrencies = null,
-        IReadOnlyList<User>? owners = null)
+        IReadOnlyList<User>? owners = null, bool manualEntry = false, IReadOnlyList<BudgetCategoryDto>? categories = null)
     {
         original = purchase;
         InitializeComponent();
@@ -22,9 +23,11 @@ public partial class PurchaseEditor : UserControl
         RetailPlaceAddress.Text = purchase.RetailPlaceAddress ?? "";
         OperationDate.SelectedDate = purchase.AddedOn?.Date;
         OperationTime.Text = CastarDatePicker.FormatTime(purchase.AddedOn);
+        PurchaseCategory.Load(categories, purchase.CategoryId);
         if (owners is not null)
         {
-            OwnerColumn.Width = new GridLength(160);
+            OwnerColumn.Width = new GridLength(184);
+            PurchaseOwner.ApplyListStyle((Style)FindResource("PurchaseFormOwnerList"));
             PurchaseOwner.Users = owners.OrderBy(user => user.Name).ToArray();
             PurchaseOwner.SelectedUser = owners.FirstOrDefault(user => user.Id == purchase.UserId)
                 ?? (owners.Count == 1 ? owners[0] : null);
@@ -39,6 +42,17 @@ public partial class PurchaseEditor : UserControl
             PurchaseCurrency.ItemsSource = options;
             PurchaseCurrency.SelectedItem = options.First(option => option.Code == purchase.Currency);
             CurrencyField.Visibility = Visibility.Visible;
+            if (categories is not null)
+            {
+                CurrencyField.Margin = new Thickness(0, 0, 4, 0);
+                PurchaseCategory.Margin = new Thickness(4, 0, 0, 0);
+            }
+        }
+        if (manualEntry)
+        {
+            PurchaseOwner.IsTabStop = false;
+            KeyboardNavigation.SetTabNavigation(PurchaseOwner, KeyboardNavigationMode.None);
+            OperationDate.IsTabStop = false;
         }
     }
 
@@ -65,7 +79,8 @@ public partial class PurchaseEditor : UserControl
         {
             Currency = currency == original.Currency ? null : currency,
             UserId = owner is not null && owner.Id != original.UserId ? owner.Id : null,
-            AddedOnUtc = date == original.AddedOn ? original.AddedOnUtc : null
+            AddedOnUtc = date == original.AddedOn ? original.AddedOnUtc : null,
+            Category = PurchaseCategory.GetChange(original.CategoryId)
         };
         return new(true, null);
     }

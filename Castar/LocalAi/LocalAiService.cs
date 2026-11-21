@@ -113,13 +113,22 @@ public sealed class LocalAiService : IDisposable
             try
             {
                 var result = new List<LocalAiAssignment>(items.Count);
-                foreach (var batch in items.Chunk(ItemsPerBatch))
+                var batchSize = ItemsPerBatch;
+                while (result.Count < items.Count)
                 {
+                    var batch = items.Skip(result.Count).Take(batchSize).ToArray();
                     var batchOptions = options.Provider == LocalAiProvider.Ollama && options.IdleMinutes == 0
                         && result.Count + batch.Length < items.Count ? options with { IdleMinutes = 1 } : options;
-                    result.AddRange(await WithTimeoutAsync(
-                        ct => protocol.ClassifyAsync(endpoint, batchOptions, shop, batch, categories, ct, isIncome),
-                        InferenceTimeout, current).ConfigureAwait(false));
+                    try
+                    {
+                        result.AddRange(await WithTimeoutAsync(
+                            ct => protocol.ClassifyAsync(endpoint, batchOptions, shop, batch, categories, ct, isIncome),
+                            InferenceTimeout, current).ConfigureAwait(false));
+                    }
+                    catch (LocalAiProtocol.ContextLimitException) when (batch.Length > 1)
+                    {
+                        batchSize = (batch.Length + 1) / 2;
+                    }
                 }
                 return result;
             }

@@ -49,14 +49,18 @@ namespace Castar.Compontents
             IncomeTime.Text = CastarDatePicker.FormatTime(originalTime);
             ApplyEditorPresentation();
             IncomeCategory.Load(categories, income?.CategoryId);
-            if (categories is { Count: > 0 } && income is { CategoryState: not IncomeCategoryState.Confirmed }
-                && income.Id != Guid.Empty)
-                ConfirmCategory.Visibility = Visibility.Visible;
         }
 
         internal Geometry EditorIcon => (Geometry)FindResource("Lucide.briefcase-business");
-        internal CategorySelectionDto? CategoryChange =>
-            IncomeCategory.GetChange((DataContext as Income)?.CategoryId, ConfirmCategory.IsChecked == true);
+        internal CategorySelectionDto? CategoryChange
+        {
+            get
+            {
+                var income = DataContext as Income;
+                return IncomeCategory.GetChange(income?.CategoryId,
+                    confirm: income is { CategoryId: not null, CategoryState: not IncomeCategoryState.Confirmed });
+            }
+        }
 
         private void ApplyEditorPresentation()
         {
@@ -86,7 +90,6 @@ namespace Castar.Compontents
                 Field(IncomeDateLabel, IncomeDate),
                 Field(IncomeTimeLabel, IncomeTime, "Lucide.clock")));
             IncomeFields.Children.Add(IncomeCategory);
-            IncomeFields.Children.Add(ConfirmCategory);
             IncomeDate.SetResourceReference(ForegroundProperty, "PurchaseForm.Foreground");
             IncomeDate.SetResourceReference(BorderBrushProperty, "PurchaseForm.FieldBorder");
         }

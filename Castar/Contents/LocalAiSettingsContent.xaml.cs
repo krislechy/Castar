@@ -14,6 +14,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Media;
 
 namespace Castar.Contents;
 
@@ -26,6 +27,7 @@ public partial class LocalAiSettingsContent : UserControl
     private CancellationTokenSource? discovery;
     private LocalAiOptions saved = LocalAiOptions.Default;
     private bool savedEnabled;
+    private string? draftPrompt;
     private bool editingDraft;
     private bool changingControls = true;
     private bool startingHistory;
@@ -104,7 +106,7 @@ public partial class LocalAiSettingsContent : UserControl
             EndpointInput.Text = saved.Endpoint;
             ExecutableInput.Text = saved.ExecutablePath ?? "";
             DirectoryInput.Text = saved.ModelDirectory ?? "";
-            PromptInput.Text = string.IsNullOrWhiteSpace(saved.Prompt) ? LocalAiOptions.DefaultPrompt : saved.Prompt;
+            draftPrompt = saved.Prompt;
             RestoreModel(saved.Model);
             currentTarget = ModelSource(saved);
             DiscoveryStatus.Text = "";
@@ -372,13 +374,26 @@ public partial class LocalAiSettingsContent : UserControl
 
     private void TargetText_Changed(object sender, TextChangedEventArgs e) => UpdateTarget();
 
-    private void PromptText_Changed(object sender, TextChangedEventArgs e)
+    private async void EditPrompt_Click(object sender, RoutedEventArgs e)
     {
-        if (!changingControls && editingDraft)
-            UpdateActions();
-    }
+        if (!editingDraft)
+            return;
 
-    private void ResetPrompt_Click(object sender, RoutedEventArgs e) => PromptInput.Text = LocalAiOptions.DefaultPrompt;
+        var editor = new CategorizationPromptEditor(draftPrompt);
+        var accepted = await PopupDialog.Show(editor, PopupDialog.TypeDialogEnum.Confirm, options =>
+        {
+            options.Title = "Промпт категоризации";
+            options.EditorIcon = (Geometry)FindResource("Lucide.file-text");
+            options.SuccessButton.SuccessConfirmButtonText = "Готово";
+            options.AllowMissClick = false;
+            return options;
+        });
+        if (accepted != true || !editingDraft)
+            return;
+
+        draftPrompt = editor.Prompt;
+        UpdateDraft();
+    }
 
     private void UpdateTarget()
     {
@@ -450,9 +465,7 @@ public partial class LocalAiSettingsContent : UserControl
             provider == LocalAiProvider.LlamaCpp ? TrimToNull(DirectoryInput.Text) : null,
             IdlePicker.SelectedValue is int idle ? idle : saved.IdleMinutes)
         {
-            Prompt = PromptInput.Text.Replace("\r\n", "\n", StringComparison.Ordinal).Trim() is { Length: > 0 } prompt
-                && prompt != LocalAiOptions.DefaultPrompt.Replace("\r\n", "\n", StringComparison.Ordinal)
-                ? prompt : null
+            Prompt = draftPrompt
         };
     }
 

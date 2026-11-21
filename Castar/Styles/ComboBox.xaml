@@ -62,17 +62,22 @@
                                               IsChecked="{Binding IsDropDownOpen, RelativeSource={RelativeSource TemplatedParent}, Mode=TwoWay}">
                                     <ToggleButton.Template>
                                         <ControlTemplate TargetType="{x:Type ToggleButton}">
-                                            <Border Background="Transparent">
-                                                <Path Data="{StaticResource Lucide.chevron-down}" Width="10" Height="7" Stretch="Uniform"
-                                                      Stroke="{TemplateBinding Foreground}" StrokeThickness="1.5"
-                                                      StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round"
-                                                      HorizontalAlignment="Right" VerticalAlignment="Center" Margin="0,0,9,0"/>
-                                            </Border>
+                                            <Border Background="Transparent"/>
                                         </ControlTemplate>
                                     </ToggleButton.Template>
                                 </ToggleButton>
+                                <Path x:Name="DropDownArrow" Grid.Column="1" IsHitTestVisible="False" Visibility="Collapsed"
+                                      Data="{StaticResource Lucide.chevron-down}" Width="10" Height="7" Stretch="Uniform"
+                                      Stroke="{Binding Foreground, ElementName=DropDownToggle}" StrokeThickness="1.5"
+                                      StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round"
+                                      HorizontalAlignment="Right" VerticalAlignment="Center" Margin="0,0,9,0"/>
+                                <Path Grid.ColumnSpan="2" IsHitTestVisible="False" Width="16" Height="16" Stretch="Uniform"
+                                      Data="{Binding Path=(c:CastarComboBox.CompactGlyph), RelativeSource={RelativeSource TemplatedParent}}"
+                                      Stroke="{Binding Foreground, ElementName=DropDownToggle}" StrokeThickness="1.5"
+                                      StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round"
+                                      HorizontalAlignment="Center" VerticalAlignment="Center"/>
                                 <Grid ClipToBounds="True" IsHitTestVisible="False">
-                                    <ContentPresenter x:Name="Selection"
+                                    <ContentPresenter x:Name="Selection" Visibility="Collapsed"
                                                       Margin="{TemplateBinding Padding}"
                                                       Content="{TemplateBinding SelectionBoxItem}"
                                                       ContentTemplate="{TemplateBinding SelectionBoxItemTemplate}"
@@ -98,7 +103,7 @@
                         <Popup x:Name="PART_Popup" Placement="Bottom" AllowsTransparency="True"
                                PlacementTarget="{Binding RelativeSource={RelativeSource TemplatedParent}}"
                                IsOpen="{TemplateBinding IsDropDownOpen}">
-                            <Border MinWidth="{TemplateBinding ActualWidth}" MaxHeight="{TemplateBinding MaxDropDownHeight}"
+                            <Border x:Name="DropDownSurface" MinWidth="224" MaxWidth="280" MaxHeight="{TemplateBinding MaxDropDownHeight}"
                                     Margin="0,4,0,0" Padding="4" CornerRadius="{DynamicResource InputCornerRadius}" BorderThickness="1"
                                     Background="{DynamicResource Castar.Surface}"
                                     BorderBrush="{DynamicResource Castar.FieldBorder}">
@@ -111,6 +116,13 @@
                         </Popup>
                     </Grid>
                     <ControlTemplate.Triggers>
+                        <Trigger Property="c:CastarComboBox.CompactGlyph" Value="{x:Null}">
+                            <Setter TargetName="DropDownArrow" Property="Visibility" Value="Visible"/>
+                            <Setter TargetName="Selection" Property="Visibility" Value="Visible"/>
+                            <Setter TargetName="DropDownSurface" Property="MinWidth"
+                                    Value="{Binding ActualWidth, RelativeSource={RelativeSource TemplatedParent}}"/>
+                            <Setter TargetName="DropDownSurface" Property="MaxWidth" Value="Infinity"/>
+                        </Trigger>
                         <Trigger Property="IsEditable" Value="True">
                             <Setter Property="KeyboardNavigation.IsTabStop" Value="False"/>
                             <Setter TargetName="Selection" Property="Visibility" Value="Collapsed"/>

@@ -321,6 +321,14 @@ public sealed class CastarServerClient(ClientSettings settings) : IDisposable
         }
     }
 
+    internal Task<BudgetCategoryAmountDto[]> GetBudgetCategoryAmountsAsync(DateTime start, DateTime finish,
+        CancellationToken token)
+    {
+        var period = GetUtcPeriod(start, finish);
+        return SendAsync<BudgetCategoryAmountDto[]>(HttpMethod.Get,
+            $"api/budget/category-breakdown?{ExclusiveUtcRange(period.StartUtc, period.EndUtc)}", cancellationToken: token);
+    }
+
     private static bool MissingRoute(HttpRequestException error) =>
         error.StatusCode is HttpStatusCode.NotFound or HttpStatusCode.MethodNotAllowed;
 
@@ -366,7 +374,7 @@ public sealed class CastarServerClient(ClientSettings settings) : IDisposable
         if (includeCount)
             path += "&includeCount=true";
         if (startUtc is { } first && endUtc is { } last)
-            path += "&" + ClassificationRange(first, last);
+            path += "&" + ExclusiveUtcRange(first, last);
         var work = await SendAsync<T[]>(HttpMethod.Get, path, cancellationToken: token,
             observeResponse: includeCount ? response =>
             {
@@ -382,17 +390,17 @@ public sealed class CastarServerClient(ClientSettings settings) : IDisposable
     {
         var path = $"{ClassificationPath(kind)}/queue";
         if (startUtc is { } first && endUtc is { } last)
-            path += "?" + ClassificationRange(first, last);
+            path += "?" + ExclusiveUtcRange(first, last);
         return SendAsync<PurchaseClassificationQueueDto>(HttpMethod.Post, path,
             cancellationToken: token, readProblemDetails: true);
     }
 
     public async Task<int> GetClassificationCountAsync(string kind, DateTime startUtc, DateTime endUtc,
         CancellationToken token) => (await SendAsync<ClassificationCountDto>(HttpMethod.Get,
-            $"{ClassificationPath(kind)}/count?{ClassificationRange(startUtc, endUtc)}", cancellationToken: token)
+            $"{ClassificationPath(kind)}/count?{ExclusiveUtcRange(startUtc, endUtc)}", cancellationToken: token)
             .ConfigureAwait(false)).Count;
 
-    public (DateTime StartUtc, DateTime EndUtc) GetClassificationPeriod(DateTime start, DateTime finish)
+    public (DateTime StartUtc, DateTime EndUtc) GetUtcPeriod(DateTime start, DateTime finish)
     {
         var last = PeriodBoundary(finish, -1);
         return (PeriodBoundary(start, 1), last == DateTime.MaxValue ? last : last.AddTicks(1));
@@ -405,7 +413,7 @@ public sealed class CastarServerClient(ClientSettings settings) : IDisposable
         _ => throw new ArgumentOutOfRangeException(nameof(kind))
     };
 
-    private static string ClassificationRange(DateTime first, DateTime last) =>
+    private static string ExclusiveUtcRange(DateTime first, DateTime last) =>
         $"startUtc={Format(first)}&endExclusiveUtc={Format(last)}";
 
     private static string Format(DateTime value) =>

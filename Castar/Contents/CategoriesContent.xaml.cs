@@ -178,13 +178,17 @@ public partial class CategoriesContent : UserControl
                 options.SuccessButton.SuccessConfirmButtonText = category is null ? "Добавить" : "Сохранить";
                 options.AllowMissClick = false;
                 return options;
-            }, () => editor.CategoryName.Length == 0
-                ? new(false, "Укажите название категории.")
-                : new(true, null), retainParent: true);
+            }, () =>
+            {
+                if (editor.CategoryName.Length == 0)
+                    return new(false, "Укажите название категории.");
+                var error = editor.CommitPendingTag();
+                return new(error is null, error);
+            }, retainParent: true);
 
             if (accepted == true && revision == connectionRevision)
                 await ButtonLoading.RunAsync(sender, () => SaveCategoryAsync(category?.Id,
-                    new BudgetCategoryWriteDto(kind, editor.CategoryName, editor.IconKey)));
+                    new BudgetCategoryWriteDto(kind, editor.CategoryName, editor.IconKey, editor.Tags)));
         }
         finally
         {
@@ -205,6 +209,8 @@ public partial class CategoriesContent : UserControl
             {
                 dataRevision++;
                 SetCategories(categories.Where(item => item.Id != category.Id).Append(category).ToArray());
+                if (draft.Tags is { Count: > 0 } && category.Tags is null)
+                    PopupDialog.SetContentWarning(this, "Обновите Castar Server для сохранения тегов.");
             }
         }
         catch (OperationCanceledException) when (request.IsCancellationRequested)

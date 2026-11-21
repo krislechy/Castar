@@ -276,7 +276,8 @@ public sealed class ExpenseCategorizationService(
                     catch (Exception error) when (!token.IsCancellationRequested && IsRecoverable(error))
                     {
                         logger.Log<ExpenseCategorizationService>("Локальная модель недоступна: " + error.GetType().Name, TypeLog.Warning);
-                        unavailable = "Локальная модель недоступна. Необработанные товары остались в очереди.";
+                        unavailable = error is LocalAiProtocol.ContextLimitException
+                            ? error.Message : "Локальная модель недоступна. Необработанные товары остались в очереди.";
                     }
                 }
 
@@ -342,7 +343,8 @@ public sealed class ExpenseCategorizationService(
                 catch (Exception error) when (!token.IsCancellationRequested && IsRecoverable(error))
                 {
                     logger.Log<ExpenseCategorizationService>("Локальная модель недоступна: " + error.GetType().Name, TypeLog.Warning);
-                    unavailable = "Локальная модель недоступна. Необработанные доходы остались в очереди.";
+                    unavailable = error is LocalAiProtocol.ContextLimitException
+                        ? error.Message : "Локальная модель недоступна. Необработанные доходы остались в очереди.";
                 }
             }
 
@@ -378,7 +380,8 @@ public sealed class ExpenseCategorizationService(
 
     private async Task<LocalAiCategory[]> ReadCategoriesAsync(string kind, CancellationToken token) =>
         (await server.GetBudgetCategoriesAsync(token).ConfigureAwait(false))
-            .Where(category => category.Kind == kind).Select(category => new LocalAiCategory(category.Id, category.Name)).ToArray();
+            .Where(category => category.Kind == kind)
+            .Select(category => new LocalAiCategory(category.Id, category.Name, category.Tags)).ToArray();
 
     private void ReportHistory(ExpenseHistoryProgress progress)
     {

@@ -49,7 +49,7 @@ internal sealed class PeriodClassification
             return;
         }
 
-        var bounds = server.GetClassificationPeriod(start, finish);
+        var bounds = server.GetUtcPeriod(start, finish);
         if (period != bounds)
         {
             Clear();

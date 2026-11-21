@@ -139,6 +139,12 @@ public partial class App : Application
                 _ = statistics.Value.RefreshAfterServerChangeAsync();
         }
 
+        void RefreshOpenCategoryChart()
+        {
+            if (statistics.IsValueCreated)
+                statistics.Value.RefreshCategoryChartAfterServerChange();
+        }
+
         budgetEvents.Changed += change =>
         {
             switch (change.Kind)
@@ -179,11 +185,13 @@ public partial class App : Application
             if (change.Kind == ServerSynchronization.PurchaseClassification)
             {
                 _ = purchases.RefreshAfterServerChangeAsync();
+                RefreshOpenCategoryChart();
                 return;
             }
             if (change.Kind == ServerSynchronization.IncomeClassification)
             {
                 _ = incomes.RefreshAfterServerChangeAsync();
+                RefreshOpenCategoryChart();
                 return;
             }
             if (change.Kind == ServerSynchronization.Categories)
@@ -192,6 +200,7 @@ public partial class App : Application
                 _ = purchases.RefreshAfterServerChangeAsync();
                 incomes.InvalidateCategoryNames();
                 _ = incomes.RefreshAfterServerChangeAsync();
+                RefreshOpenCategoryChart();
                 return;
             }
             if (change.Kind == ServerSynchronization.Users)

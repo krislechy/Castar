@@ -6,4 +6,5 @@ public sealed class BudgetCategory : BaseDbModel
     public string Name { get; set; } = "";
     public string NormalizedName { get; set; } = "";
     public string? IconKey { get; set; }
+    public string[] Tags { get; set; } = [];
 }

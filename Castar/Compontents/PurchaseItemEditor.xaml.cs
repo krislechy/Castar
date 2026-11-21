@@ -14,25 +14,30 @@ public partial class PurchaseItemEditor : UserControl
 {
     private readonly string originalName;
     private readonly Guid? originalCategoryId;
+    private readonly bool confirmExistingCategory;
 
     internal PurchaseItemEditor(PurchaseItemDto item, string? currency, bool manualEntry = false, bool usePurchaseFormStyle = false,
         IReadOnlyList<BudgetCategoryDto>? categories = null)
     {
         originalName = item.Name;
         originalCategoryId = item.BudgetCategoryId;
+        confirmExistingCategory = item.Id != Guid.Empty && originalCategoryId.HasValue && !item.CategoryConfirmed;
         IsManualEntry = manualEntry;
         UsesPurchaseFormStyle = manualEntry || usePurchaseFormStyle;
         InitializeComponent();
         ItemName.Text = item.Name;
         Quantity.Text = item.Quantity.ToString(CultureInfo.CurrentCulture);
         UnitPrice.Text = item.Price.ToString(CultureInfo.CurrentCulture);
-        ItemCategory.Load(categories, originalCategoryId);
-        if (categories is { Count: > 0 } && item.Id != Guid.Empty && !item.CategoryConfirmed)
-            ConfirmCategory.Visibility = Visibility.Visible;
+        ItemCategory.Load(categories, originalCategoryId, compact: manualEntry);
         if (HistoricalExchangeRates.IsCurrencyCode(currency))
             PriceLabel.Text = $"Цена ({currency})";
         if (manualEntry)
         {
+            Grid.SetRow(ItemCategory, 0);
+            Grid.SetColumn(ItemCategory, 3);
+            Grid.SetColumnSpan(ItemCategory, 1);
+            ItemCategory.Margin = new Thickness(8, 0, 0, 0);
+            ItemCategory.VerticalAlignment = VerticalAlignment.Bottom;
             Quantity.Background = Brushes.Transparent;
             Quantity.BorderThickness = new Thickness(0);
             Quantity.Padding = new Thickness(3, 7, 3, 7);
@@ -99,7 +104,7 @@ public partial class PurchaseItemEditor : UserControl
 
         Result = new(name, quantity, price)
         {
-            Category = ItemCategory.GetChange(originalCategoryId, ConfirmCategory.IsChecked == true)
+            Category = ItemCategory.GetChange(originalCategoryId, confirmExistingCategory)
         };
         return new(true, null);
     }

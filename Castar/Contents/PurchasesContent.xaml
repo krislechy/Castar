@@ -7,11 +7,15 @@
   <ResourceDictionary.MergedDictionaries><ResourceDictionary Source="/Castar;component/Styles/ExpenseLedger.xaml"/></ResourceDictionary.MergedDictionaries>
   <BooleanToVisibilityConverter x:Key="PurchaseActionVisibility"/>
   <c:BudgetCategoryIconConverter x:Key="CategoryIcon"/>
-  <Style x:Key="ExpenseItemCategorySlot" TargetType="TextBlock">
-   <Setter Property="FontSize" Value="12"/>
-   <Style.Triggers>
-    <DataTrigger Binding="{Binding CategoryName}" Value="{x:Null}"><Setter Property="Visibility" Value="Collapsed"/></DataTrigger>
-   </Style.Triggers>
+  <Style x:Key="ExpenseCategoryStatusIcon" TargetType="Path">
+   <Setter Property="Width" Value="14"/><Setter Property="Height" Value="14"/>
+   <Setter Property="Stretch" Value="Uniform"/><Setter Property="VerticalAlignment" Value="Center"/>
+   <Setter Property="StrokeThickness" Value="1.4"/><Setter Property="StrokeStartLineCap" Value="Round"/>
+   <Setter Property="StrokeEndLineCap" Value="Round"/><Setter Property="StrokeLineJoin" Value="Round"/>
+  </Style>
+  <Style x:Key="ExpenseCategoryWarningIcon" TargetType="Path" BasedOn="{StaticResource ExpenseCategoryStatusIcon}">
+   <Setter Property="Data" Value="{StaticResource Lucide.triangle-alert}"/>
+   <Setter Property="Stroke" Value="{DynamicResource Warning.Svg.Brush}"/>
   </Style>
   <Style x:Key="ExpenseAmountWarning" TargetType="ContentControl">
    <Setter Property="Content" Value="{DynamicResource Svg.Warning}"/><Setter Property="Foreground" Value="{DynamicResource Warning.Svg.Brush}"/>
@@ -88,7 +92,28 @@
    </Grid>
    <Border x:Name="DetailsPanel" Grid.Column="2" Style="{StaticResource ExpenseCardSurface}" Padding="18,16">
     <Grid Grid.IsSharedSizeScope="True"><Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
-     <Grid Margin="0,0,0,12"><Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions><TextBlock Text="Товары" Style="{StaticResource ExpenseSectionTitle}" VerticalAlignment="Center"/><Button x:Name="AddPurchaseItemButton" Grid.Column="1" Style="{StaticResource LedgerActionButton}" Content="Добавить товар" Click="AddPurchaseItem_Click" AutomationProperties.Name="Добавить товар" IsEnabled="{Binding CanDelete, FallbackValue=False}"/></Grid>
+     <Grid Margin="0,0,0,12">
+      <Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+      <TextBlock Text="Товары" Style="{StaticResource ExpenseSectionTitle}" VerticalAlignment="Center"/>
+      <StackPanel x:Name="UncategorizedItemsWarning" Grid.Column="1" Orientation="Horizontal" Margin="8,0,10,0"
+                  VerticalAlignment="Center" Background="Transparent" ToolTip="Товары без категории">
+       <StackPanel.Style>
+        <Style TargetType="StackPanel">
+         <Style.Triggers>
+          <DataTrigger Binding="{Binding UncategorizedItemCount, FallbackValue=0}" Value="0">
+           <Setter Property="Visibility" Value="Collapsed"/>
+          </DataTrigger>
+         </Style.Triggers>
+        </Style>
+       </StackPanel.Style>
+       <Path Style="{StaticResource ExpenseCategoryWarningIcon}"/>
+       <TextBlock x:Name="UncategorizedItemsCount" Text="{Binding UncategorizedItemCount}" Margin="4,0,0,0"
+                  Foreground="{DynamicResource Warning.Svg.Brush}" FontWeight="SemiBold" VerticalAlignment="Center"
+                  AutomationProperties.Name="{Binding UncategorizedItemCount, StringFormat='Товары без категории: {0}'}"/>
+      </StackPanel>
+      <Button x:Name="AddPurchaseItemButton" Grid.Column="2" Style="{StaticResource LedgerActionButton}" Content="Добавить товар"
+              Click="AddPurchaseItem_Click" AutomationProperties.Name="Добавить товар" IsEnabled="{Binding CanDelete, FallbackValue=False}"/>
+     </Grid>
      <StackPanel Grid.Row="1" Margin="0,0,0,12"><TextBlock Text="{Binding RetailPlace, TargetNullValue=''}" Style="{StaticResource BudgetOptionalText}" Foreground="{DynamicResource Foreground.White}" FontWeight="SemiBold"/><TextBlock Text="{Binding RetailPlaceAddress, TargetNullValue=''}" Style="{StaticResource BudgetOptionalText}" Foreground="{StaticResource LedgerMuted}"/><c:MoneyAmount Display="{Binding Amount}" AmountAlignment="Left" Margin="0,4,0,0" FontWeight="SemiBold" Foreground="{StaticResource LedgerExpense}" FontSize="18" AutomationProperties.Name="Итог чека"/><TextBlock Text="{Binding Tag.Message, ElementName=DetailsPanel}" Style="{StaticResource BudgetOptionalText}" Foreground="{DynamicResource Warning.Svg.Brush}" TextWrapping="Wrap" AutomationProperties.LiveSetting="Polite"/></StackPanel>
      <Grid Grid.Row="2" Margin="0,0,0,8"><Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="Auto" MinWidth="48" SharedSizeGroup="ExpenseItemQuantity"/><ColumnDefinition Width="Auto" MinWidth="74" SharedSizeGroup="ExpenseItemPrice"/><ColumnDefinition Width="Auto" MinWidth="82" SharedSizeGroup="ExpenseItemSum"/><ColumnDefinition Width="32"/></Grid.ColumnDefinitions><TextBlock Text="Название" Margin="8,0,0,0" Foreground="{StaticResource LedgerMuted}"/><TextBlock Grid.Column="1" Text="Кол-во" TextAlignment="Right" Foreground="{StaticResource LedgerMuted}"/><TextBlock Grid.Column="2" Text="Цена" Margin="14,0,0,0" TextAlignment="Right" Foreground="{StaticResource LedgerMuted}"/><TextBlock Grid.Column="3" Text="Сумма" Margin="14,0,0,0" TextAlignment="Right" Foreground="{StaticResource LedgerMuted}"/></Grid>
      <ListView x:Name="ItemsList" Grid.Row="3" FontSize="14" Style="{StaticResource BudgetList}" Background="Transparent" Padding="0" BorderThickness="0" ItemsSource="{Binding Items}" SelectionMode="Extended" SelectionChanged="ItemsSelection_Changed" ScrollViewer.HorizontalScrollBarVisibility="Disabled" AutomationProperties.Name="Товары выбранной покупки">
@@ -96,15 +121,33 @@
       <ListView.ItemContainerStyle><Style TargetType="ListViewItem" BasedOn="{StaticResource ExpenseItemRow}"><EventSetter Event="MouseDoubleClick" Handler="PurchaseItemRow_DoubleClick"/></Style></ListView.ItemContainerStyle>
       <ListView.ItemTemplate><DataTemplate><Grid><Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="Auto" MinWidth="48" SharedSizeGroup="ExpenseItemQuantity"/><ColumnDefinition Width="Auto" MinWidth="74" SharedSizeGroup="ExpenseItemPrice"/><ColumnDefinition Width="Auto" MinWidth="82" SharedSizeGroup="ExpenseItemSum"/><ColumnDefinition Width="32"/></Grid.ColumnDefinitions>
        <DockPanel VerticalAlignment="Center">
+        <DockPanel.Style>
+         <Style TargetType="DockPanel">
+          <Setter Property="MinHeight" Value="35"/>
+          <Style.Triggers>
+           <DataTrigger Binding="{Binding HasCategory}" Value="False"><Setter Property="MinHeight" Value="0"/></DataTrigger>
+          </Style.Triggers>
+         </Style>
+        </DockPanel.Style>
         <Path Style="{StaticResource BudgetEditedMarker}"/>
-        <StackPanel>
-         <TextBlock Text="{Binding Name}" TextTrimming="CharacterEllipsis" Foreground="{DynamicResource Foreground.White}"/>
-         <TextBlock x:Name="ItemCategorySlot" Style="{StaticResource ExpenseItemCategorySlot}" ToolTip="{Binding CategoryName}"
-                    AutomationProperties.Name="{Binding CategoryName}"><Run Text="&#x200B;"/><InlineUIContainer><Path
-                    x:Name="ItemCategoryGlyph" Data="{Binding CategoryIconKey, Converter={StaticResource CategoryIcon}}"
-                    Stroke="{StaticResource LedgerMuted}" StrokeThickness="1.3" StrokeStartLineCap="Round"
-                    StrokeEndLineCap="Round" StrokeLineJoin="Round" Width="12" Height="10" Stretch="Uniform"/></InlineUIContainer></TextBlock>
-        </StackPanel>
+        <Border x:Name="ItemCategorySlot" DockPanel.Dock="Left" Background="Transparent"
+                Margin="0,0,7,0" VerticalAlignment="Center" ToolTip="{Binding CategoryLabel}"
+                AutomationProperties.Name="{Binding CategoryLabel}">
+         <Path x:Name="ItemCategoryGlyph">
+          <Path.Style>
+           <Style TargetType="Path" BasedOn="{StaticResource ExpenseCategoryWarningIcon}">
+            <Style.Triggers>
+             <DataTrigger Binding="{Binding HasCategory}" Value="True">
+              <Setter Property="Data" Value="{Binding CategoryIconKey, Converter={StaticResource CategoryIcon}}"/>
+              <Setter Property="Stroke" Value="{StaticResource LedgerMuted}"/>
+             </DataTrigger>
+            </Style.Triggers>
+           </Style>
+          </Path.Style>
+         </Path>
+        </Border>
+        <TextBlock x:Name="ItemNameText" Text="{Binding Name}" VerticalAlignment="Center"
+                   TextTrimming="CharacterEllipsis" Foreground="{DynamicResource Foreground.White}"/>
        </DockPanel>
        <TextBlock Grid.Column="1" Text="{Binding Quantity, StringFormat={}{0:0.###}}" TextAlignment="Right" VerticalAlignment="Center" Foreground="{StaticResource LedgerMuted}"/>
        <c:MoneyAmount Grid.Column="2" Display="{Binding Price}" FontSize="14" Margin="16,0,0,0" VerticalAlignment="Center"/>

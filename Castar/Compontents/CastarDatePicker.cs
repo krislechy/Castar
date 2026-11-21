@@ -21,6 +21,8 @@ public sealed class CastarDatePicker : DatePicker
 
     public bool HasInvalidInput => (bool)GetValue(HasInvalidInputProperty);
 
+    internal Action<DateTime?>? CommitManualDate { get; set; }
+
     public override void OnApplyTemplate()
     {
         if (input is not null)
@@ -53,7 +55,7 @@ public sealed class CastarDatePicker : DatePicker
             return true;
         }
 
-        var valid = DateTime.TryParseExact(input?.Text, DateFormat, CultureInfo.InvariantCulture, DateTimeStyles.None, out date)
+        var valid = TryReadInput(out date)
             && (DisplayDateStart is null || date >= DisplayDateStart.Value.Date)
             && (DisplayDateEnd is null || date <= DisplayDateEnd.Value.Date)
             && !BlackoutDates.Contains(date);
@@ -91,11 +93,27 @@ public sealed class CastarDatePicker : DatePicker
 
     private bool Commit()
     {
+        if (CommitManualDate is { } commit)
+        {
+            if (string.IsNullOrWhiteSpace(input?.Text))
+            {
+                commit(null);
+                return true;
+            }
+            var valid = TryReadInput(out var manualDate);
+            SetValue(HasInvalidInputPropertyKey, !valid);
+            if (valid)
+                commit(manualDate);
+            return valid;
+        }
         if (!TryGetDate(out var date))
             return false;
         SetCurrentValue(SelectedDateProperty, date);
         return true;
     }
+
+    private bool TryReadInput(out DateTime date) =>
+        DateTime.TryParseExact(input?.Text, DateFormat, CultureInfo.InvariantCulture, DateTimeStyles.None, out date);
 
     private void Input_TextChanged(object sender, TextChangedEventArgs e) => SetValue(HasInvalidInputPropertyKey, false);
 

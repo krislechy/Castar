@@ -147,6 +147,7 @@
                         <RowDefinition Height="Auto"/>
                         <RowDefinition Height="Auto"/>
                         <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
                     </Grid.RowDefinitions>
                     <c:StatisticsChartCard x:Name="RemainingPanel" Title="Динамика остатка средств"
                                            HeaderIcon="{StaticResource Lucide.chart-no-axes-combined}"/>
@@ -163,7 +164,8 @@
                     </c:StatisticsChartCard>
                     <c:StatisticsChartCard x:Name="MonthlyPanel" Grid.Row="1" Title="Доходы и расходы по месяцам"
                                            HeaderIcon="{StaticResource Lucide.chart-column-increasing}"/>
-                    <c:StatisticsChartCard x:Name="HeatPanel" Grid.Row="1" Grid.Column="1" Title="Тепловая карта расходов"
+                    <c:CategoryStatisticsChart x:Name="CategoriesPanel" Grid.Row="1" Grid.Column="1"/>
+                    <c:StatisticsChartCard x:Name="HeatPanel" Grid.Row="2" Grid.ColumnSpan="2" Title="Тепловая карта расходов"
                                            HeaderIcon="{StaticResource Lucide.calendar-days}"/>
                 </Grid>
             </StackPanel>

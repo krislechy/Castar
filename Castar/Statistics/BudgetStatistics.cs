@@ -1,3 +1,4 @@
+using Castar.Api;
 using Castar.Currency;
 using Castar.ServerConnection;
 using System;
@@ -25,6 +26,10 @@ internal sealed record StatisticsCurrency(string Currency, decimal? Income, deci
 internal sealed record StatisticsPoint(string Label, decimal? Income, decimal? Expenses);
 internal sealed record StatisticsRemainingPoint(DateOnly Date, decimal? Amount);
 internal sealed record StatisticsDailyPoint(DateOnly Date, decimal? Income, decimal? Expenses);
+internal sealed record StatisticsCategorySnapshot(IReadOnlyList<StatisticsCategoryAmount> Rows, bool HasRecords,
+    long UnconvertedIncomes, long UnconvertedExpenses, IReadOnlyList<BudgetCategoryDto> Categories);
+internal sealed record StatisticsCategoryAmount(bool IsIncome, Guid? CategoryId, string CategoryName, string? IconKey,
+    string Currency, decimal? Amount, long UnconvertedCount);
 
 internal sealed class BudgetStatistics(CastarServerClient server, HistoricalExchangeRates exchangeRates)
 {
@@ -38,6 +43,68 @@ internal sealed class BudgetStatistics(CastarServerClient server, HistoricalExch
 
     internal Task<StatisticsSnapshot> LoadPeriodAsync(DateTime start, DateTime finish, string displayCurrency,
         CancellationToken token) => LoadCachedAsync(start, finish, displayCurrency, token, includeOpening: false);
+
+    internal async Task<StatisticsCategorySnapshot> LoadCategoriesAsync(DateTime start, DateTime finish,
+        string displayCurrency, CancellationToken token)
+    {
+        var categoryTask = server.GetBudgetCategoriesAsync(token);
+        var operationTask = server.GetBudgetCategoryAmountsAsync(start, finish, token);
+        await Task.WhenAll(categoryTask, operationTask).ConfigureAwait(false);
+        var operations = await operationTask.ConfigureAwait(false);
+        var categories = await categoryTask.ConfigureAwait(false);
+        token.ThrowIfCancellationRequested();
+        if (operations.Length == 0)
+            return new([], false, 0, 0, categories);
+
+        var ratesTask = exchangeRates.GetAsync(operations.Where(row => row.RateDate.HasValue)
+            .Select(row => (row.Currency, row.RateDate!.Value)), displayCurrency, token);
+        var rates = await ratesTask.ConfigureAwait(false);
+        return CalculateCategories(operations, categories, displayCurrency, rates, token);
+    }
+
+    internal static StatisticsCategorySnapshot CalculateCategories(BudgetCategoryAmountDto[] operations,
+        IReadOnlyList<BudgetCategoryDto> categories, string displayCurrency,
+        IReadOnlyDictionary<(string Currency, DateOnly Date), decimal> rates, CancellationToken token)
+    {
+        var descriptions = categories.ToDictionary(category => (category.Kind, category.Id));
+        var totals = new Dictionary<(bool IsIncome, Guid? CategoryId, string Currency), (decimal? Amount, long Unconverted)>();
+        long missingIncomes = 0;
+        long missingExpenses = 0;
+        foreach (var row in operations)
+        {
+            token.ThrowIfCancellationRequested();
+            var entry = Convert(new Entry(row.IsIncome, row.Currency, row.Amount, null, row.RateDate,
+                Count: row.OperationCount), displayCurrency, rates);
+            if (entry.Currency is null)
+            {
+                if (row.IsIncome)
+                    missingIncomes += row.OperationCount;
+                else
+                    missingExpenses += row.OperationCount;
+            }
+
+            var key = (row.IsIncome, row.CategoryId, entry.Currency ?? displayCurrency);
+            var total = totals.GetValueOrDefault(key);
+            if (entry.Currency is null)
+                total.Unconverted += row.OperationCount;
+            else
+                total.Amount = total.Amount.GetValueOrDefault() + entry.ConvertAmount(row.Amount);
+            totals[key] = total;
+        }
+
+        var rows = totals.Select(row =>
+        {
+            var key = row.Key;
+            var category = key.CategoryId is { } id
+                ? descriptions.GetValueOrDefault((key.IsIncome ? BudgetEvents.Income : BudgetEvents.Purchase, id)) : null;
+            var label = category?.Name ?? (key.CategoryId.HasValue ? "Категория недоступна" : "Без категории");
+            return new StatisticsCategoryAmount(key.IsIncome, key.CategoryId, label, category?.IconKey, key.Currency,
+                row.Value.Amount, row.Value.Unconverted);
+        });
+        return new(rows.OrderBy(row => row.IsIncome).ThenBy(row => row.Currency, StringComparer.Ordinal)
+                .ThenByDescending(row => row.Amount).ThenBy(row => row.CategoryName, StringComparer.CurrentCultureIgnoreCase)
+                .ToArray(), operations.Length != 0, missingIncomes, missingExpenses, categories);
+    }
 
     private async Task<StatisticsSnapshot> LoadCachedAsync(DateTime start, DateTime finish, string displayCurrency,
         CancellationToken token, bool includeOpening)
@@ -244,11 +311,11 @@ internal sealed class BudgetStatistics(CastarServerClient server, HistoricalExch
     }
 
     private sealed record Entry(bool IsIncome, string? Currency, decimal Amount, DateOnly? ReportDate,
-        DateOnly? RateDate, bool IsOpening = false, long OpeningCount = 1);
+        DateOnly? RateDate, bool IsOpening = false, long Count = 1);
 
     private sealed record ConvertedEntry(Entry Original, string? Currency, decimal? Rate)
     {
         public decimal ConvertAmount(decimal amount) =>
-            (Rate is { } rate ? HistoricalExchangeRates.ConvertAmount(amount, rate) : amount) * Original.OpeningCount;
+            (Rate is { } rate ? HistoricalExchangeRates.ConvertAmount(amount, rate) : amount) * Original.Count;
     }
 }

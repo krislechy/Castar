@@ -8,6 +8,7 @@ namespace Castar.Domain.Models.DataBase
 
         public User User { get; private set; } = null!;
         public Guid UserId { get; set; }
+        // Retain the legacy header value in existing databases. Expense categories are assigned to items.
         public Guid? CategoryId { get; set; }
         public Guid? TelegramOriginUserId { get; set; }
         public string Name { get; set; } = string.Empty;

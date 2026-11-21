@@ -56,17 +56,14 @@
                 <Path Style="{StaticResource PurchaseFormFieldIcon}" Data="{StaticResource Lucide.clock}"/>
             </Grid>
         </Grid>
-        <UniformGrid Rows="1">
-            <StackPanel x:Name="CurrencyField" Visibility="Collapsed">
-                <TextBlock x:Name="CurrencyLabel" Text="Валюта покупки" Style="{StaticResource FormFieldLabel}"/>
-                <Grid>
-                    <c:CastarComboBox x:Name="PurchaseCurrency" DisplayMemberPath="Label" Padding="34,7,8,7"
-                                      AutomationProperties.LabeledBy="{Binding ElementName=CurrencyLabel}"/>
-                    <Path Style="{StaticResource PurchaseFormFieldIcon}" Data="{StaticResource Lucide.coins}"/>
-                </Grid>
-            </StackPanel>
-            <c:BudgetCategoryPicker x:Name="PurchaseCategory"/>
-        </UniformGrid>
+        <StackPanel x:Name="CurrencyField" Visibility="Collapsed">
+            <TextBlock x:Name="CurrencyLabel" Text="Валюта покупки" Style="{StaticResource FormFieldLabel}"/>
+            <Grid>
+                <c:CastarComboBox x:Name="PurchaseCurrency" DisplayMemberPath="Label" Padding="34,7,8,7"
+                                  AutomationProperties.LabeledBy="{Binding ElementName=CurrencyLabel}"/>
+                <Path Style="{StaticResource PurchaseFormFieldIcon}" Data="{StaticResource Lucide.coins}"/>
+            </Grid>
+        </StackPanel>
       </StackPanel>
     </Grid>
 </UserControl>

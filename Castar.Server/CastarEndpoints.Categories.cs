@@ -14,7 +14,7 @@ public static partial class CastarEndpoints
     {
         var categories = await db.BudgetCategories.AsNoTracking()
             .OrderBy(category => category.Kind).ThenBy(category => category.NormalizedName)
-            .Select(category => new BudgetCategoryDto(category.Id, category.Kind, category.Name, category.IconKey))
+            .Select(category => new BudgetCategoryDto(category.Id, category.Kind, category.Name, category.IconKey, category.Tags))
             .ToArrayAsync(token);
         return Results.Ok(categories.Select(category => category with
         {
@@ -50,6 +50,12 @@ public static partial class CastarEndpoints
         var icon = BudgetCategoryIconKeys.Canonicalize(input.Kind, requestedIcon);
         if (requestedIcon is not null && icon is null)
             return InvalidInput("Выберите значок из списка.");
+        if (input.Tags is { } tags)
+        {
+            if (NormalizeCategoryTags(tags, out var normalized) is { } tagError)
+                return InvalidInput(tagError);
+            category.Tags = normalized;
+        }
 
         category.Name = name;
         category.NormalizedName = name.ToUpperInvariant();
@@ -67,8 +73,29 @@ public static partial class CastarEndpoints
         }
 
         events.QueueSynchronization(ServerSynchronization.Categories);
-        return Results.Json(new BudgetCategoryDto(category.Id, category.Kind, category.Name, category.IconKey),
+        return Results.Json(new BudgetCategoryDto(category.Id, category.Kind, category.Name, category.IconKey, category.Tags),
             statusCode: create ? StatusCodes.Status201Created : StatusCodes.Status200OK);
+    }
+
+    private static string? NormalizeCategoryTags(IReadOnlyList<string> tags, out string[] normalized)
+    {
+        normalized = [];
+        var unique = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var values = new List<string>();
+        foreach (var tag in tags)
+        {
+            var value = tag?.Trim().Normalize();
+            if (string.IsNullOrEmpty(value) || value.Length > BudgetCategoryTagLimits.MaxLength || value.Any(char.IsControl))
+                return $"Укажите непустой тег длиной до {BudgetCategoryTagLimits.MaxLength} символов без переноса строки.";
+            if (!unique.Add(value))
+                continue;
+            if (values.Count == BudgetCategoryTagLimits.MaxCount)
+                return $"Для категории можно задать не более {BudgetCategoryTagLimits.MaxCount} тегов.";
+            values.Add(value);
+        }
+
+        normalized = values.ToArray();
+        return null;
     }
 
     private static Task<bool> IsValidCategoryAsync(CategorySelectionDto? selection, string kind,

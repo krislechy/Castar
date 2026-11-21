@@ -104,7 +104,7 @@ public static partial class CastarEndpoints
         var categoryIds = items.Select(item => item.BudgetCategoryId).OfType<Guid>().Distinct().ToArray();
         return categoryIds.Length == 0 ? new Dictionary<Guid, BudgetCategoryDto>() : await db.BudgetCategories.AsNoTracking()
             .Where(category => categoryIds.Contains(category.Id))
-            .Select(category => new BudgetCategoryDto(category.Id, category.Kind, category.Name, category.IconKey))
+            .Select(category => new BudgetCategoryDto(category.Id, category.Kind, category.Name, category.IconKey, null))
             .ToDictionaryAsync(category => category.Id, token);
     }
 }

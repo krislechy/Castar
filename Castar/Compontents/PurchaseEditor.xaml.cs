@@ -14,7 +14,7 @@ public partial class PurchaseEditor : UserControl
     private readonly PurchaseDto original;
 
     internal PurchaseEditor(PurchaseDto purchase, IReadOnlyList<string>? allowedCurrencies = null,
-        IReadOnlyList<User>? owners = null, bool manualEntry = false, IReadOnlyList<BudgetCategoryDto>? categories = null)
+        IReadOnlyList<User>? owners = null, bool manualEntry = false)
     {
         original = purchase;
         InitializeComponent();
@@ -23,7 +23,6 @@ public partial class PurchaseEditor : UserControl
         RetailPlaceAddress.Text = purchase.RetailPlaceAddress ?? "";
         OperationDate.SelectedDate = purchase.AddedOn?.Date;
         OperationTime.Text = CastarDatePicker.FormatTime(purchase.AddedOn);
-        PurchaseCategory.Load(categories, purchase.CategoryId);
         if (owners is not null)
         {
             OwnerColumn.Width = new GridLength(184);
@@ -42,11 +41,6 @@ public partial class PurchaseEditor : UserControl
             PurchaseCurrency.ItemsSource = options;
             PurchaseCurrency.SelectedItem = options.First(option => option.Code == purchase.Currency);
             CurrencyField.Visibility = Visibility.Visible;
-            if (categories is not null)
-            {
-                CurrencyField.Margin = new Thickness(0, 0, 4, 0);
-                PurchaseCategory.Margin = new Thickness(4, 0, 0, 0);
-            }
         }
         if (manualEntry)
         {
@@ -79,8 +73,7 @@ public partial class PurchaseEditor : UserControl
         {
             Currency = currency == original.Currency ? null : currency,
             UserId = owner is not null && owner.Id != original.UserId ? owner.Id : null,
-            AddedOnUtc = date == original.AddedOn ? original.AddedOnUtc : null,
-            Category = PurchaseCategory.GetChange(original.CategoryId)
+            AddedOnUtc = date == original.AddedOn ? original.AddedOnUtc : null
         };
         return new(true, null);
     }

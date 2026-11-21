@@ -41,6 +41,8 @@ public sealed class ClientSettings : INotifyPropertyChanged
     private int legacyHeatmapColorSensitivity = 50;
     private int? dailyHeatmapColorSensitivity;
     private int? monthlyHeatmapColorSensitivity;
+    private Guid[] excludedIncomeChartCategories = [];
+    private Guid[] excludedPurchaseChartCategories = [];
     private bool automaticCategorizationEnabled;
     private LocalAiOptions localAi = LocalAiOptions.Default;
     private string settingsPath = Path.Combine(DataDirectory, "Castar.Client.xml");
@@ -122,6 +124,25 @@ public sealed class ClientSettings : INotifyPropertyChanged
     {
         get => monthlyHeatmapColorSensitivity ?? legacyHeatmapColorSensitivity;
         set => Set(ref monthlyHeatmapColorSensitivity, (int?)Math.Clamp(value, 0, 100));
+    }
+
+    public Guid[] ExcludedIncomeChartCategories
+    {
+        get => excludedIncomeChartCategories;
+        set => SetCategoryExclusions(ref excludedIncomeChartCategories, value);
+    }
+
+    public Guid[] ExcludedPurchaseChartCategories
+    {
+        get => excludedPurchaseChartCategories;
+        set => SetCategoryExclusions(ref excludedPurchaseChartCategories, value);
+    }
+
+    private void SetCategoryExclusions(ref Guid[] current, Guid[]? value, [CallerMemberName] string? propertyName = null)
+    {
+        var distinct = value?.Distinct().Order().ToArray() ?? [];
+        if (!current.SequenceEqual(distinct))
+            Set(ref current, distinct, propertyName);
     }
 
     [XmlIgnore]

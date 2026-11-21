@@ -58,13 +58,13 @@
         <Button Content="{DynamicResource Svg.LeftArrow}" Grid.Column="1" Click="OffsetMonthButton_Click"
                             Width="{Binding ActualHeight,RelativeSource={RelativeSource Mode=Self}}"
                             CommandParameter="-1" ToolTip="Предыдущий месяц" AutomationProperties.Name="Предыдущий месяц"/>
-        <local:CastarDatePicker x:Name="StartDatePicker" Grid.Column="2" SelectedDate="{Binding RangeDate.StartDate.Date,RelativeSource={RelativeSource AncestorType=UserControl},Mode=OneWay}"
+        <local:CastarDatePicker x:Name="StartDatePicker" Grid.Column="2"
                                SelectedDateChanged="DatePicker_SelectedStartDateChanged" AutomationProperties.Name="Начало периода"/>
         <TextBlock Grid.Column="3" Text="—" Margin="8,0"
                                VerticalAlignment="Center"
                                FontSize="16"
                                Foreground="{StaticResource Foreground.White}"/>
-        <local:CastarDatePicker Grid.Column="4" SelectedDate="{Binding RangeDate.EndDate.Date,RelativeSource={RelativeSource AncestorType=UserControl},Mode=OneWay}"
+        <local:CastarDatePicker x:Name="EndDatePicker" Grid.Column="4"
                                SelectedDateChanged="DatePicker_SelectedEndDateChanged" AutomationProperties.Name="Конец периода"/>
         <Button Content="{DynamicResource Svg.RightArrow}" Grid.Column="5" Click="OffsetMonthButton_Click"
                             Width="{Binding ActualHeight,RelativeSource={RelativeSource Mode=Self}}"

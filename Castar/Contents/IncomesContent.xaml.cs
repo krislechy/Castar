@@ -169,14 +169,25 @@ public partial class IncomesContent : UserControl
     private async Task RefreshAsync(DateTime start, DateTime finish)
     {
         CancelRefresh();
-        classification.Refresh(start, finish);
         dataStale = true;
+        if (!SelectorRangeDatesElement.HasCompleteRange)
+        {
+            classification.Clear();
+            renderedQuery = null;
+            UpdateRows([]);
+            context.HasLoaded = false;
+            context.IsLoading = false;
+            context.Status = "";
+            context.SetComparison(null, settings.DisplayCurrency);
+            return;
+        }
         if (start > finish)
         {
             context.Status = "Дата начала позже даты окончания.";
             context.IsLoading = false;
             return;
         }
+        classification.Refresh(start, finish);
         using var request = new CancellationTokenSource();
         activeRequest = request;
         var target = settings.DisplayCurrency;
@@ -420,6 +431,8 @@ public partial class IncomesContent : UserControl
     private async void SelectorRangeDates_DateRangeChanged(object? sender, EventArgs e)
     {
         dataStale = true;
+        if (!SelectorRangeDatesElement.HasCompleteRange && !listeningForChanges)
+            classification.Clear();
         if (listeningForChanges && e is RangeDate range)
             await RefreshAsync(range.StartDate, range.EndDate);
     }

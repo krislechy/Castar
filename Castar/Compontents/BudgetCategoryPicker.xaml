@@ -13,7 +13,8 @@
     </UserControl.Resources>
     <StackPanel>
         <TextBlock x:Name="CategoryLabel" Text="Категория" Style="{StaticResource FormFieldLabel}"/>
-        <c:CastarComboBox x:Name="CategoryInput" AutomationProperties.LabeledBy="{Binding ElementName=CategoryLabel}">
+        <c:CastarComboBox x:Name="CategoryInput" AutomationProperties.LabeledBy="{Binding ElementName=CategoryLabel}"
+                          SelectionChanged="CategoryInput_SelectionChanged">
             <c:CastarComboBox.ItemTemplate>
                 <DataTemplate>
                     <DockPanel>

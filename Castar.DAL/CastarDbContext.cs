@@ -38,6 +38,7 @@ namespace Castar.DAL
             categories.Property(x => x.Name).HasMaxLength(100);
             categories.Property(x => x.NormalizedName).HasMaxLength(100);
             categories.Property(x => x.IconKey).HasMaxLength(24);
+            categories.PrimitiveCollection(x => x.Tags).IsRequired().HasDefaultValueSql("'[]'");
             categories.HasIndex(x => new { x.Kind, x.NormalizedName }).IsUnique();
 
             var purchases = modelBuilder.Entity<Purchase>();

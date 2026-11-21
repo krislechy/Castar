@@ -31,7 +31,6 @@ public sealed record PurchaseDto(Guid Id, Guid UserId, string Name, decimal Tota
     long MessageId, DateTime? AddedOn, string? RetailPlace, string? RetailPlaceAddress,
     IReadOnlyList<PurchaseItemDto> Items)
 {
-    public Guid? CategoryId { get; init; }
     public DateOnly? ReceiptDate { get; init; }
     public DateTimeOffset? AddedOnUtc { get; init; }
     public DateOnly? RateDate { get; init; }
@@ -52,6 +51,9 @@ public sealed record BudgetOperationDto(bool IsIncome, string? Currency, decimal
     public long OpeningCount { get; init; }
 }
 
+public sealed record BudgetCategoryAmountDto(bool IsIncome, Guid? CategoryId, string? Currency, decimal Amount,
+    DateOnly? RateDate, long OperationCount);
+
 public sealed record PurchaseOwnerDto(string Name, bool HasAvatar);
 
 public sealed record PurchaseItemDto(Guid Id, string Name, int? Category, double Quantity, decimal Price, decimal Sum)
@@ -65,7 +67,6 @@ public sealed record PurchaseItemDto(Guid Id, string Name, int? Category, double
 
 public sealed record PurchaseWriteDto(string Name, string? RetailPlace, string? RetailPlaceAddress, DateTime AddedOn)
 {
-    public CategorySelectionDto? Category { get; init; }
     public string? Currency { get; init; }
     public Guid? UserId { get; init; }
     public DateTimeOffset? AddedOnUtc { get; init; }

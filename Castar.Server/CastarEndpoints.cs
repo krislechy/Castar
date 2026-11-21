@@ -57,6 +57,7 @@ public static partial class CastarEndpoints
         api.MapPost("/purchases/{purchaseId:guid}/classification", ApplyPurchaseClassification);
         api.MapGet("/purchases/{purchaseId:guid}", GetPurchaseDetails);
         api.MapGet("/budget/operations", GetBudgetOperations);
+        api.MapGet("/budget/category-breakdown", GetBudgetCategoryBreakdown);
         api.MapPost("/purchases", CreatePurchase);
         api.MapGet("/purchases/{purchaseId:guid}/receipt-source", GetPurchaseReceiptSource);
         api.MapPut("/purchases/{purchaseId:guid}", EditPurchase);
@@ -427,7 +428,7 @@ public static partial class CastarEndpoints
         : PurchaseMutation(await purchases.DeletePurchaseItemAsync(purchaseId, itemId, revision, token));
 
     private static async Task<IResult> EditPurchase(Guid purchaseId, long revision, PurchaseWriteDto input,
-        IPurchasesRepository purchases, SettingsModel settings, CastarDbContext db, CancellationToken token)
+        IPurchasesRepository purchases, SettingsModel settings, CancellationToken token)
     {
         if (revision < 0)
             return InvalidInput("Укажите версию покупки.");
@@ -435,14 +436,10 @@ public static partial class CastarEndpoints
             return invalid;
         if (!TryReadTime(input.AddedOn, input.AddedOnUtc, out var date))
             return InvalidInput("Укажите дату покупки.");
-        if (!await IsValidCategoryAsync(input.Category, BudgetEvents.Purchase, db, token))
-            return InvalidInput("Выберите существующую категорию расходов.");
-
         var policy = settings.ManualCurrencies;
         var result = await purchases.EditPurchaseAsync(purchaseId, revision, input.Name, input.RetailPlace,
             input.RetailPlaceAddress, date, input.Currency, policy, token, input.UserId,
-            legacyDate: input.AddedOnUtc is null ? input.AddedOn : null,
-            categoryId: input.Category?.Id, updateCategory: input.Category is not null);
+            legacyDate: input.AddedOnUtc is null ? input.AddedOn : null);
         if (result == PurchaseMutationResult.InvalidOwner)
             return InvalidInput("Выберите существующего пользователя.");
         return result == PurchaseMutationResult.InvalidCurrency ? InvalidManualCurrency(policy) : PurchaseMutation(result);
@@ -480,12 +477,9 @@ public static partial class CastarEndpoints
             return InvalidManualCurrency(policy);
         if (header.UserId is not { } ownerId || await users.Find(ownerId, token) is null)
             return InvalidInput("Выберите существующего пользователя.");
-        if (!await IsValidCategoryAsync(header.Category, BudgetEvents.Purchase, db, token))
-            return InvalidInput("Выберите существующую категорию расходов.");
-
         var purchase = new Purchase
         {
-            Id = input.Id, UserId = ownerId, CategoryId = header.Category?.Id, AddedOn = date, Currency = currency, Name = header.Name,
+            Id = input.Id, UserId = ownerId, AddedOn = date, Currency = currency, Name = header.Name,
             RetailPlace = header.RetailPlace, RetailPlaceAddress = header.RetailPlaceAddress
         };
         foreach (var item in input.Items)
@@ -524,7 +518,7 @@ public static partial class CastarEndpoints
     {
         if (existing is { MessageId: 0, RawData: null, OriginalReceiptSnapshot: null } &&
             existing.UserId == requested.UserId && existing.AddedOn == requested.AddedOn &&
-            existing.Name == requested.Name && existing.Currency == requested.Currency && existing.CategoryId == requested.CategoryId &&
+            existing.Name == requested.Name && existing.Currency == requested.Currency &&
             existing.RetailPlace == requested.RetailPlace && existing.RetailPlaceAddress == requested.RetailPlaceAddress &&
             existing.Items.Count == requested.Items.Count &&
             existing.Items.Zip(requested.Items).All(pair =>
@@ -709,7 +703,6 @@ public static partial class CastarEndpoints
             purchase.AddedOn is { } date ? BudgetTime.InZone(date, BudgetTime.Belgrade) : null,
             purchase.RetailPlace, purchase.RetailPlaceAddress, items)
         {
-            CategoryId = purchase.CategoryId,
             ReceiptDate = purchase.ReceiptDate,
             AddedOnUtc = purchase.AddedOn is { } dateUtc ? BudgetTime.AsUtc(dateUtc) : null,
             RateDate = purchase.RateDate,

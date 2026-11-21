@@ -98,6 +98,8 @@ public partial class StatisticsContent : UserControl
         burnChart = CreateChart("Скорость расходования бюджета", true);
         burnChart.UpdateStarted += chart => updateBurnStroke?.Invoke(chart.CoreChart);
         HeatPanel.Plot.Height = double.NaN;
+        CategoriesPanel.KindChanged += (_, _) => DrawCategoryChart();
+        CategoriesPanel.FilterChanged += (_, _) => SaveCategoryChartFilter();
         server.ConnectionChanged += async (_, _) => { statistics.InvalidateCache(); InvalidateCurrentBalance(); await ResetAsync(); };
         settings.PropertyChanged += Settings_PropertyChanged;
     }
@@ -119,8 +121,12 @@ public partial class StatisticsContent : UserControl
             periodChanged = false;
             await ResetAsync();
         }
-        else if (dataStale) await RefreshAsync();
-        else await EnsureCurrentBalanceAsync();
+        else
+        {
+            EnsureCategoryChart();
+            if (dataStale) await RefreshAsync();
+            else await EnsureCurrentBalanceAsync();
+        }
     }
     private void Stop()
     {
@@ -128,6 +134,7 @@ public partial class StatisticsContent : UserControl
         if (burnRequest is not null) dataStale = true;
         if (currentBalanceRequest is not null) InvalidateCurrentBalance();
         CancelRefresh();
+        CancelCategoryChart(clear: false);
         foreach (var card in Cards) card.Stop();
     }
     private void Charts_SizeChanged(object sender, SizeChangedEventArgs e)
@@ -139,8 +146,9 @@ public partial class StatisticsContent : UserControl
         Grid.SetColumn(BurnPanel, wide ? 1 : 0);
         Grid.SetRow(BurnPanel, wide ? 0 : 1);
         Grid.SetRow(MonthlyPanel, wide ? 1 : 2);
-        Grid.SetColumn(HeatPanel, wide ? 1 : 0);
-        Grid.SetRow(HeatPanel, wide ? 1 : 3);
+        Grid.SetColumn(CategoriesPanel, wide ? 1 : 0);
+        Grid.SetRow(CategoriesPanel, wide ? 1 : 3);
+        Grid.SetRow(HeatPanel, wide ? 2 : 4);
     }
     private async void Dates_DateRangeChanged(object? sender, EventArgs e)
     {
@@ -165,12 +173,17 @@ public partial class StatisticsContent : UserControl
     private Task ResetAsync()
     {
         CancelRefresh();
+        CancelCategoryChart(clear: true);
+        if (periodSelector is { HasCompleteRange: false } && currentBalanceRequest is not null)
+            InvalidateCurrentBalance();
         dataStale = true;
+        periodTask = null;
         snapshot = remainingSnapshot = baselineSnapshot = null;
         renderedRemaining = renderedMonthly = null;
         renderedBurnKey = null;
         DrawPeriodTotals();
         foreach (var card in Cards) card.Reset();
+        EnsureCategoryChart();
         return listeningForChanges ? RefreshAsync() : Task.CompletedTask;
     }
     private void CancelRefresh()
@@ -195,6 +208,8 @@ public partial class StatisticsContent : UserControl
 
     private Task EnsureCurrentBalanceAsync()
     {
+        if (!Dates.HasCompleteRange)
+            return Task.CompletedTask;
         var asOf = DateTimeOffset.UtcNow;
         var today = DateOnly.FromDateTime(TimeZoneInfo.ConvertTime(asOf, settings.DisplayTimeZone).DateTime);
         if (currentBalanceDate != today)
@@ -334,6 +349,7 @@ public partial class StatisticsContent : UserControl
     }
     internal Task RefreshAfterServerChangeAsync()
     {
+        RefreshCategoryChartAfterServerChange();
         statistics.InvalidateCache();
         InvalidateCurrentBalance();
         dataStale = true;
@@ -365,6 +381,8 @@ public partial class StatisticsContent : UserControl
     }
     private async Task RefreshAsync()
     {
+        if (!Dates.HasCompleteRange)
+            return;
         if (activeRequest is not null && refreshCompletion is { } running)
         {
             await running.Task;
@@ -444,6 +462,7 @@ public partial class StatisticsContent : UserControl
             DrawHeatmap();
             DrawBurn();
             DrawRemainingSelected();
+            DrawCategoryChart();
         }
     }
     private string? SelectedCurrency => CurrencyPicker.SelectedItem as string;
@@ -453,7 +472,7 @@ public partial class StatisticsContent : UserControl
         if (updatingCurrencyPicker) return;
         preferredCurrency = SelectedCurrency;
         renderedRemaining = null;
-        DrawTotals(); DrawMonthly(); DrawHeatmap(); DrawRemainingSelected(); DrawBurn();
+        DrawTotals(); DrawMonthly(); DrawHeatmap(); DrawRemainingSelected(); DrawBurn(); DrawCategoryChart();
     }
     private void DrawPeriodTotals()
     {

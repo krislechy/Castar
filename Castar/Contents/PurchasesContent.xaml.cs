@@ -121,11 +121,13 @@ public partial class PurchasesContent : UserControl
     private async void Dates_DateRangeChanged(object? sender, EventArgs e)
     {
         dataStale = true;
+        if (!Dates.HasCompleteRange && !listeningForChanges)
+            classification.Clear();
         if (!listeningForChanges)
             return;
 
-        hasLoaded = false;
-        ClearPurchases();
+        if (Dates.HasCompleteRange)
+            ClearPurchases();
         await RefreshAsync();
     }
 
@@ -195,8 +197,13 @@ public partial class PurchasesContent : UserControl
     {
         CancelRefresh();
         dataStale = true;
+        if (!Dates.HasCompleteRange)
+        {
+            classification.Clear();
+            ClearPurchases();
+            return;
+        }
         var range = Dates.RangeDate;
-        classification.Refresh(range.StartDate, range.EndDate);
         var target = settings.DisplayCurrency;
         if (!hasLoaded)
             comparison.SetComparison(null, target);
@@ -206,6 +213,7 @@ public partial class PurchasesContent : UserControl
             Progress.IsLoading = false;
             return;
         }
+        classification.Refresh(range.StartDate, range.EndDate);
 
         using var request = new CancellationTokenSource();
         activeRequest = request;
@@ -642,12 +650,11 @@ public partial class PurchasesContent : UserControl
             {
                 var configuration = row.Source.SupportsCurrencyEdit ? server.GetServerSettingsAsync(token) : null;
                 var owners = row.Source.Owner is not null ? server.GetUsersAsync(token) : null;
-                var categories = server.GetOperationCategoriesAsync(BudgetEvents.Purchase, token);
-                await Task.WhenAll(configuration ?? Task.CompletedTask, owners ?? Task.CompletedTask, categories);
+                await Task.WhenAll(configuration ?? Task.CompletedTask, owners ?? Task.CompletedTask);
                 token.ThrowIfCancellationRequested();
                 editor = new PurchaseEditor(row.Source,
                     configuration is null ? null : (await configuration).ManualCurrency?.Currencies,
-                    owners is null ? null : await owners, categories: await categories);
+                    owners is null ? null : await owners);
             });
             if (editor is null || token.IsCancellationRequested)
                 return;
@@ -840,6 +847,7 @@ public partial class PurchasesContent : UserControl
         public MoneyAmountDisplay Amount { get; } = FormatAmount(source.TotalSum, source.Currency, target, rate);
         public string? AmountWarning { get; } = GetAmountWarning(source, target, rate);
         public string? SelectionCurrency => Target.Length == 0 ? Source.Currency : Target;
+        public int UncategorizedItemCount { get; } = source.Items.Count(item => item.BudgetCategoryId is null);
 
         public ItemRow[] Items { get; } = source.Items.Select(item => new ItemRow(source.Id, item, source.Currency, source.Revision,
             source.Items.Count == 1,
@@ -888,7 +896,8 @@ public partial class PurchasesContent : UserControl
         public string Name => Source.Name;
         public double Quantity => Source.Quantity;
         public bool IsEdited => Source.IsEdited;
-        public string? CategoryName => Source.BudgetCategoryName;
+        public bool HasCategory => Source.BudgetCategoryId.HasValue;
+        public string CategoryLabel => HasCategory ? Source.BudgetCategoryName ?? "Категория" : "Без категории";
         public string? CategoryIconKey => Source.BudgetCategoryIconKey;
     }
 }

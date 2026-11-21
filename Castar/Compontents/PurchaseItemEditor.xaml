@@ -10,6 +10,7 @@
             <ColumnDefinition Width="2*"/>
             <ColumnDefinition Width="*"/>
             <ColumnDefinition Width="*"/>
+            <ColumnDefinition Width="Auto"/>
         </Grid.ColumnDefinitions>
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto"/>
@@ -69,10 +70,6 @@
                       Visibility="{Binding UsesPurchaseFormStyle, ElementName=Editor, Converter={StaticResource PurchaseFormVisibility}}"/>
             </Grid>
         </StackPanel>
-        <StackPanel Grid.Row="1" Grid.ColumnSpan="3">
-            <c:BudgetCategoryPicker x:Name="ItemCategory"/>
-            <CheckBox x:Name="ConfirmCategory" Content="Подтвердить категорию" Margin="0,8,0,0"
-                      Visibility="Collapsed"/>
-        </StackPanel>
+        <c:BudgetCategoryPicker x:Name="ItemCategory" Grid.Row="1" Grid.ColumnSpan="4"/>
     </Grid>
 </UserControl>

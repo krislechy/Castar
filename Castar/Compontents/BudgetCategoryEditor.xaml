@@ -48,10 +48,70 @@
             <Setter Property="ToolTip" Value="{Binding Label}"/>
             <Setter Property="AutomationProperties.Name" Value="{Binding Label}"/>
         </Style>
+        <Style x:Key="CategoryTagRemoveButton" TargetType="Button" BasedOn="{StaticResource Castar.SecondaryButton}">
+            <Setter Property="Width" Value="24"/>
+            <Setter Property="Height" Value="24"/>
+            <Setter Property="MinHeight" Value="24"/>
+            <Setter Property="Margin" Value="4,0,0,0"/>
+            <Setter Property="Padding" Value="6"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="Foreground" Value="{DynamicResource Foreground.Gray}"/>
+            <Setter Property="IsTabStop" Value="False"/>
+        </Style>
     </UserControl.Resources>
     <StackPanel>
         <TextBlock x:Name="NameLabel" Text="Название" Style="{StaticResource FormFieldLabel}"/>
         <TextBox x:Name="NameInput" MaxLength="100" AutomationProperties.LabeledBy="{Binding ElementName=NameLabel}"/>
+        <TextBlock x:Name="TagLabel" Text="Теги" Style="{StaticResource FormFieldLabel}" Margin="0,12,0,4"/>
+        <Grid>
+            <TextBox x:Name="TagInput" AutomationProperties.LabeledBy="{Binding ElementName=TagLabel}"
+                     PreviewKeyDown="TagInput_PreviewKeyDown" TextChanged="TagInput_TextChanged"/>
+            <TextBlock Text="Добавить тег" Foreground="{DynamicResource Foreground.Gray}" IsHitTestVisible="False"
+                       Margin="12,0" VerticalAlignment="Center">
+                <TextBlock.Style>
+                    <Style TargetType="TextBlock">
+                        <Setter Property="Visibility" Value="Collapsed"/>
+                        <Style.Triggers>
+                            <DataTrigger Binding="{Binding Text, ElementName=TagInput}" Value="">
+                                <Setter Property="Visibility" Value="Visible"/>
+                            </DataTrigger>
+                        </Style.Triggers>
+                    </Style>
+                </TextBlock.Style>
+            </TextBlock>
+        </Grid>
+        <TextBlock x:Name="TagWarning" Style="{StaticResource BudgetOptionalText}" Foreground="{DynamicResource Warning.Svg.Brush}"
+                   Margin="0,4,0,0" AutomationProperties.LiveSetting="Polite"/>
+        <ItemsControl x:Name="TagChips" Margin="0,8,0,0" AutomationProperties.Name="Теги" Focusable="False">
+            <ItemsControl.Style>
+                <Style TargetType="ItemsControl">
+                    <Style.Triggers>
+                        <Trigger Property="HasItems" Value="False"><Setter Property="Visibility" Value="Collapsed"/></Trigger>
+                    </Style.Triggers>
+                </Style>
+            </ItemsControl.Style>
+            <ItemsControl.ItemsPanel>
+                <ItemsPanelTemplate><WrapPanel/></ItemsPanelTemplate>
+            </ItemsControl.ItemsPanel>
+            <ItemsControl.ItemTemplate>
+                <DataTemplate>
+                    <Border Margin="0,0,8,6" MaxWidth="296" Padding="8,2,2,2" CornerRadius="8" BorderThickness="1" VerticalAlignment="Top"
+                            Background="{DynamicResource Castar.Selection}" BorderBrush="{DynamicResource Castar.FieldBorder}">
+                        <DockPanel LastChildFill="True">
+                            <Button DockPanel.Dock="Right" Style="{StaticResource CategoryTagRemoveButton}"
+                                    AutomationProperties.Name="{Binding StringFormat='Удалить тег {0}'}" Click="RemoveTag_Click">
+                                <Path Data="{StaticResource Lucide.x}" Width="10" Height="10" Stretch="Uniform"
+                                      Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
+                                      StrokeThickness="1.4" StrokeStartLineCap="Round" StrokeEndLineCap="Round"/>
+                            </Button>
+                            <TextBlock Text="{Binding}" Foreground="{DynamicResource Foreground.White}" FontSize="12"
+                                       TextWrapping="Wrap" VerticalAlignment="Center"/>
+                        </DockPanel>
+                    </Border>
+                </DataTemplate>
+            </ItemsControl.ItemTemplate>
+        </ItemsControl>
         <DockPanel Margin="0,14,0,2" LastChildFill="True">
             <Button DockPanel.Dock="Right" Content="Без иконки" Click="ClearIcon_Click"
                     Style="{StaticResource Castar.SecondaryButton}" Padding="8,2" MinHeight="26"/>

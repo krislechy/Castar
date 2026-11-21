@@ -1,20 +1,7 @@
-﻿using Castar.Contents;
-using System;
-using System.Collections.Generic;
-using System.ComponentModel;
-using System.Diagnostics;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
+﻿using System;
 using System.Windows;
 using System.Windows.Controls;
-using System.Windows.Data;
-using System.Windows.Documents;
 using System.Windows.Input;
-using System.Windows.Media;
-using System.Windows.Media.Imaging;
-using System.Windows.Navigation;
-using System.Windows.Shapes;
 
 namespace Castar.Compontents
 {
@@ -49,6 +36,15 @@ namespace Castar.Compontents
             year
         }
         private static readonly DateTime DateTimeNow = DateTime.Now;
+        private static readonly DependencyPropertyKey HasCompleteRangePropertyKey = DependencyProperty.RegisterReadOnly(
+            nameof(HasCompleteRange), typeof(bool), typeof(SelectorRangeDates), new PropertyMetadata(true));
+
+        public static readonly DependencyProperty HasCompleteRangeProperty = HasCompleteRangePropertyKey.DependencyProperty;
+
+        public bool HasCompleteRange => (bool)GetValue(HasCompleteRangeProperty);
+
+        private bool updatingDates;
+
         public static readonly DependencyProperty RangeDateProperty = DependencyProperty.Register(
     nameof(RangeDate),
     typeof(RangeDate),
@@ -58,7 +54,7 @@ namespace Castar.Compontents
             new DateTime(DateTimeNow.Year, DateTimeNow.Month, 1), 
             new DateTime(DateTimeNow.Year, DateTimeNow.Month, DateTime.DaysInMonth(DateTimeNow.Year, DateTimeNow.Month))
             ), 
-        OnChanged));
+        OnChanged), value => value is RangeDate range && range.StartDate.Date <= range.EndDate.Date);
         public RangeDate RangeDate
         {
             get
@@ -67,8 +63,13 @@ namespace Castar.Compontents
             }
             set
             {
-                if (this.RangeDate.EndDate != value.EndDate || this.RangeDate.StartDate != value.StartDate)
-                    SetValue(RangeDateProperty, value);
+                if (HasCompleteRange && RangeDate.EndDate == value.EndDate && RangeDate.StartDate == value.StartDate)
+                    return;
+
+                if (ReferenceEquals(RangeDate, value))
+                    ApplyRange(value);
+                else
+                    SetCurrentValue(RangeDateProperty, value);
             }
         }
 
@@ -76,16 +77,50 @@ namespace Castar.Compontents
         private static void OnChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
         {
             var selector = (SelectorRangeDates)d;
-            selector.DateRangeChanged?.Invoke(selector, selector.RangeDate);
+            if (selector.StartDatePicker is not null)
+                selector.ApplyRange((RangeDate)e.NewValue);
         }
         public SelectorRangeDates()
         {
             InitializeComponent();
+            StartDatePicker.CommitManualDate = date => ChangeBoundary(date, isStart: true);
+            EndDatePicker.CommitManualDate = date => ChangeBoundary(date, isStart: false);
+            UpdateDatePickers(RangeDate.StartDate.Date, RangeDate.EndDate.Date);
         }
+
+        private void ApplyRange(RangeDate range)
+        {
+            UpdateDatePickers(range.StartDate.Date, range.EndDate.Date);
+            SetValue(HasCompleteRangePropertyKey, true);
+            DateRangeChanged?.Invoke(this, range);
+        }
+
+        private void UpdateDatePickers(DateTime? start, DateTime? end)
+        {
+            updatingDates = true;
+            try
+            {
+                // Release the old bounds before assigning a different range.
+                StartDatePicker.BlackoutDates.Clear();
+                EndDatePicker.BlackoutDates.Clear();
+                StartDatePicker.SetCurrentValue(DatePicker.SelectedDateProperty, start);
+                EndDatePicker.SetCurrentValue(DatePicker.SelectedDateProperty, end);
+                if (end is { } lastDay && lastDay < DateTime.MaxValue.Date)
+                    StartDatePicker.BlackoutDates.Add(new CalendarDateRange(lastDay.AddDays(1), DateTime.MaxValue.Date));
+                if (start is { } firstDay && firstDay > DateTime.MinValue)
+                    EndDatePicker.BlackoutDates.Add(new CalendarDateRange(DateTime.MinValue, firstDay.AddDays(-1)));
+            }
+            finally
+            {
+                updatingDates = false;
+            }
+        }
+
+        private DateTime VisibleRangeAnchor => StartDatePicker.SelectedDate ?? EndDatePicker.SelectedDate ?? RangeDate.StartDate.Date;
 
         internal bool IncludeOperationDate(DateTime? operationDate)
         {
-            if (operationDate is not { } date || date >= RangeDate.StartDate && date <= RangeDate.EndDate)
+            if (operationDate is not { } date || HasCompleteRange && date >= RangeDate.StartDate && date <= RangeDate.EndDate)
                 return false;
 
             SetMonth(date);
@@ -114,7 +149,7 @@ namespace Castar.Compontents
                 if (sameButton) return;
             }
 
-            var date = RangeDate.StartDate.Date;
+            var date = VisibleRangeAnchor;
             MonthPopup.PlacementTarget = button;
             MonthCalendar.DisplayMode = mode;
             MonthCalendar.SelectedDate = date;
@@ -173,30 +208,18 @@ namespace Castar.Compontents
 
         private void ChangeRangeDate(TypeRange type, int offset)
         {
-            var currentStartDate = RangeDate.StartDate;
-            if (type == TypeRange.year && currentStartDate.Month == 1 && currentStartDate.Day == 1
+            var currentStartDate = VisibleRangeAnchor;
+            if (type == TypeRange.year && HasCompleteRange && currentStartDate.Month == 1 && currentStartDate.Day == 1
                 && RangeDate.EndDate.Date == new DateTime(currentStartDate.Year, 12, 31))
             {
                 var year = currentStartDate.Year + offset;
                 if (year is >= 1 and <= 9999) SetYear(year);
                 return;
             }
-            DateTime offsetDate = default!;
-            switch (type)
-            {
-                case TypeRange.month:
-                    {
-                        offsetDate = currentStartDate.AddMonths(offset);
-                        break;
-                    }
-                case TypeRange.year:
-                    {
-                        offsetDate = currentStartDate.AddYears(offset);
-                        break;
-                    }
-            }
-            var days = DateTime.DaysInMonth(offsetDate.Year, offsetDate.Month);
-            RangeDate = new RangeDate(new DateTime(offsetDate.Year, offsetDate.Month, 1), new DateTime(offsetDate.Year, offsetDate.Month, days));
+            var monthIndex = (currentStartDate.Year - 1) * 12 + currentStartDate.Month - 1;
+            var targetMonth = monthIndex + (type == TypeRange.year ? offset * 12 : offset);
+            if (targetMonth is >= 0 and < 9999 * 12)
+                SetMonth(new DateTime(targetMonth / 12 + 1, targetMonth % 12 + 1, 1));
         }
         private void OffsetMonthButton_Click(object sender, RoutedEventArgs e)
         {
@@ -211,15 +234,38 @@ namespace Castar.Compontents
             ChangeRangeDate(TypeRange.year, offset);
         }
 
-        private void DatePicker_SelectedStartDateChanged(object sender, SelectionChangedEventArgs e)
+        private void DatePicker_SelectedStartDateChanged(object sender, SelectionChangedEventArgs e) =>
+            ChangeBoundary(((CastarDatePicker)sender).SelectedDate, isStart: true);
+
+        private void DatePicker_SelectedEndDateChanged(object sender, SelectionChangedEventArgs e) =>
+            ChangeBoundary(((CastarDatePicker)sender).SelectedDate, isStart: false);
+
+        private void ChangeBoundary(DateTime? date, bool isStart)
         {
-            if (((CastarDatePicker)sender).SelectedDate is { } start)
-                RangeDate = new RangeDate(start.Date, RangeDate.EndDate);
-        }
-        private void DatePicker_SelectedEndDateChanged(object sender, SelectionChangedEventArgs e)
-        {
-            if (((CastarDatePicker)sender).SelectedDate is { } end)
-                RangeDate = new RangeDate(RangeDate.StartDate, end.Date);
+            if (updatingDates)
+                return;
+
+            var start = isStart ? date : StartDatePicker.SelectedDate;
+            var end = isStart ? EndDatePicker.SelectedDate : date;
+            if (start > end)
+            {
+                if (isStart)
+                    end = null;
+                else
+                    start = null;
+            }
+            if (start is { } first && end is { } last)
+            {
+                RangeDate = new RangeDate(first.Date, last.Date);
+                return;
+            }
+
+            UpdateDatePickers(start, end);
+            if (!HasCompleteRange)
+                return;
+
+            SetValue(HasCompleteRangePropertyKey, false);
+            DateRangeChanged?.Invoke(this, RangeDate);
         }
     }
 }

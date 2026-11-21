@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 
 namespace Castar.LocalAi;
 
@@ -18,9 +19,11 @@ public sealed record LocalAiOptions(LocalAiProvider Provider, LocalAiMode Mode, 
     string? ExecutablePath, string? ModelDirectory, int IdleMinutes)
 {
     public const string DefaultPrompt = """
-        Classify each entry into one of the supplied categories. Use the meaning of the product or income source first.
-        When classifying purchases, use the store only as context. Leave an entry uncategorized when the information
-        is insufficient or none of the categories fit.
+        Classify each entry into one of the supplied categories. Start with the meaning of the product or income source.
+        Use category tags as examples and synonyms to help recognize abbreviations, brands, and names in other languages.
+        Prefer the category whose name and tags best fit the entry as a whole. A partial tag match alone is insufficient.
+        When classifying purchases, use the store as context. Leave an entry uncategorized when the information is insufficient
+        or none of the categories fit.
         """;
 
     public string? Prompt { get; init; }
@@ -34,5 +37,5 @@ public sealed record LocalAiOptions(LocalAiProvider Provider, LocalAiMode Mode, 
 }
 
 public sealed record LocalAiItem(Guid Id, string Name);
-public sealed record LocalAiCategory(Guid Id, string Name);
+public sealed record LocalAiCategory(Guid Id, string Name, IReadOnlyList<string>? Tags = null);
 public sealed record LocalAiAssignment(Guid ItemId, Guid? CategoryId);

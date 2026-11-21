@@ -19,8 +19,7 @@ namespace Castar.DAL.Repositories.DataBase
         Task<PurchaseMutationResult> EditPurchaseAsync(
             Guid purchaseId, long expectedRevision, string name, string? retailPlace, string? retailPlaceAddress,
             DateTime addedOn, string? currency = null, ManualCurrencySettings? currencyPolicy = null,
-            CancellationToken cancellationToken = default, Guid? userId = null, DateTime? legacyDate = null,
-            Guid? categoryId = null, bool updateCategory = false);
+            CancellationToken cancellationToken = default, Guid? userId = null, DateTime? legacyDate = null);
         Task<PurchaseMutationResult> EditPurchaseItemAsync(
             Guid purchaseId, Guid itemId, long expectedRevision, string name, double quantity, decimal price,
             CancellationToken cancellationToken = default, Guid? categoryId = null, bool updateCategory = false);

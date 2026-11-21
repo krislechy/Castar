@@ -188,8 +188,7 @@ namespace Castar.DAL.Repositories.DataBase
         public async Task<PurchaseMutationResult> EditPurchaseAsync(
             Guid purchaseId, long expectedRevision, string name, string? retailPlace, string? retailPlaceAddress,
             DateTime addedOn, string? currency = null, ManualCurrencySettings? currencyPolicy = null,
-            CancellationToken cancellationToken = default, Guid? userId = null, DateTime? legacyDate = null,
-            Guid? categoryId = null, bool updateCategory = false)
+            CancellationToken cancellationToken = default, Guid? userId = null, DateTime? legacyDate = null)
         {
             var purchase = await WithItems(Context.Purchases)
                 .SingleOrDefaultAsync(x => x.Id == purchaseId, cancellationToken);
@@ -220,10 +219,10 @@ namespace Castar.DAL.Repositories.DataBase
             var headerChanged = purchase.Name != name || purchase.RetailPlace != retailPlace ||
                 purchase.RetailPlaceAddress != retailPlaceAddress || purchase.AddedOn != addedOn ||
                 purchase.Currency != updatedCurrency || changingOwner;
-            if (!headerChanged && (!updateCategory || purchase.CategoryId == categoryId))
+            if (!headerChanged)
                 return PurchaseMutationResult.Applied;
 
-            if (headerChanged && IsFiscal(Context, purchase))
+            if (IsFiscal(Context, purchase))
                 PreserveOriginalReceipt(purchase);
             purchase.Name = name;
             if (NormalizeCategoryKeyPart(purchase.RetailPlace) != NormalizeCategoryKeyPart(retailPlace))
@@ -234,8 +233,6 @@ namespace Castar.DAL.Repositories.DataBase
             purchase.AddedOn = addedOn;
             purchase.Currency = updatedCurrency;
             purchase.UserId = ownerId;
-            if (updateCategory)
-                purchase.CategoryId = categoryId;
             purchase.Revision = checked(purchase.Revision + 1);
             try
             {

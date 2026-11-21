@@ -164,7 +164,7 @@ namespace Castar.Compontents
 
         private void SetYear(int year) => RangeDate = new RangeDate(new DateTime(year, 1, 1), new DateTime(year, 12, 31));
 
-        private void SetMonth(DateTime date)
+        internal void SetMonth(DateTime date)
         {
             var start = new DateTime(date.Year, date.Month, 1);
             var end = new DateTime(date.Year, date.Month, DateTime.DaysInMonth(date.Year, date.Month));

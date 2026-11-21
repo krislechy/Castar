@@ -644,23 +644,24 @@ public partial class StatisticsContent : UserControl
                     month.Any(day => day.Expenses is null) ? null : month.Sum(day => day.Expenses!.Value))).ToArray()
             : currency.DailyPoints.Select(day => new ExpenseHeatmapCell(day.Date, day.Expenses)).ToArray();
         var maximum = cells.Select(cell => Math.Abs(cell.Amount.GetValueOrDefault())).Max();
+        var average = cells.Average(cell => cell.Amount);
+        Action<DateOnly> open = byMonth
+            ? month => Dates.SetMonth(month.ToDateTime(TimeOnly.MinValue))
+            : day => ExpenseDayRequested?.Invoke(day);
         var periods = cells.GroupBy(cell => new DateOnly(cell.Date.Year, byMonth ? 1 : cell.Date.Month, 1))
             .Select(group => new ExpenseHeatmapPeriod(group.Key, currency.Currency, byMonth, group.ToArray(),
-                maximum, day => ExpenseDayRequested?.Invoke(day))).ToArray();
-        if (HeatPanel.Plot.Children.OfType<ListBox>().FirstOrDefault() is { } previous &&
+                maximum, average, settings, open)).ToArray();
+        if (HeatPanel.Plot.Children.OfType<ItemsControl>().FirstOrDefault() is { } previous &&
             previous.ItemsSource is ExpenseHeatmapPeriod[] old && old.Length == periods.Length &&
             old.Zip(periods).All(pair => pair.First.Start == pair.Second.Start && pair.First.Currency == pair.Second.Currency
                 && pair.First.ByMonth == pair.Second.ByMonth && pair.First.Maximum == pair.Second.Maximum
+                && pair.First.Average == pair.Second.Average
                 && pair.First.Cells.SequenceEqual(pair.Second.Cells))) return;
-        var list = new ListBox { BorderThickness = new Thickness(0), Background = Brushes.Transparent,
-            HorizontalContentAlignment = HorizontalAlignment.Stretch, ItemsSource = periods };
-        VirtualizingPanel.SetIsVirtualizing(list, true);
-        VirtualizingPanel.SetVirtualizationMode(list, VirtualizationMode.Recycling);
-        ScrollViewer.SetCanContentScroll(list, true);
         var template = new DataTemplate();
         template.VisualTree = new FrameworkElementFactory(typeof(ExpenseHeatmapCalendarView));
-        list.ItemTemplate = template;
-        HeatPanel.Plot.Children.Clear(); HeatPanel.Plot.Children.Add(list);
+        var calendars = new ItemsControl { ItemsSource = periods, ItemTemplate = template };
+        HeatPanel.Plot.Children.Clear();
+        HeatPanel.Plot.Children.Add(calendars);
     }
     private static StatisticsTotal FormatTotal(string label, decimal? amount, string currency) =>
         new(label, amount is { } value ? HistoricalExchangeRates.Format(value, currency) : "Недоступно");

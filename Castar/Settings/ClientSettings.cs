@@ -37,6 +37,9 @@ public sealed class ClientSettings : INotifyPropertyChanged
     private int maxVisibleNotifications = 3;
     private string displayCurrency = "";
     private string displayTimeZoneId = "";
+    private int legacyHeatmapColorSensitivity = 50;
+    private int? dailyHeatmapColorSensitivity;
+    private int? monthlyHeatmapColorSensitivity;
     private string settingsPath = Path.Combine(DataDirectory, "Castar.Client.xml");
 
     public string ServerUrl { get; set; } = DefaultServerUrl;
@@ -83,6 +86,27 @@ public sealed class ClientSettings : INotifyPropertyChanged
         get => displayTimeZoneId;
         set => Set(ref displayTimeZoneId, !string.IsNullOrEmpty(value) &&
             TimeZoneInfo.TryFindSystemTimeZoneById(value, out _) ? value : "");
+    }
+
+    // Read the shared value from older profiles as the initial value for both modes.
+    public int HeatmapColorSensitivity
+    {
+        get => legacyHeatmapColorSensitivity;
+        set => legacyHeatmapColorSensitivity = Math.Clamp(value, 0, 100);
+    }
+
+    public bool ShouldSerializeHeatmapColorSensitivity() => false;
+
+    public int DailyHeatmapColorSensitivity
+    {
+        get => dailyHeatmapColorSensitivity ?? legacyHeatmapColorSensitivity;
+        set => Set(ref dailyHeatmapColorSensitivity, (int?)Math.Clamp(value, 0, 100));
+    }
+
+    public int MonthlyHeatmapColorSensitivity
+    {
+        get => monthlyHeatmapColorSensitivity ?? legacyHeatmapColorSensitivity;
+        set => Set(ref monthlyHeatmapColorSensitivity, (int?)Math.Clamp(value, 0, 100));
     }
 
     [XmlIgnore]

@@ -58,26 +58,30 @@
     <Style x:Key="FormSlider" TargetType="Slider">
         <Setter Property="MinHeight" Value="28"/>
         <Setter Property="Foreground" Value="{DynamicResource Highlight}"/>
+        <Setter Property="Background" Value="{x:Null}"/>
         <Setter Property="Template">
             <Setter.Value>
                 <ControlTemplate TargetType="Slider">
                     <Grid Background="Transparent">
+                        <Border Height="5" Margin="7.5,0" VerticalAlignment="Center" CornerRadius="2.5"
+                                Background="{TemplateBinding Background}" IsHitTestVisible="False"/>
                         <Track x:Name="PART_Track" Orientation="{TemplateBinding Orientation}"
                                IsDirectionReversed="{TemplateBinding IsDirectionReversed}">
                             <Track.DecreaseRepeatButton>
-                                <RepeatButton Command="{x:Static Slider.DecreaseLarge}" Background="{TemplateBinding Foreground}"
+                                <RepeatButton x:Name="DecreaseTrack" Command="{x:Static Slider.DecreaseLarge}" Background="Transparent"
                                               Style="{StaticResource FormSliderTrackButton}"/>
                             </Track.DecreaseRepeatButton>
                             <Track.IncreaseRepeatButton>
-                                <RepeatButton Command="{x:Static Slider.IncreaseLarge}" Background="{DynamicResource Main.Top.Panel}"
+                                <RepeatButton x:Name="IncreaseTrack" Command="{x:Static Slider.IncreaseLarge}" Background="Transparent"
                                               Style="{StaticResource FormSliderTrackButton}"/>
                             </Track.IncreaseRepeatButton>
                             <Track.Thumb>
-                                <Thumb Width="15" Height="15" Background="{TemplateBinding Foreground}">
+                                <Thumb x:Name="SliderThumb" Width="15" Height="15" Background="{TemplateBinding Foreground}"
+                                       BorderBrush="{DynamicResource Main.Background.lvl1}">
                                     <Thumb.Template>
                                         <ControlTemplate TargetType="Thumb">
                                             <Border x:Name="Knob" Background="{TemplateBinding Background}" CornerRadius="8"
-                                                    BorderBrush="{DynamicResource Main.Background.lvl1}" BorderThickness="1"/>
+                                                    BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="1"/>
                                             <ControlTemplate.Triggers>
                                                 <Trigger Property="IsMouseOver" Value="True">
                                                     <Setter TargetName="Knob" Property="BorderBrush" Value="{DynamicResource Foreground.White}"/>
@@ -92,9 +96,22 @@
                                 BorderBrush="{TemplateBinding Foreground}" BorderThickness="1" CornerRadius="4"/>
                     </Grid>
                     <ControlTemplate.Triggers>
-                        <Trigger Property="IsKeyboardFocusWithin" Value="True">
-                            <Setter TargetName="Focus" Property="Visibility" Value="Visible"/>
+                        <Trigger Property="Background" Value="{x:Null}">
+                            <Setter TargetName="DecreaseTrack" Property="Background"
+                                    Value="{Binding Foreground, RelativeSource={RelativeSource TemplatedParent}}"/>
+                            <Setter TargetName="IncreaseTrack" Property="Background" Value="{DynamicResource Main.Top.Panel}"/>
                         </Trigger>
+                        <Trigger Property="IsKeyboardFocusWithin" Value="True">
+                            <Setter TargetName="SliderThumb" Property="BorderBrush" Value="{DynamicResource Foreground.White}"/>
+                        </Trigger>
+                        <MultiTrigger>
+                            <MultiTrigger.Conditions>
+                                <Condition Property="IsKeyboardFocusWithin" Value="True"/>
+                                <Condition Property="Background" Value="{x:Null}"/>
+                            </MultiTrigger.Conditions>
+                            <Setter TargetName="Focus" Property="Visibility" Value="Visible"/>
+                            <Setter TargetName="SliderThumb" Property="BorderBrush" Value="{DynamicResource Main.Background.lvl1}"/>
+                        </MultiTrigger>
                         <Trigger Property="IsEnabled" Value="False">
                             <Setter Property="Opacity" Value="0.5"/>
                         </Trigger>

@@ -17,6 +17,14 @@ public enum LocalAiMode
 public sealed record LocalAiOptions(LocalAiProvider Provider, LocalAiMode Mode, string Endpoint, string Model,
     string? ExecutablePath, string? ModelDirectory, int IdleMinutes)
 {
+    public const string DefaultPrompt = """
+        Classify each entry into one of the supplied categories. Use the meaning of the product or income source first.
+        When classifying purchases, use the store only as context. Leave an entry uncategorized when the information
+        is insufficient or none of the categories fit.
+        """;
+
+    public string? Prompt { get; init; }
+
     public static LocalAiOptions Default { get; } = new();
 
     public LocalAiOptions() : this(LocalAiProvider.Ollama, LocalAiMode.External, "http://127.0.0.1:11434",

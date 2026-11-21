@@ -37,16 +37,22 @@ public static partial class CastarEndpoints
 
         api.MapGet("/categories", GetCategories);
         api.MapPost("/categories", CreateCategory);
+        api.MapPut("/categories/{id:guid}", UpdateCategory);
 
         api.MapGet("/incomes", GetIncomes);
         api.MapGet("/incomes/{id:guid}", GetIncome);
         api.MapPost("/incomes", CreateIncome);
         api.MapPut("/incomes/{id:guid}", UpdateIncome);
         api.MapDelete("/incomes/{id:guid}", DeleteIncome);
+        api.MapGet("/incomes/classification/count", CountUncategorizedIncomes);
+        api.MapGet("/incomes/classification/pending", GetPendingIncomeClassification);
+        api.MapPost("/incomes/classification/queue", QueueUncategorizedIncomes);
+        api.MapPost("/incomes/{id:guid}/classification", ApplyIncomeClassification);
 
         api.MapGet("/purchases", GetPurchases);
         api.MapGet("/purchases/summary", GetPurchaseSummaries);
         api.MapGet("/purchases/classification/pending", GetPendingPurchaseClassification);
+        api.MapGet("/purchases/classification/count", CountUncategorizedPurchases);
         api.MapPost("/purchases/classification/queue", QueueUncategorizedPurchaseItems);
         api.MapPost("/purchases/{purchaseId:guid}/classification", ApplyPurchaseClassification);
         api.MapGet("/purchases/{purchaseId:guid}", GetPurchaseDetails);
@@ -237,7 +243,11 @@ public static partial class CastarEndpoints
         if (!await IsValidCategoryAsync(input.Category, BudgetEvents.Income, db, cancellationToken))
             return InvalidInput("Выберите существующую категорию доходов.");
 
-        var income = new Income { CategoryId = input.Category?.Id };
+        var income = new Income
+        {
+            CategoryId = input.Category?.Id,
+            CategoryState = input.Category is null ? IncomeCategoryState.Pending : IncomeCategoryState.Confirmed
+        };
         Apply(income, input with { Currency = currency }, owner, date);
         await incomes.Add(income, owner.TelegramId, owner);
         return Results.Created($"/api/incomes/{income.Id}", ToDto(income));
@@ -287,10 +297,10 @@ public static partial class CastarEndpoints
             return InvalidInput("Укажите допустимый период.");
 
         var entries = await purchases.GetEntitiesWithAllIncludes(first, last);
-        var categoryNames = await ReadItemCategoryNames(db, entries.SelectMany(entry => entry.Items), token);
+        var categories = await ReadItemCategories(db, entries.SelectMany(entry => entry.Items), token);
         return Results.Ok(entries.Select(purchase => PurchaseDtoFrom(purchase,
             new PurchaseOwnerDto(purchase.User.Name, purchase.User.ImageRaw is { Length: > 0 }),
-            purchase.Items, deferItems: false, categoryNames)).ToArray());
+            purchase.Items, deferItems: false, categories)).ToArray());
     }
 
     private static async Task<IResult> GetBudgetOperations(DateTime start, DateTime finish,
@@ -395,8 +405,8 @@ public static partial class CastarEndpoints
         var owner = await db.Users.AsNoTracking().Where(user => user.Id == purchase.UserId)
             .Select(user => new PurchaseOwnerDto(user.Name, user.ImageRaw != null && user.ImageRaw.Length > 0))
             .SingleAsync(token);
-        var categoryNames = await ReadItemCategoryNames(db, purchase.Items, token);
-        return Results.Ok(PurchaseDtoFrom(purchase, owner, purchase.Items, deferItems: false, categoryNames));
+        var categories = await ReadItemCategories(db, purchase.Items, token);
+        return Results.Ok(PurchaseDtoFrom(purchase, owner, purchase.Items, deferItems: false, categories));
     }
 
     private static async Task<IResult> GetPurchaseReceiptSource(Guid purchaseId, IPurchasesRepository purchases,
@@ -455,7 +465,7 @@ public static partial class CastarEndpoints
     }
 
     private static async Task<IResult> CreatePurchase(PurchaseCreateDto input, IPurchasesRepository purchases,
-        IUsersRepository users, SettingsModel settings, CastarDbContext db, CancellationToken token)
+        IUsersRepository users, SettingsModel settings, CastarDbContext db, BudgetEventPublisher events, CancellationToken token)
     {
         if (input.Id == Guid.Empty || input.Purchase is null || input.Items is not { Length: > 0 and <= 250 })
             return InvalidInput("Добавьте от 1 до 250 товаров.");
@@ -484,10 +494,17 @@ public static partial class CastarEndpoints
                 return InvalidInput("Заполните данные товара.");
             if (ValidatePurchaseItem(item) is { } invalidItem)
                 return invalidItem;
-            if (item.Category is not null)
-                return InvalidInput("Назначьте категорию товара после сохранения покупки.");
-            purchase.Items.Add(new Item { Name = item.Name, Quantity = item.Quantity, Price = item.Price });
+            purchase.Items.Add(new Item
+            {
+                Name = item.Name, Quantity = item.Quantity, Price = item.Price,
+                BudgetCategoryId = item.Category?.Id,
+                CategoryState = item.Category is null ? ItemCategoryState.Pending : ItemCategoryState.Confirmed
+            });
         }
+        var categoryIds = purchase.Items.Select(item => item.BudgetCategoryId).OfType<Guid>().Distinct().ToArray();
+        if (categoryIds.Length > 0 && await db.BudgetCategories
+            .CountAsync(category => category.Kind == BudgetEvents.Purchase && categoryIds.Contains(category.Id), token) != categoryIds.Length)
+            return InvalidInput("Выберите существующие категории расходов.");
         if (await purchases.FindWithItemsAsync(input.Id, token) is { } existing)
             return ConfirmPurchaseCreation(existing, purchase);
         try
@@ -498,17 +515,24 @@ public static partial class CastarEndpoints
         {
             return ConfirmPurchaseCreation(await purchases.FindWithItemsAsync(input.Id, token), purchase);
         }
+        if (purchase.Items.Any(item => item.CategoryState == ItemCategoryState.Confirmed))
+            events.Queue(default(BudgetChange).AddCreation(purchase.Id, purchase.AddedOn), default);
         return Results.NoContent();
     }
 
     private static IResult ConfirmPurchaseCreation(Purchase? existing, Purchase requested)
     {
-        if (existing is { Revision: 0, MessageId: 0, RawData: null, OriginalReceiptSnapshot: null } &&
+        if (existing is { MessageId: 0, RawData: null, OriginalReceiptSnapshot: null } &&
             existing.UserId == requested.UserId && existing.AddedOn == requested.AddedOn &&
             existing.Name == requested.Name && existing.Currency == requested.Currency && existing.CategoryId == requested.CategoryId &&
             existing.RetailPlace == requested.RetailPlace && existing.RetailPlaceAddress == requested.RetailPlaceAddress &&
-            existing.Items.Select(item => (item.Name, item.Quantity, item.Price))
-                .SequenceEqual(requested.Items.Select(item => (item.Name, item.Quantity, item.Price))))
+            existing.Items.Count == requested.Items.Count &&
+            existing.Items.Zip(requested.Items).All(pair =>
+                pair.First.Name == pair.Second.Name && pair.First.Quantity == pair.Second.Quantity &&
+                pair.First.Price == pair.Second.Price &&
+                (pair.Second.CategoryState != ItemCategoryState.Confirmed ||
+                    pair.First.CategoryState == ItemCategoryState.Confirmed &&
+                    pair.First.BudgetCategoryId == pair.Second.BudgetCategoryId)))
             return Results.NoContent();
 
         return PurchaseMutation(PurchaseMutationResult.Conflict);
@@ -658,23 +682,28 @@ public static partial class CastarEndpoints
         new(income.Id, income.UserId, ToDto(income.User) with { ImageRaw = null }, income.MessageId,
             income.Sum, income.Source, BudgetTime.InZone(income.AddedOn, BudgetTime.Belgrade))
         {
-            CategoryId = income.CategoryId, Currency = income.Currency,
+            CategoryId = income.CategoryId, CategoryConfirmed = income.CategoryState == IncomeCategoryState.Confirmed,
+            Currency = income.Currency,
             AddedOnUtc = BudgetTime.AsUtc(income.AddedOn), RateDate = income.RateDate
         };
 
     private static PurchaseDto PurchaseDtoFrom(Purchase purchase, PurchaseOwnerDto? owner,
-        IEnumerable<Item> lines, bool deferItems, IReadOnlyDictionary<Guid, string>? itemCategoryNames = null)
+        IEnumerable<Item> lines, bool deferItems, IReadOnlyDictionary<Guid, BudgetCategoryDto>? itemCategories = null)
     {
         var snapshot = deferItems && purchase.Revision == 0 ? null : FiscalReceiptSnapshot.Read(purchase.OriginalReceiptSnapshot);
         var originalLines = snapshot?.Items.ToHashSet();
         bool LineChanged(Item item) => originalLines is not null && !originalLines.Contains(FiscalReceiptLine.Capture(item));
-        var items = deferItems ? [] : lines.Select(item => new PurchaseItemDto(
-            item.Id, item.Name, null, item.Quantity, item.Price, item.Sum)
+        var items = deferItems ? [] : lines.Select(item =>
         {
-            BudgetCategoryId = item.BudgetCategoryId,
-            BudgetCategoryName = item.BudgetCategoryId is { } categoryId ? itemCategoryNames?.GetValueOrDefault(categoryId) : null,
-            CategoryConfirmed = item.CategoryState == ItemCategoryState.Confirmed,
-            IsEdited = LineChanged(item)
+            var category = item.BudgetCategoryId is { } categoryId ? itemCategories?.GetValueOrDefault(categoryId) : null;
+            return new PurchaseItemDto(item.Id, item.Name, null, item.Quantity, item.Price, item.Sum)
+            {
+                BudgetCategoryId = item.BudgetCategoryId,
+                BudgetCategoryName = category?.Name,
+                BudgetCategoryIconKey = BudgetCategoryIconKeys.Canonicalize(BudgetEvents.Purchase, category?.IconKey),
+                CategoryConfirmed = item.CategoryState == ItemCategoryState.Confirmed,
+                IsEdited = LineChanged(item)
+            };
         }).ToArray();
         return new(purchase.Id, purchase.UserId, purchase.Name, purchase.TotalSum, purchase.Currency, purchase.MessageId,
             purchase.AddedOn is { } date ? BudgetTime.InZone(date, BudgetTime.Belgrade) : null,

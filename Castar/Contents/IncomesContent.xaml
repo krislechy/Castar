@@ -8,21 +8,27 @@
   <ResourceDictionary>
    <ResourceDictionary.MergedDictionaries><ResourceDictionary Source="/Castar;component/Styles/LedgerCards.xaml"/></ResourceDictionary.MergedDictionaries>
    <local:IncomeGroupPresentationConverter x:Key="IncomeGroupPresentation"/>
+   <c:BudgetCategoryIconConverter x:Key="CategoryIcon"/>
    <CollectionViewSource x:Key="IncomesSRC" Source="{Binding Incomes, Mode=OneWay}" Filter="Incomes_Filter">
-    <CollectionViewSource.GroupDescriptions><PropertyGroupDescription PropertyName="Income.Source" StringComparison="CurrentCultureIgnoreCase"/></CollectionViewSource.GroupDescriptions>
+    <CollectionViewSource.GroupDescriptions><PropertyGroupDescription PropertyName="Category"/></CollectionViewSource.GroupDescriptions>
    </CollectionViewSource>
    <DataTemplate x:Key="IncomeGroupHeader">
     <Grid>
      <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
      <Grid VerticalAlignment="Center" Margin="8,0,18,0">
       <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
-      <TextBlock Text="{Binding Name}" Foreground="{DynamicResource Foreground.White}" FontSize="18" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" VerticalAlignment="Center"/>
+      <DockPanel VerticalAlignment="Center">
+       <Path DockPanel.Dock="Left" Data="{Binding Name.IconKey, Converter={StaticResource CategoryIcon}}" Stroke="{DynamicResource Highlight}"
+             StrokeThickness="1.4" StrokeStartLineCap="Round" StrokeEndLineCap="Round" Stretch="Uniform"
+             Width="16" Height="16" Margin="0,0,10,0" VerticalAlignment="Center"/>
+       <TextBlock Text="{Binding Name.Label}" Foreground="{DynamicResource Foreground.White}" FontSize="18" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" VerticalAlignment="Center"/>
+      </DockPanel>
       <Border Grid.Column="1" Background="{DynamicResource Main.Background.lvl3}" CornerRadius="8" Padding="12,5" Margin="16,0,0,0" VerticalAlignment="Center">
        <TextBlock Text="{Binding ItemCount, Converter={StaticResource IncomeGroupPresentation}, ConverterParameter=count}" FontSize="12" FontWeight="SemiBold" Foreground="{DynamicResource Foreground.White}"/>
       </Border>
      </Grid>
      <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
-      <Path Data="M 0,12 L 7,0 L 14,12 Z" Fill="{StaticResource LedgerIncome}" Width="12" Height="11" Stretch="Uniform" Margin="0,0,7,0"/>
+      <Path Data="{StaticResource Lucide.triangle}" Fill="{StaticResource LedgerIncome}" Width="12" Height="11" Stretch="Uniform" Margin="0,0,7,0"/>
       <TextBlock Foreground="{StaticResource LedgerIncome}" FontWeight="SemiBold" FontSize="18" VerticalAlignment="Center">
        <TextBlock.Text><MultiBinding Converter="{StaticResource IncomeGroupPresentation}" ConverterParameter="sum"><Binding Path="Items"/><Binding Path="ItemCount"/></MultiBinding></TextBlock.Text>
       </TextBlock>
@@ -40,10 +46,7 @@
    <Grid>
     <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
     <ContentControl Style="{StaticResource LedgerSummaryIcon}">
-     <Viewbox Width="34" Height="34"><Canvas Width="34" Height="34">
-      <Path Stroke="{DynamicResource Highlight}" StrokeThickness="1.8" StrokeStartLineCap="Round" StrokeEndLineCap="Round" Fill="Transparent"
-       Data="M 9,8 C 9,2 32,2 32,8 C 32,14 9,14 9,8 M 32,8 L 32,19 C 32,23 28,25 24,25 M 24,14 C 24,8 1,8 1,14 C 1,20 24,20 24,14 M 1,14 L 1,27 C 1,33 24,33 24,27 L 24,14 M 1,20 C 1,26 24,26 24,20 M 1,25 C 1,31 24,31 24,25 M 25,17 C 28,17 31,16 32,14"/>
-     </Canvas></Viewbox>
+     <Path Data="{StaticResource Lucide.coins}" Width="34" Height="34" Stretch="Uniform" Stroke="{DynamicResource Highlight}" StrokeThickness="1.8" StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round"/>
     </ContentControl>
     <StackPanel Grid.Column="1" VerticalAlignment="Center" Margin="0,0,20,0">
      <TextBlock Text="Всего доходов" Foreground="{StaticResource LedgerMuted}" FontSize="14" Margin="0,0,0,4"/>
@@ -56,17 +59,18 @@
   </Border>
   <DockPanel Grid.Row="1" Margin="24,0,24,12">
    <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Top">
+    <c:PeriodClassificationButton x:Name="ClassificationButton"/>
     <c:CategorySettingsButton x:Name="CategorySettingsButton" Style="{StaticResource LedgerCategorySettingsButton}" Kind="{x:Static api:BudgetEvents.Income}"/>
     <Button x:Name="AddIncomeButton" Style="{StaticResource LedgerPrimaryActionButton}"
      Click="AddNewIncomeButton_Click" AutomationProperties.Name="Добавить доход" MinHeight="44">
-     <StackPanel Orientation="Horizontal"><Path Data="M 0,7 L 14,7 M 7,0 L 7,14" Stroke="{Binding Foreground, ElementName=AddIncomeButton}" StrokeThickness="1.8" Width="14" Height="14" Margin="0,0,10,0" VerticalAlignment="Center"/><TextBlock Text="Добавить доход" FontWeight="SemiBold"/></StackPanel>
+     <StackPanel Orientation="Horizontal"><Path Data="{StaticResource Lucide.plus}" Stretch="Uniform" Stroke="{Binding Foreground, ElementName=AddIncomeButton}" StrokeThickness="1.8" Width="14" Height="14" Margin="0,0,10,0" VerticalAlignment="Center"/><TextBlock Text="Добавить доход" FontWeight="SemiBold"/></StackPanel>
     </Button>
    </StackPanel>
    <WrapPanel Margin="0,0,12,0" VerticalAlignment="Center">
     <Border Style="{StaticResource LedgerSearchSurface}" Width="330" Margin="0,0,12,4" Padding="14,2">
     <Grid>
      <Grid.ColumnDefinitions><ColumnDefinition Width="26"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
-     <Path Data="M 11,6 A 5,5 0 1 1 1,6 A 5,5 0 1 1 11,6 M 10,10 L 15,15" Stroke="{StaticResource LedgerMuted}" StrokeThickness="1.8" Width="17" Height="17" Stretch="Uniform" VerticalAlignment="Center"/>
+     <Path Data="{StaticResource Lucide.search}" Stroke="{StaticResource LedgerMuted}" StrokeThickness="1.8" Width="17" Height="17" Stretch="Uniform" VerticalAlignment="Center"/>
      <TextBox x:Name="IncomeSearchBox" Grid.Column="1" TextChanged="IncomeSearch_TextChanged" AutomationProperties.Name="Поиск по доходам" Background="Transparent" BorderThickness="0" Padding="4,8" MinHeight="38" FontSize="14"/>
      <TextBlock x:Name="SearchPlaceholder" Grid.Column="1" Text="Поиск по доходам…" Foreground="{StaticResource LedgerMuted}" Margin="4,0,0,0" VerticalAlignment="Center" IsHitTestVisible="False"/>
      <Button x:Name="ClearIncomeSearchButton" Grid.Column="2" Style="{StaticResource LedgerSearchClearButton}"
@@ -103,12 +107,15 @@
       <Border Grid.Column="1" BorderBrush="{StaticResource LedgerBorder}" BorderThickness="1,0,0,0" Padding="20,0" Margin="0,0,12,0">
        <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition/></Grid.ColumnDefinitions>
         <c:UserAvatar Width="38" Height="38" Margin="0,0,16,0" UserName="{Binding Income.User.Name}" Photo="{Binding Income.User.ImageRaw, Converter={StaticResource UserAvatarImageConverter}}"/>
-        <TextBlock Grid.Column="1" Text="{Binding Income.User.Name}" FontWeight="SemiBold" Foreground="{DynamicResource Foreground.White}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
+        <StackPanel Grid.Column="1" VerticalAlignment="Center">
+         <TextBlock Text="{Binding Income.User.Name}" FontWeight="SemiBold" Foreground="{DynamicResource Foreground.White}" TextTrimming="CharacterEllipsis"/>
+         <TextBlock Text="{Binding Income.Source}" Foreground="{StaticResource LedgerMuted}" TextTrimming="CharacterEllipsis" FontSize="12" Margin="0,2,0,0"/>
+        </StackPanel>
        </Grid>
       </Border>
       <c:MoneyAmount Grid.Column="2" Display="{Binding Amount}" Prefix="{Binding Income.Sum, Converter={StaticResource IncomeGroupPresentation}, ConverterParameter=prefix}" Foreground="{StaticResource LedgerIncome}" FontWeight="SemiBold" FontSize="18" VerticalAlignment="Center" Margin="0,0,12,0"/>
       <Button Grid.Column="3" x:Name="IncomeActionsButton" Style="{StaticResource LedgerIconButton}" AutomationProperties.Name="Действия с доходом" Click="IncomeActions_Click" Tag="{Binding}">
-       <Canvas Width="18" Height="4"><Ellipse Width="4" Height="4" Fill="{DynamicResource Foreground.White}"/><Ellipse Canvas.Left="7" Width="4" Height="4" Fill="{DynamicResource Foreground.White}"/><Ellipse Canvas.Left="14" Width="4" Height="4" Fill="{DynamicResource Foreground.White}"/></Canvas>
+       <Path Data="{StaticResource Lucide.ellipsis}" Width="18" Height="6" Stretch="Uniform" Stroke="{DynamicResource Foreground.White}" StrokeThickness="1.5" StrokeStartLineCap="Round" StrokeEndLineCap="Round"/>
        <Button.ContextMenu><ContextMenu Style="{StaticResource LedgerContextMenu}"><MenuItem Header="Редактировать" Style="{StaticResource LedgerMenuItem}" Icon="{StaticResource Ledger.EditIcon}" Click="EditIncomeMenu_Click"/><MenuItem Header="Удалить" Style="{StaticResource LedgerMenuItem}" Icon="{StaticResource Ledger.DeleteIcon}" Click="DeleteIncomeButton_Click"/></ContextMenu></Button.ContextMenu>
       </Button>
      </Grid>

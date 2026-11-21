@@ -124,6 +124,19 @@
                 </DockPanel>
             </StackPanel>
         </Border>
+        <Border Style="{StaticResource SettingsGroup}" Margin="0,12,0,0">
+            <StackPanel>
+                <DockPanel Margin="0,0,0,8">
+                    <Button DockPanel.Dock="Right" Content="Сбросить" Click="ResetPrompt_Click"
+                            Style="{StaticResource Castar.SecondaryButton}" Margin="8,0,0,0"/>
+                    <TextBlock x:Name="PromptLabel" Text="Промпт категоризации"
+                               Style="{StaticResource SettingsGroupTitle}" VerticalAlignment="Center"/>
+                </DockPanel>
+                <TextBox x:Name="PromptInput" AcceptsReturn="True" TextWrapping="Wrap" MaxLength="4000"
+                         MinHeight="112" MaxHeight="180" VerticalScrollBarVisibility="Auto"
+                         AutomationProperties.LabeledBy="{Binding ElementName=PromptLabel}" TextChanged="PromptText_Changed"/>
+            </StackPanel>
+        </Border>
         <TextBlock x:Name="ApplyStatus" Style="{StaticResource LocalAiStatus}"/>
         <Button x:Name="ApplyButton" Content="Применить" HorizontalAlignment="Left" Margin="0,12,0,0"
                 Style="{StaticResource FormPrimaryAction}" Click="Apply_Click"/>

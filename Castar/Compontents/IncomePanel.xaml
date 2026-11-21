@@ -29,6 +29,8 @@
             <TextBlock x:Name="IncomeTimeLabel" Text="Время" Style="{StaticResource FormFieldLabel}"/>
             <TextBox x:Name="IncomeTime" AutomationProperties.LabeledBy="{Binding ElementName=IncomeTimeLabel}"/>
             <local:BudgetCategoryPicker x:Name="IncomeCategory"/>
+            <CheckBox x:Name="ConfirmCategory" Content="Подтвердить категорию" Margin="0,8,0,0"
+                      Visibility="Collapsed" IsTabStop="False"/>
         </StackPanel>
     </Grid>
 </UserControl>

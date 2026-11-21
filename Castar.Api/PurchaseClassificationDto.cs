@@ -10,3 +10,8 @@ public sealed record PurchaseClassificationWriteDto(IReadOnlyList<PurchaseClassi
 public sealed record PurchaseClassificationResultDto(Guid ItemId, Guid? CategoryId);
 
 public sealed record PurchaseClassificationQueueDto(int QueuedCount, int PendingCount);
+
+public sealed record ClassificationCountDto(int Count);
+
+public sealed record IncomeClassificationWorkDto(Guid IncomeId, long Revision, string Source,
+    bool HasHistory, Guid? CategoryId);

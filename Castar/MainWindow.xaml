@@ -63,10 +63,7 @@
                         <ColumnDefinition/>
                     </Grid.ColumnDefinitions>
                     <Button x:Name="MinimizeWindowButton" Style="{StaticResource System.Button}" Command="{x:Static SystemCommands.MinimizeWindowCommand}"
-                            Grid.Column="0" AutomationProperties.Name="Свернуть">
-                        <Path Data="M 1,6 H 11" Width="12" Height="12" StrokeThickness="1"
-                              Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"/>
-                    </Button>
+                            Grid.Column="0" AutomationProperties.Name="Свернуть" Content="{DynamicResource Svg.Minimize}"/>
                     <Button x:Name="ResizeWindowButton" Grid.Column="1">
                         <Button.Style>
                             <Style TargetType="{x:Type Button}" BasedOn="{StaticResource System.Button}">

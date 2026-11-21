@@ -68,13 +68,7 @@ public partial class App : Application
         services.AddSingleton<LocalAiService>();
         services.AddSingleton<ExpenseCategorizationService>();
         services.AddSingleton<Updates.GitHubUpdateService>();
-        services.AddSingleton<ITrayIcon>(_ => new TrayIcon(
-            Icon.ExtractAssociatedIcon(Environment.ProcessPath!) ?? SystemIcons.Application, "Castar",
-            (_, _) =>
-            {
-                MainWindow.Show();
-                MainWindow.Activate();
-            }));
+        services.AddSingleton<ITrayIcon>(_ => CreateTray("Castar", RestoreFromTray, RestoreFromTray, ExitFromTray));
         services.AddSingleton<MainWindow>();
         services.AddSingleton<SettingsContent>();
         services.AddSingleton<IncomesContent>();
@@ -174,6 +168,7 @@ public partial class App : Application
         budgetEvents.Synchronized += () =>
         {
             serviceProvider.GetRequiredService<CastarServerClient>().ClearAvatarCache();
+            incomes.InvalidateCategoryNames();
             _ = purchases.RefreshAfterServerChangeAsync();
             _ = incomes.RefreshAfterServerChangeAsync();
             _ = categories.RefreshAfterServerChangeAsync();
@@ -186,9 +181,17 @@ public partial class App : Application
                 _ = purchases.RefreshAfterServerChangeAsync();
                 return;
             }
+            if (change.Kind == ServerSynchronization.IncomeClassification)
+            {
+                _ = incomes.RefreshAfterServerChangeAsync();
+                return;
+            }
             if (change.Kind == ServerSynchronization.Categories)
             {
                 _ = categories.RefreshAfterServerChangeAsync();
+                _ = purchases.RefreshAfterServerChangeAsync();
+                incomes.InvalidateCategoryNames();
+                _ = incomes.RefreshAfterServerChangeAsync();
                 return;
             }
             if (change.Kind == ServerSynchronization.Users)
@@ -217,12 +220,22 @@ public partial class App : Application
             return;
         }
 
-        categorizationTray = new TrayIcon(Icon.ExtractAssociatedIcon(Environment.ProcessPath!) ?? SystemIcons.Application,
-            "Castar — остановить категоризацию", (_, _) => Dispatcher.InvokeAsync(() => Shutdown()));
+        categorizationTray = CreateTray("Castar — остановить категоризацию", Shutdown, open: null, Shutdown);
         categorizationTray.Show();
         serviceProvider!.GetRequiredService<BudgetEventConnection>()
             .Start(new DispatcherSynchronizationContext(Dispatcher, DispatcherPriority.Background));
     }
+
+    private TrayIcon CreateTray(string tooltip, Action click, Action? open, Action exit)
+    {
+        var menu = new TrayContextMenu(open, exit);
+        return new TrayIcon(Icon.ExtractAssociatedIcon(Environment.ProcessPath!) ?? SystemIcons.Application, tooltip,
+            (_, _) => Dispatcher.InvokeAsync(click), (_, _) => Dispatcher.InvokeAsync(menu.ShowAtPointer));
+    }
+
+    private void RestoreFromTray() => (MainWindow as MainWindow)?.RestoreAndActivate();
+
+    private void ExitFromTray() => (MainWindow as MainWindow)?.Exit();
 
     private bool TryStartCategorization()
     {

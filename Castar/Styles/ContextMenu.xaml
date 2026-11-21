@@ -44,9 +44,9 @@
                 <Border Name="Check" Width="13" Height="13"
                         Visibility="Collapsed" Margin="6,0,6,0" Background="Transparent"
                         BorderThickness="1" BorderBrush="{DynamicResource Foreground.Gray}">
-                    <Path Name="CheckMark" Width="7" Height="7"
+                    <Path Name="CheckMark" Width="7" Height="7" Stretch="Uniform"
                           Visibility="Hidden" SnapsToDevicePixels="False" Stroke="{DynamicResource Highlight}"
-                          StrokeThickness="2" Data="M 0 0 L 7 7 M 0 7 L 7 0" />
+                          StrokeThickness="2" Data="{StaticResource Lucide.check}" />
                 </Border>
                 <ContentPresenter Name="HeaderHost" Grid.Column="1" ContentSource="Header" RecognizesAccessKey="True" />
                 <TextBlock x:Name="InputGestureText" Grid.Column="2" Text="{TemplateBinding InputGestureText}" Margin="5,2,0,2" DockPanel.Dock="Right" />

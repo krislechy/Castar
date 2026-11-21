@@ -16,15 +16,10 @@ public sealed class StatisticsChartCard : UserControl
     private readonly Path icon = new()
     {
         Name = "HeaderIconGlyph",
-        StrokeThickness = 1.8,
+        StrokeThickness = 2,
         StrokeStartLineCap = PenLineCap.Round,
         StrokeEndLineCap = PenLineCap.Round,
         StrokeLineJoin = PenLineJoin.Round
-    };
-    private readonly Path iconFill = new()
-    {
-        Name = "HeaderIconFillGlyph",
-        Opacity = 0.34
     };
     private readonly ContentControl iconBadge = new()
     {
@@ -58,16 +53,13 @@ public sealed class StatisticsChartCard : UserControl
             iconBadge.Visibility = value is null ? Visibility.Collapsed : Visibility.Visible;
         }
     }
-    public Geometry? HeaderIconFill { get => iconFill.Data; set => iconFill.Data = value; }
     public object? HeaderAction { get => action.Content; set => action.Content = value; }
     public StatisticsChartCard()
     {
         title.SetResourceReference(StyleProperty, "StatisticsChartTitle");
         icon.SetResourceReference(Shape.StrokeProperty, "Highlight");
-        iconFill.SetResourceReference(Shape.FillProperty, "Highlight");
         iconBadge.SetResourceReference(StyleProperty, "LedgerSummaryIcon");
-        var iconCanvas = new Canvas { Width = 22, Height = 22 };
-        iconCanvas.Children.Add(iconFill);
+        var iconCanvas = new Canvas { Width = 24, Height = 24 };
         iconCanvas.Children.Add(icon);
         iconBadge.Content = new Viewbox
         {

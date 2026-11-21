@@ -17,7 +17,8 @@ public partial class BudgetCategoryPicker : UserControl
             return;
 
         CategoryOption[] options =
-            [new(null, "Без категории"), .. categories.Select(category => new CategoryOption(category.Id, category.Name))];
+            [new(null, "Без категории", null),
+                .. categories.Select(category => new CategoryOption(category.Id, category.Name, category.IconKey))];
         CategoryInput.ItemsSource = options;
         CategoryInput.SelectedItem = options.FirstOrDefault(option => option.Id == selected);
         Visibility = Visibility.Visible;
@@ -28,5 +29,5 @@ public partial class BudgetCategoryPicker : UserControl
             ? new CategorySelectionDto(selected.Id)
             : null;
 
-    private sealed record CategoryOption(Guid? Id, string Name);
+    private sealed record CategoryOption(Guid? Id, string Name, string? IconKey);
 }

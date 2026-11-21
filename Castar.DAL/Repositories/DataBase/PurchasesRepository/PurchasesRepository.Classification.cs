@@ -7,21 +7,30 @@ namespace Castar.DAL.Repositories.DataBase;
 
 public sealed partial class PurchasesRepository
 {
-    public async Task<(int QueuedCount, int PendingCount)> QueueUncategorizedItemsAsync(CancellationToken cancellationToken)
+    public Task<int> CountUncategorizedPurchasesAsync(DateTime? first, DateTime? endExclusive, CancellationToken token) =>
+        ItemsInPeriod(first, endExclusive)
+            .Where(item => item.BudgetCategoryId == null && item.CategoryState != ItemCategoryState.Confirmed)
+            .Select(item => item.PurchaseId).Distinct().CountAsync(token);
+
+    public Task<int> CountPendingItemsAsync(DateTime? first, DateTime? endExclusive, CancellationToken token) =>
+        ItemsInPeriod(first, endExclusive).CountAsync(item => item.CategoryState == ItemCategoryState.Pending, token);
+
+    public async Task<(int QueuedCount, int PendingCount)> QueueUncategorizedItemsAsync(CancellationToken cancellationToken,
+        DateTime? first = null, DateTime? endExclusive = null)
     {
         await using var transaction = await Context.Database.BeginTransactionAsync(cancellationToken);
-        var queued = await Context.Items.Where(item => item.BudgetCategoryId == null &&
+        var queued = await ItemsInPeriod(first, endExclusive).Where(item => item.BudgetCategoryId == null &&
                 (item.CategoryState == ItemCategoryState.Archived || item.CategoryState == ItemCategoryState.Automatic))
             .ExecuteUpdateAsync(update => update.SetProperty(item => item.CategoryState, ItemCategoryState.Pending), cancellationToken);
-        var pending = await Context.Items.CountAsync(item => item.CategoryState == ItemCategoryState.Pending, cancellationToken);
+        var pending = await CountPendingItemsAsync(first, endExclusive, cancellationToken);
         await transaction.CommitAsync(cancellationToken);
         return (queued, pending);
     }
 
     public async Task<IReadOnlyList<PendingPurchaseClassification>> GetPendingClassificationAsync(
-        int limit, CancellationToken cancellationToken)
+        int limit, CancellationToken cancellationToken, DateTime? first = null, DateTime? endExclusive = null)
     {
-        var pending = await Context.Items.AsNoTracking()
+        var pending = await ItemsInPeriod(first, endExclusive).AsNoTracking()
             .Where(item => item.CategoryState == ItemCategoryState.Pending)
             .OrderBy(item => item.CreatedOn).ThenBy(item => item.Id)
             .Select(item => new
@@ -38,6 +47,11 @@ public sealed partial class PurchasesRepository
                     return new PendingItemClassification(row.Item.Id, row.Item.Name, found, categoryId);
                 }).ToArray())).ToArray();
     }
+
+    private IQueryable<Item> ItemsInPeriod(DateTime? first, DateTime? endExclusive) =>
+        first is { } from && endExclusive is { } to
+            ? Context.Items.Where(item => item.Purchase!.AddedOn >= from && item.Purchase.AddedOn < to)
+            : Context.Items;
 
     public async Task<PurchaseMutationResult> ApplyClassificationAsync(Guid purchaseId, long expectedRevision,
         IReadOnlyDictionary<Guid, Guid?> results, CancellationToken cancellationToken)

@@ -27,6 +27,7 @@ public partial class PurchasesContent : UserControl
     private readonly CastarServerClient server;
     private readonly ClientSettings settings;
     private readonly HistoricalExchangeRates exchangeRates;
+    private readonly PeriodClassification classification;
     private bool listeningForChanges;
     private readonly ObservableCollection<PurchaseRow> purchases = [];
     private ICollectionView? purchaseView;
@@ -61,12 +62,14 @@ public partial class PurchasesContent : UserControl
         dataStale = true;
     }
 
-    public PurchasesContent(CastarServerClient server, ClientSettings settings, HistoricalExchangeRates exchangeRates)
+    public PurchasesContent(CastarServerClient server, ClientSettings settings, HistoricalExchangeRates exchangeRates,
+        ExpenseCategorizationService? categorization = null)
     {
         this.server = server;
         this.settings = settings;
         this.exchangeRates = exchangeRates;
         InitializeComponent();
+        classification = new(ClassificationButton, server, settings, categorization, BudgetEvents.Purchase, "Покупки");
         ExpenseComparison.DataContext = comparison;
         SelectionAmount.EnableSelectAll(PurchasesList);
         SelectionAmount.EnableSelectAll(ItemsList);
@@ -98,7 +101,10 @@ public partial class PurchasesContent : UserControl
         if (dataStale)
             await RefreshAsync();
         else
+        {
+            classification.Refresh(Dates.RangeDate.StartDate, Dates.RangeDate.EndDate, force: false);
             await LoadSelectionAsync();
+        }
     }
 
     private void StopListening()
@@ -125,6 +131,7 @@ public partial class PurchasesContent : UserControl
 
     private async void Server_ConnectionChanged(object? sender, EventArgs e)
     {
+        classification.Clear();
         notificationTarget = null;
         connectionRevision++;
         purchaseAction?.Cancel();
@@ -189,6 +196,7 @@ public partial class PurchasesContent : UserControl
         CancelRefresh();
         dataStale = true;
         var range = Dates.RangeDate;
+        classification.Refresh(range.StartDate, range.EndDate);
         var target = settings.DisplayCurrency;
         if (!hasLoaded)
             comparison.SetComparison(null, target);
@@ -645,7 +653,7 @@ public partial class PurchasesContent : UserControl
                 return;
             await ConfirmAndApplyAsync("Изменить покупку", editor, "Сохранить",
                 request => server.EditPurchaseAsync(row.Id, revision, editor.Result!, request), token, editor.Validate, source: source,
-                editorIcon: (Geometry)editor.FindResource("PurchaseForm.EditIcon"));
+                editorIcon: (Geometry)editor.FindResource("Lucide.pencil"));
         });
     }
 
@@ -684,7 +692,7 @@ public partial class PurchasesContent : UserControl
 
             var editor = new PurchaseItemEditor(item, currency, usePurchaseFormStyle: true, categories: categories);
             await ConfirmAndApplyAsync(title, editor, action, request => mutate(editor.Result!, request),
-                token, editor.Validate, source: source, editorIcon: (Geometry)editor.FindResource("PurchaseForm.ItemIcon"));
+                token, editor.Validate, source: source, editorIcon: (Geometry)editor.FindResource("Lucide.package"));
         });
 
     private async void DeletePurchase_Click(object sender, RoutedEventArgs e)
@@ -881,5 +889,6 @@ public partial class PurchasesContent : UserControl
         public double Quantity => Source.Quantity;
         public bool IsEdited => Source.IsEdited;
         public string? CategoryName => Source.BudgetCategoryName;
+        public string? CategoryIconKey => Source.BudgetCategoryIconKey;
     }
 }

@@ -1,4 +1,4 @@
-﻿using Castar.Domain.Models.DataBase;
+using Castar.Domain.Models.DataBase;
 using Castar.Currency;
 using Castar.Api;
 using System;
@@ -49,10 +49,14 @@ namespace Castar.Compontents
             IncomeTime.Text = CastarDatePicker.FormatTime(originalTime);
             ApplyEditorPresentation();
             IncomeCategory.Load(categories, income?.CategoryId);
+            if (categories is { Count: > 0 } && income is { CategoryState: not IncomeCategoryState.Confirmed }
+                && income.Id != Guid.Empty)
+                ConfirmCategory.Visibility = Visibility.Visible;
         }
 
-        internal Geometry EditorIcon => (Geometry)FindResource("IncomeForm.SourceIcon");
-        internal CategorySelectionDto? CategoryChange => IncomeCategory.GetChange((DataContext as Income)?.CategoryId);
+        internal Geometry EditorIcon => (Geometry)FindResource("Lucide.briefcase-business");
+        internal CategorySelectionDto? CategoryChange =>
+            IncomeCategory.GetChange((DataContext as Income)?.CategoryId, ConfirmCategory.IsChecked == true);
 
         private void ApplyEditorPresentation()
         {
@@ -74,14 +78,15 @@ namespace Castar.Compontents
             owners.SetResourceReference(Border.BorderBrushProperty, "PurchaseForm.PanelBorder");
             IncomeLayout.Children.Add(owners);
             UsersPicker.ApplyListStyle((Style)FindResource("PurchaseFormOwnerList"));
-            IncomeFields.Children.Add(Field(IncomeSourceLabel, IncomeSource, "IncomeForm.SourceIcon", "Например, Зарплата"));
+            IncomeFields.Children.Add(Field(IncomeSourceLabel, IncomeSource, "Lucide.briefcase-business", "Например, Зарплата"));
             IncomeFields.Children.Add(Pair(
-                Field(IncomeSumLabel, IncomeAmount, "IncomeForm.AmountIcon"),
-                Field(IncomeCurrencyLabel, IncomeCurrency, "PurchaseForm.CurrencyIcon")));
+                Field(IncomeSumLabel, IncomeAmount, "Lucide.banknote"),
+                Field(IncomeCurrencyLabel, IncomeCurrency, "Lucide.coins")));
             IncomeFields.Children.Add(Pair(
                 Field(IncomeDateLabel, IncomeDate),
-                Field(IncomeTimeLabel, IncomeTime, "PurchaseForm.TimeIcon")));
+                Field(IncomeTimeLabel, IncomeTime, "Lucide.clock")));
             IncomeFields.Children.Add(IncomeCategory);
+            IncomeFields.Children.Add(ConfirmCategory);
             IncomeDate.SetResourceReference(ForegroundProperty, "PurchaseForm.Foreground");
             IncomeDate.SetResourceReference(BorderBrushProperty, "PurchaseForm.FieldBorder");
         }

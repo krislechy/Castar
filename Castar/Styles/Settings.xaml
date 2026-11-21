@@ -31,7 +31,7 @@
                 <DataTemplate>
                     <DockPanel>
                         <Path DockPanel.Dock="Right" Width="6" Height="10" Margin="12,0,0,0"
-                              VerticalAlignment="Center" Stretch="Uniform" Data="M 1,1 L 5,5 L 1,9"
+                              VerticalAlignment="Center" Stretch="Uniform" Data="{StaticResource Lucide.chevron-right}"
                               Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
                               StrokeThickness="1.5" StrokeStartLineCap="Round" StrokeEndLineCap="Round"
                               StrokeLineJoin="Round"/>
@@ -61,7 +61,7 @@
                 <DataTemplate>
                     <DockPanel>
                         <Path DockPanel.Dock="Right" Width="6" Height="10" Margin="12,0,0,0"
-                              VerticalAlignment="Center" Stretch="Uniform" Data="M 1,1 L 5,5 L 1,9"
+                              VerticalAlignment="Center" Stretch="Uniform" Data="{StaticResource Lucide.chevron-right}"
                               Stroke="{DynamicResource Foreground.Gray}" StrokeThickness="1.5"
                               StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round"/>
                         <ContentPresenter Width="24" DockPanel.Dock="Left" Margin="0,0,16,0"
@@ -124,11 +124,11 @@
         <Setter Property="StrokeEndLineCap" Value="Round"/>
         <Setter Property="StrokeLineJoin" Value="Round"/>
         <Setter Property="Stroke" Value="{DynamicResource Highlight}"/>
-        <Setter Property="Data" Value="M3,12 H13 L11.5,10 V6 A3.5,3.5 0 0 0 4.5,6 V10 Z M6.5,14 A1.5,1.5 0 0 0 9.5,14"/>
+        <Setter Property="Data" Value="{StaticResource Lucide.bell}"/>
         <Style.Triggers>
             <DataTrigger Binding="{Binding TelegramNotificationsEnabled}" Value="False">
                 <Setter Property="Stroke" Value="{DynamicResource Foreground.Gray}"/>
-                <Setter Property="Data" Value="M3,12 H10 M4.5,9.5 V6.5 M6,3.2 A3.5,3.5 0 0 1 11.5,6 V8.5 M6.5,14 A1.5,1.5 0 0 0 9.5,14 M2,2 L14,14"/>
+                <Setter Property="Data" Value="{StaticResource Lucide.bell-off}"/>
             </DataTrigger>
         </Style.Triggers>
     </Style>

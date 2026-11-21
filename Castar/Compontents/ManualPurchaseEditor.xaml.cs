@@ -14,16 +14,18 @@ public partial class ManualPurchaseEditor : UserControl
 {
     private readonly PurchaseEditor header;
     private readonly string defaultCurrency;
+    private readonly IReadOnlyList<BudgetCategoryDto>? categories;
     private readonly Guid purchaseId = Guid.NewGuid();
 
     internal ManualPurchaseEditor(DateTime localDate, ManualCurrencySettingsDto currencies, IReadOnlyList<User> owners,
         IReadOnlyList<BudgetCategoryDto>? categories = null)
     {
         defaultCurrency = currencies.DefaultCurrency;
+        this.categories = categories;
         InitializeComponent();
         header = new PurchaseEditor(
             new(purchaseId, Guid.Empty, "", 0, defaultCurrency, 0, localDate, null, null, []),
-            currencies.Currencies, owners, manualEntry: true, categories: categories);
+            currencies.Currencies, owners, manualEntry: true);
         HeaderFields.Content = header;
         AddItem();
     }
@@ -60,11 +62,11 @@ public partial class ManualPurchaseEditor : UserControl
             return null;
 
         var row = new DockPanel();
-        var editor = new PurchaseItemEditor(new(Guid.Empty, "", null, 1, 0, 0), null, manualEntry: true);
+        var editor = new PurchaseItemEditor(new(Guid.Empty, "", null, 1, 0, 0), null, manualEntry: true, categories: categories);
         editor.ShowHeadings(ItemFields.Children.Count == 0);
         var icon = new Path
         {
-            Data = (Geometry)FindResource("PurchaseForm.RemoveIcon"),
+            Data = (Geometry)FindResource("Lucide.x"),
             Width = 12, Height = 12, Stretch = Stretch.Uniform, StrokeThickness = 1.5,
             StrokeStartLineCap = PenLineCap.Round, StrokeEndLineCap = PenLineCap.Round
         };

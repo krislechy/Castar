@@ -4,14 +4,26 @@
              xmlns:c="clr-namespace:Castar.Compontents"
              Visibility="Collapsed" Focusable="False">
     <UserControl.Resources>
-        <ResourceDictionary Source="/Castar;component/Styles/ManualPurchaseForm.xaml"/>
+        <ResourceDictionary>
+            <ResourceDictionary.MergedDictionaries>
+                <ResourceDictionary Source="/Castar;component/Styles/ManualPurchaseForm.xaml"/>
+            </ResourceDictionary.MergedDictionaries>
+            <c:BudgetCategoryIconConverter x:Key="CategoryIcon"/>
+        </ResourceDictionary>
     </UserControl.Resources>
     <StackPanel>
         <TextBlock x:Name="CategoryLabel" Text="Категория" Style="{StaticResource FormFieldLabel}"/>
-        <Grid>
-            <c:CastarComboBox x:Name="CategoryInput" DisplayMemberPath="Name" Padding="34,7,8,7"
-                              AutomationProperties.LabeledBy="{Binding ElementName=CategoryLabel}"/>
-            <Path Style="{StaticResource PurchaseFormFieldIcon}" Data="{StaticResource PurchaseForm.NameIcon}"/>
-        </Grid>
+        <c:CastarComboBox x:Name="CategoryInput" AutomationProperties.LabeledBy="{Binding ElementName=CategoryLabel}">
+            <c:CastarComboBox.ItemTemplate>
+                <DataTemplate>
+                    <DockPanel>
+                        <Path DockPanel.Dock="Left" Data="{Binding IconKey, Converter={StaticResource CategoryIcon}}"
+                              Stroke="{DynamicResource PurchaseForm.Muted}" StrokeThickness="1.5" Stretch="Uniform"
+                              Width="14" Height="14" Margin="0,0,8,0" VerticalAlignment="Center"/>
+                        <TextBlock Text="{Binding Name}" TextTrimming="CharacterEllipsis"/>
+                    </DockPanel>
+                </DataTemplate>
+            </c:CastarComboBox.ItemTemplate>
+        </c:CastarComboBox>
     </StackPanel>
 </UserControl>

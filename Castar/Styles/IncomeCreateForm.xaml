@@ -13,6 +13,4 @@
     <SolidColorBrush x:Key="Main.MouseOver" Color="{Binding Color, Source={StaticResource PurchaseForm.Hover}, Mode=OneTime}"/>
     <SolidColorBrush x:Key="Main.MousePressed" Color="{Binding Color, Source={StaticResource PurchaseForm.Pressed}, Mode=OneTime}"/>
     <CornerRadius x:Key="InputCornerRadius">8</CornerRadius>
-    <Geometry x:Key="IncomeForm.SourceIcon">M3,5 H15 V15 H3 Z M6,5 V2 H12 V5 M3,9 H15 M8,9 V11 H10 V9</Geometry>
-    <Geometry x:Key="IncomeForm.AmountIcon">M2,4 H16 V14 H2 Z M9,6 A3,3 0 1 1 9,12 A3,3 0 1 1 9,6 M4,8 V10 M14,8 V10</Geometry>
 </ResourceDictionary>

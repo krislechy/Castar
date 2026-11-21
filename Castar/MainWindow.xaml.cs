@@ -130,16 +130,21 @@ namespace Castar
             Closing -= thisClosing;
             Application.Current.Shutdown();
         }
+
+        internal void RestoreAndActivate()
+        {
+            if (!IsVisible)
+                Show();
+            if (WindowState == WindowState.Minimized)
+                SystemCommands.RestoreWindow(this);
+            Activate();
+        }
         #endregion
 
         #region MenuToggleButtons & Commands
         internal void ShowBudgetNotification(string kind, Guid? entityId, DateTime? addedOn)
         {
-            if (!IsVisible)
-                Show();
-            if (WindowState == WindowState.Minimized)
-                WindowState = WindowState.Normal;
-            Activate();
+            RestoreAndActivate();
 
             if (MainDialog.IsVisible)
                 notificationTarget = (kind, entityId, addedOn);
@@ -201,7 +206,7 @@ namespace Castar
             await Compontents.PopupDialog.Show(categoriesContent, Compontents.PopupDialog.TypeDialogEnum.Default, options =>
             {
                 options.Title = title;
-                options.EditorIcon = (Geometry)categoriesContent.FindResource("CategoryTagIcon");
+                options.EditorIcon = (Geometry)categoriesContent.FindResource("Lucide.tag");
                 options.DefaultButton.DefaultButtonText = "Закрыть";
                 return options;
             });

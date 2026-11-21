@@ -31,8 +31,14 @@ namespace Castar.DAL.Repositories.DataBase
         public override async Task<Purchase> Add(Purchase purchase, CancellationToken cancellationToken = default)
         {
             purchase.RecalculateManualTotals();
+            await using var transaction = purchase.Items.Any(item => item.CategoryState == ItemCategoryState.Confirmed) &&
+                Context.Database.CurrentTransaction is null ? await Context.Database.BeginTransactionAsync(cancellationToken) : null;
             TrackNewPurchase(purchase);
+            foreach (var item in purchase.Items.Where(item => item.CategoryState == ItemCategoryState.Confirmed))
+                await ConfirmCategoryAsync(purchase, item, item.BudgetCategoryId, cancellationToken);
             await Context.SaveChangesAsync(cancellationToken);
+            if (transaction is not null)
+                await transaction.CommitAsync(cancellationToken);
             return purchase;
         }
 

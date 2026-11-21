@@ -14,7 +14,8 @@
                 <Border x:Name="checkBoxBorder" Width="20" Height="20" CornerRadius="4" Background="Transparent"
                     BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}" VerticalAlignment="Center">
                     <Grid>
-                        <Path x:Name="optionMark" Data="M 4,9 L 8,13 L 15,5" Stroke="{DynamicResource Main.Background.lvl1}" StrokeThickness="1.8"
+                        <Path x:Name="optionMark" Data="{StaticResource Lucide.check}" Width="14" Height="14" Stretch="Uniform"
+                            Stroke="{DynamicResource Main.Background.lvl1}" StrokeThickness="1.8"
                             StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round" Visibility="Collapsed"/>
                         <Border x:Name="MixedMark" Width="10" Height="2" Background="{DynamicResource Highlight}" Visibility="Collapsed"/>
                     </Grid>

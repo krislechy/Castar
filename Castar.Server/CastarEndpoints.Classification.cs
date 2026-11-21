@@ -12,35 +12,58 @@ public static partial class CastarEndpoints
 {
     private const int ClassificationBatchLimit = 250;
 
-    private static async Task<IResult> QueueUncategorizedPurchaseItems(IPurchasesRepository purchases,
-        BudgetEventPublisher events, CancellationToken token)
+    private static async Task<IResult> CountUncategorizedPurchases(IPurchasesRepository purchases,
+        CancellationToken token, DateTimeOffset? startUtc = null, DateTimeOffset? endExclusiveUtc = null)
     {
-        var (queued, pending) = await purchases.QueueUncategorizedItemsAsync(token);
-        if (queued > 0)
+        if (!TryClassificationRange(startUtc, endExclusiveUtc, out var first, out var endExclusive))
+            return InvalidInput("Укажите допустимый период.");
+        return Results.Ok(new ClassificationCountDto(
+            await purchases.CountUncategorizedPurchasesAsync(first, endExclusive, token)));
+    }
+
+    private static async Task<IResult> QueueUncategorizedPurchaseItems(IPurchasesRepository purchases,
+        BudgetEventPublisher events, CancellationToken token,
+        DateTimeOffset? startUtc = null, DateTimeOffset? endExclusiveUtc = null)
+    {
+        if (!TryClassificationRange(startUtc, endExclusiveUtc, out var first, out var endExclusive))
+            return InvalidInput("Укажите допустимый период.");
+        var (queued, pending) = await purchases.QueueUncategorizedItemsAsync(token, first, endExclusive);
+        if (queued > 0 && first is null)
             events.QueueSynchronization(ServerSynchronization.PurchaseClassificationRequested);
         return Results.Ok(new PurchaseClassificationQueueDto(queued, pending));
     }
 
     private static async Task<IResult> GetPendingPurchaseClassification(IPurchasesRepository purchases, CastarDbContext db,
-        HttpResponse response, CancellationToken token, int limit = 100, bool includeCount = false)
+        HttpResponse response, CancellationToken token, int limit = 100, bool includeCount = false,
+        DateTimeOffset? startUtc = null, DateTimeOffset? endExclusiveUtc = null)
     {
         if (limit is < 1 or > ClassificationBatchLimit)
             return InvalidInput($"Укажите от 1 до {ClassificationBatchLimit} товаров.");
+        if (!TryClassificationRange(startUtc, endExclusiveUtc, out var first, out var endExclusive))
+            return InvalidInput("Укажите допустимый период.");
 
         if (includeCount)
             await db.Database.OpenConnectionAsync(token);
         await using var snapshot = includeCount ? ((SqliteConnection)db.Database.GetDbConnection()).BeginTransaction(deferred: true) : null;
         await using var transaction = snapshot is null ? null : await db.Database.UseTransactionAsync(snapshot, token);
-        var pending = await purchases.GetPendingClassificationAsync(limit, token);
+        var pending = await purchases.GetPendingClassificationAsync(limit, token, first, endExclusive);
         if (includeCount)
         {
-            var count = await db.Items.CountAsync(item => item.CategoryState == ItemCategoryState.Pending, token);
+            var count = await purchases.CountPendingItemsAsync(first, endExclusive, token);
             response.Headers["X-Castar-Classification-Pending"] = count.ToString(CultureInfo.InvariantCulture);
         }
         return Results.Ok(pending.Select(purchase => new PurchaseClassificationWorkDto(
             purchase.PurchaseId, purchase.Revision, purchase.Merchant,
             purchase.Items.Select(item => new PurchaseClassificationItemDto(
                 item.ItemId, item.Name, item.HasHistory, item.CategoryId)).ToArray())).ToArray());
+    }
+
+    private static bool TryClassificationRange(DateTimeOffset? startUtc, DateTimeOffset? endExclusiveUtc,
+        out DateTime? first, out DateTime? endExclusive)
+    {
+        first = startUtc?.UtcDateTime;
+        endExclusive = endExclusiveUtc?.UtcDateTime;
+        return first is null && endExclusive is null || first < endExclusive;
     }
 
     private static async Task<IResult> ApplyPurchaseClassification(Guid purchaseId, long revision,
@@ -75,11 +98,13 @@ public static partial class CastarEndpoints
         return PurchaseMutation(result);
     }
 
-    private static async Task<IReadOnlyDictionary<Guid, string>> ReadItemCategoryNames(CastarDbContext db,
+    private static async Task<IReadOnlyDictionary<Guid, BudgetCategoryDto>> ReadItemCategories(CastarDbContext db,
         IEnumerable<Item> items, CancellationToken token)
     {
         var categoryIds = items.Select(item => item.BudgetCategoryId).OfType<Guid>().Distinct().ToArray();
-        return categoryIds.Length == 0 ? new Dictionary<Guid, string>() : await db.BudgetCategories.AsNoTracking()
-            .Where(category => categoryIds.Contains(category.Id)).ToDictionaryAsync(category => category.Id, category => category.Name, token);
+        return categoryIds.Length == 0 ? new Dictionary<Guid, BudgetCategoryDto>() : await db.BudgetCategories.AsNoTracking()
+            .Where(category => categoryIds.Contains(category.Id))
+            .Select(category => new BudgetCategoryDto(category.Id, category.Kind, category.Name, category.IconKey))
+            .ToDictionaryAsync(category => category.Id, token);
     }
 }

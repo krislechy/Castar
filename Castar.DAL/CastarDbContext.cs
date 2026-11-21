@@ -16,6 +16,7 @@ namespace Castar.DAL
         public DbSet<Item> Items => Set<Item>();
         public DbSet<ItemCategoryHistory> ItemCategoryHistory => Set<ItemCategoryHistory>();
         public DbSet<Income> Incomes => Set<Income>();
+        public DbSet<IncomeCategoryHistory> IncomeCategoryHistory => Set<IncomeCategoryHistory>();
         public DbSet<BudgetCategory> BudgetCategories => Set<BudgetCategory>();
         public DbSet<ExchangeRateEntry> ExchangeRates => Set<ExchangeRateEntry>();
         public DbSet<QueuedReceipt> QueuedReceipts => Set<QueuedReceipt>();
@@ -36,6 +37,7 @@ namespace Castar.DAL
             categories.Property(x => x.Kind).HasMaxLength(16);
             categories.Property(x => x.Name).HasMaxLength(100);
             categories.Property(x => x.NormalizedName).HasMaxLength(100);
+            categories.Property(x => x.IconKey).HasMaxLength(24);
             categories.HasIndex(x => new { x.Kind, x.NormalizedName }).IsUnique();
 
             var purchases = modelBuilder.Entity<Purchase>();
@@ -93,9 +95,21 @@ namespace Castar.DAL
             incomes.Property(x => x.Sum).HasPrecision(24, 2);
             incomes.Property(x => x.Currency).HasMaxLength(3);
             incomes.Property(x => x.Source).HasMaxLength(400);
+            incomes.Property(x => x.CategoryRevision).HasDefaultValue(0L).IsConcurrencyToken();
+            incomes.Property(x => x.CategoryState).HasDefaultValue(IncomeCategoryState.Archived)
+                .HasSentinel(IncomeCategoryState.Archived);
+            incomes.HasIndex(x => new { x.CategoryState, x.CreatedOn, x.Id })
+                .HasFilter("[CategoryState] = 1");
             incomes.HasOne(x => x.User).WithMany().HasForeignKey(x => x.UserId)
                 .OnDelete(DeleteBehavior.NoAction).HasConstraintName("FK_Incomes_Users");
             incomes.HasOne<BudgetCategory>().WithMany().HasForeignKey(x => x.CategoryId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            var incomeCategoryHistory = modelBuilder.Entity<IncomeCategoryHistory>();
+            incomeCategoryHistory.ToTable("IncomeCategoryHistory");
+            incomeCategoryHistory.HasKey(x => x.Key);
+            incomeCategoryHistory.Property(x => x.Key).HasMaxLength(64);
+            incomeCategoryHistory.HasOne<BudgetCategory>().WithMany().HasForeignKey(x => x.CategoryId)
                 .OnDelete(DeleteBehavior.Restrict);
 
             var rates = modelBuilder.Entity<ExchangeRateEntry>();

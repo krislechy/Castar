@@ -350,14 +350,24 @@ public sealed class CastarServerClient(ClientSettings settings) : IDisposable
         SendMutationAsync(HttpMethod.Put, FormattableString.Invariant($"api/purchases/{purchaseId:D}/items/{itemId:D}?revision={revision}"),
             cancellationToken, item);
 
-    internal async Task<(PurchaseClassificationWorkDto[] Work, int? Remaining)> GetPendingPurchaseClassificationAsync(
-        bool includeCount, CancellationToken token)
+    internal Task<(PurchaseClassificationWorkDto[] Work, int? Remaining)> GetPendingPurchaseClassificationAsync(
+        bool includeCount, CancellationToken token, DateTime? startUtc = null, DateTime? endUtc = null) =>
+        GetPendingClassificationAsync<PurchaseClassificationWorkDto>(BudgetEvents.Purchase, includeCount, token, startUtc, endUtc);
+
+    internal Task<(IncomeClassificationWorkDto[] Work, int? Remaining)> GetPendingIncomeClassificationAsync(
+        bool includeCount, CancellationToken token, DateTime? startUtc = null, DateTime? endUtc = null) =>
+        GetPendingClassificationAsync<IncomeClassificationWorkDto>(BudgetEvents.Income, includeCount, token, startUtc, endUtc);
+
+    private async Task<(T[] Work, int? Remaining)> GetPendingClassificationAsync<T>(string kind,
+        bool includeCount, CancellationToken token, DateTime? startUtc, DateTime? endUtc)
     {
         int? remaining = null;
-        var path = "api/purchases/classification/pending?limit=100";
+        var path = $"{ClassificationPath(kind)}/pending?limit=100";
         if (includeCount)
             path += "&includeCount=true";
-        var work = await SendAsync<PurchaseClassificationWorkDto[]>(HttpMethod.Get, path, cancellationToken: token,
+        if (startUtc is { } first && endUtc is { } last)
+            path += "&" + ClassificationRange(first, last);
+        var work = await SendAsync<T[]>(HttpMethod.Get, path, cancellationToken: token,
             observeResponse: includeCount ? response =>
             {
                 if (response.Headers.TryGetValues("X-Castar-Classification-Pending", out var values)
@@ -367,14 +377,49 @@ public sealed class CastarServerClient(ClientSettings settings) : IDisposable
         return (work, remaining);
     }
 
-    internal Task<PurchaseClassificationQueueDto> QueuePurchaseClassificationAsync(CancellationToken token) =>
-        SendAsync<PurchaseClassificationQueueDto>(HttpMethod.Post, "api/purchases/classification/queue",
+    internal Task<PurchaseClassificationQueueDto> QueueClassificationAsync(string kind, CancellationToken token,
+        DateTime? startUtc = null, DateTime? endUtc = null)
+    {
+        var path = $"{ClassificationPath(kind)}/queue";
+        if (startUtc is { } first && endUtc is { } last)
+            path += "?" + ClassificationRange(first, last);
+        return SendAsync<PurchaseClassificationQueueDto>(HttpMethod.Post, path,
             cancellationToken: token, readProblemDetails: true);
+    }
+
+    public async Task<int> GetClassificationCountAsync(string kind, DateTime startUtc, DateTime endUtc,
+        CancellationToken token) => (await SendAsync<ClassificationCountDto>(HttpMethod.Get,
+            $"{ClassificationPath(kind)}/count?{ClassificationRange(startUtc, endUtc)}", cancellationToken: token)
+            .ConfigureAwait(false)).Count;
+
+    public (DateTime StartUtc, DateTime EndUtc) GetClassificationPeriod(DateTime start, DateTime finish)
+    {
+        var last = PeriodBoundary(finish, -1);
+        return (PeriodBoundary(start, 1), last == DateTime.MaxValue ? last : last.AddTicks(1));
+    }
+
+    private static string ClassificationPath(string kind) => kind switch
+    {
+        BudgetEvents.Purchase => "api/purchases/classification",
+        BudgetEvents.Income => "api/incomes/classification",
+        _ => throw new ArgumentOutOfRangeException(nameof(kind))
+    };
+
+    private static string ClassificationRange(DateTime first, DateTime last) =>
+        $"startUtc={Format(first)}&endExclusiveUtc={Format(last)}";
+
+    private static string Format(DateTime value) =>
+        Uri.EscapeDataString(value.ToString("O", CultureInfo.InvariantCulture));
 
     internal Task<bool> ApplyPurchaseClassificationAsync(Guid purchaseId, long revision,
         IReadOnlyList<PurchaseClassificationResultDto> items, CancellationToken token) =>
         SendMutationAsync(HttpMethod.Post, FormattableString.Invariant($"api/purchases/{purchaseId:D}/classification?revision={revision}"),
             token, new PurchaseClassificationWriteDto(items), modifiesAmounts: false);
+
+    internal Task<bool> ApplyIncomeClassificationAsync(Guid incomeId, long revision, Guid? categoryId,
+        CancellationToken token) => SendMutationAsync(HttpMethod.Post,
+            FormattableString.Invariant($"api/incomes/{incomeId:D}/classification?revision={revision}"),
+            token, new CategorySelectionDto(categoryId), modifiesAmounts: false);
 
     public Task<bool> DeletePurchaseAsync(Guid id, long revision, CancellationToken cancellationToken = default) =>
         DeleteAsync(FormattableString.Invariant($"api/purchases/{id:D}?revision={revision}"), cancellationToken);
@@ -421,8 +466,6 @@ public sealed class CastarServerClient(ClientSettings settings) : IDisposable
         var last = PeriodBoundary(finish, -1);
         return $"start={Format(BudgetTime.InZone(first, BudgetTime.Belgrade))}&finish={Format(BudgetTime.InZone(last, BudgetTime.Belgrade))}" +
             $"&startUtc={Format(first)}&finishUtc={Format(last)}";
-
-        static string Format(DateTime value) => Uri.EscapeDataString(value.ToString("O", CultureInfo.InvariantCulture));
     }
 
     private DateTime PeriodBoundary(DateTime local, int direction)
@@ -442,8 +485,14 @@ public sealed class CastarServerClient(ClientSettings settings) : IDisposable
         await SendAsync<BudgetCategoryDto[]>(HttpMethod.Get, "api/categories", cancellationToken: token).ConfigureAwait(false);
 
     public Task<BudgetCategoryDto> AddBudgetCategoryAsync(string kind, string name, CancellationToken token = default) =>
-        SendAsync<BudgetCategoryDto>(HttpMethod.Post, "api/categories", new BudgetCategoryWriteDto(kind, name), token,
-            readProblemDetails: true);
+        AddBudgetCategoryAsync(new BudgetCategoryWriteDto(kind, name), token);
+
+    public Task<BudgetCategoryDto> AddBudgetCategoryAsync(BudgetCategoryWriteDto category, CancellationToken token = default) =>
+        SendAsync<BudgetCategoryDto>(HttpMethod.Post, "api/categories", category, token, readProblemDetails: true);
+
+    public Task<BudgetCategoryDto> UpdateCategoryAsync(Guid id, BudgetCategoryWriteDto category,
+        CancellationToken token = default) => SendAsync<BudgetCategoryDto>(HttpMethod.Put, $"api/categories/{id:D}",
+            category, token, readProblemDetails: true);
 
     internal async Task<IReadOnlyList<BudgetCategoryDto>?> GetOperationCategoriesAsync(string kind, CancellationToken token = default)
     {
@@ -559,7 +608,7 @@ public sealed class CastarServerClient(ClientSettings settings) : IDisposable
     {
         if (method != HttpMethod.Post && method != HttpMethod.Put && method != HttpMethod.Delete) return;
         var route = path.Split('?', 2)[0];
-        if (route == "api/purchases/classification/queue")
+        if (route is "api/purchases/classification/queue" or "api/incomes/classification/queue")
             return;
         if (route is "api/incomes" or "api/purchases"
             || route.StartsWith("api/incomes/", StringComparison.Ordinal)
@@ -642,7 +691,8 @@ public sealed class CastarServerClient(ClientSettings settings) : IDisposable
         Id = dto.Id, UserId = dto.UserId, User = user ?? ToUser(dto.User), MessageId = dto.MessageId,
         Sum = dto.Sum, Currency = dto.Currency, Source = dto.Source,
         AddedOn = dto.AddedOnUtc?.UtcDateTime ?? ReadLegacyDate(dto.AddedOn),
-        RateDate = dto.RateDate ?? DateOnly.FromDateTime(dto.AddedOn), CategoryId = dto.CategoryId
+        RateDate = dto.RateDate ?? DateOnly.FromDateTime(dto.AddedOn), CategoryId = dto.CategoryId,
+        CategoryState = dto.CategoryConfirmed ? IncomeCategoryState.Confirmed : IncomeCategoryState.Pending
     };
 
     public void Dispose()

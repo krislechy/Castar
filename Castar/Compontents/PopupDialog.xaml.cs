@@ -19,6 +19,7 @@ public partial class PopupDialog : UserControl
     private readonly Stack<(Request Request, IInputElement? Focus)> parents = new();
     private Window? owner;
     private IInputElement? previousFocus;
+    private PopupDialog? retainedChild;
     private bool closing;
 
     public PopupDialog() => InitializeComponent();
@@ -92,16 +93,54 @@ public partial class PopupDialog : UserControl
     }
 
     internal static Task<bool?> ShowNested(UIElement parent, object content, Func<Options, Options> options,
-        Func<ValidatePopupDialog>? validation = null)
+        Func<ValidatePopupDialog>? validation = null, bool retainParent = false)
     {
-        if (Application.Current?.MainWindow is not MainWindow { MainDialog: { ActiveDialog: { } active, closing: false } dialog }
+        if (Application.Current?.MainWindow is not MainWindow window
+            || window.MainDialog.Topmost is not { ActiveDialog: { } active, closing: false } dialog
             || !dialog.DialogContent.IsAncestorOf(parent))
             return Task.FromResult<bool?>(null);
 
         var request = new Request(content, TypeDialogEnum.Confirm, options(new Options()), validation);
+        if (retainParent)
+            return dialog.ShowBesideParentAsync(request);
+
         dialog.parents.Push((active, Keyboard.FocusedElement));
         dialog.Present(request);
         return request.Completion.Task;
+    }
+
+    internal PopupDialog Topmost => retainedChild?.Topmost ?? this;
+
+    private async Task<bool?> ShowBesideParentAsync(Request request)
+    {
+        var focus = Keyboard.FocusedElement;
+        var child = new PopupDialog { HorizontalAlignment = HorizontalAlignment.Left };
+        var wasDefault = DefaultButton.IsDefault;
+        retainedChild = child;
+        PresentationLayer.IsHitTestVisible = false;
+        PresentationLayer.HorizontalAlignment = HorizontalAlignment.Right;
+        DefaultButton.IsDefault = false;
+        RetainedGap.Width = new GridLength(12);
+        RetainedColumn.Width = new GridLength(1, GridUnitType.Star);
+        RetainedDialogLayer.Children.Add(child);
+        child.pending.Enqueue(request);
+        child.ShowNext();
+        try
+        {
+            return await request.Completion.Task;
+        }
+        finally
+        {
+            retainedChild = null;
+            RetainedDialogLayer.Children.Remove(child);
+            RetainedGap.Width = new GridLength(0);
+            RetainedColumn.Width = new GridLength(0);
+            PresentationLayer.IsHitTestVisible = true;
+            PresentationLayer.HorizontalAlignment = HorizontalAlignment.Stretch;
+            DefaultButton.IsDefault = wasDefault;
+            if (focus is UIElement { IsVisible: true, IsEnabled: true } element && IsAncestorOf(element))
+                Keyboard.Focus(element);
+        }
     }
 
     private void ShowNext()
@@ -140,9 +179,10 @@ public partial class PopupDialog : UserControl
 
     private void KeepDialogFocus(object sender, KeyboardFocusChangedEventArgs e)
     {
+        var activeLayer = Topmost;
         if (IsVisible && ActiveDialog is not null && e.NewFocus is Visual target
             && PresentationSource.FromVisual(target) == PresentationSource.FromVisual(this)
-            && target != this && !IsAncestorOf(target))
+            && target != activeLayer && !activeLayer.IsAncestorOf(target))
             e.Handled = true;
     }
 
@@ -154,6 +194,12 @@ public partial class PopupDialog : UserControl
 
     private void Close(bool? result)
     {
+        if (retainedChild is { } child)
+        {
+            child.Close(result);
+            return;
+        }
+
         if (ActiveDialog is not { } request || closing)
             return;
 
@@ -208,6 +254,7 @@ public partial class PopupDialog : UserControl
 
     private void CancelPending()
     {
+        retainedChild?.CancelPending();
         var request = ActiveDialog;
         closing = true;
         SetValue(ActiveDialogPropertyKey, null);
@@ -238,7 +285,7 @@ public partial class PopupDialog : UserControl
 
     private void ButtonOutsideClickEvent(object sender, MouseButtonEventArgs e)
     {
-        if (!border.IsMouseOver && ActiveDialog is { AllowMissClick: true } request)
+        if (retainedChild is null && !border.IsMouseOver && ActiveDialog is { AllowMissClick: true } request)
             Close(request.Type == TypeDialogEnum.Confirm ? false : null);
     }
 

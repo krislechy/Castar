@@ -25,6 +25,17 @@ public static class CastarData
         services.AddScoped<IPurchasesRepository, PurchasesRepository>();
         services.AddScoped<IItemsRepository, ItemsRepository>();
         services.AddScoped<IIncomesRepository, IncomesRepository>();
+        services.AddScoped<IncomeWriteCommitted>(provider =>
+        {
+            var publisher = provider.GetRequiredService<BudgetEventPublisher>();
+            return created =>
+            {
+                var change = new BudgetChange(true, 0, null, null);
+                foreach (var income in created)
+                    change = change.AddCreation(income.Id, income.AddedOn);
+                publisher.Queue(default, change);
+            };
+        });
         services.AddScoped<IUsersRepository, UsersRepository>();
         services.AddScoped<IPurchasesService, PurchasesService>();
         services.AddScoped<IItemsService, ItemsService>();

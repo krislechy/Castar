@@ -15,7 +15,7 @@ partial class CastarDbContextModelSnapshot : ModelSnapshot
     // If you encounter a merge conflict in the line below, it means you need to
     // discard one of the migration branches and recreate its migrations on top of
     // the other branch. See https://aka.ms/efcore-docs-migrations-conflicts for more info.
-    public override string LastMigrationId => "20261121151330_ItemCategoryClassification";
+    public override string LastMigrationId => "20261121163121_IncomeClassificationAndCategoryIcons";
 
     protected override void BuildModel(ModelBuilder modelBuilder)
     {
@@ -110,6 +110,10 @@ partial class CastarDbContextModelSnapshot : ModelSnapshot
                 b.Property<DateTime>("CreatedOn")
                     .HasColumnType("TEXT");
 
+                b.Property<string>("IconKey")
+                    .HasMaxLength(24)
+                    .HasColumnType("TEXT");
+
                 b.Property<string>("Kind")
                     .IsRequired()
                     .HasMaxLength(16)
@@ -147,6 +151,17 @@ partial class CastarDbContextModelSnapshot : ModelSnapshot
 
                 b.Property<Guid?>("CategoryId")
                     .HasColumnType("TEXT");
+
+                b.Property<long>("CategoryRevision")
+                    .IsConcurrencyToken()
+                    .ValueGeneratedOnAdd()
+                    .HasColumnType("INTEGER")
+                    .HasDefaultValue(0L);
+
+                b.Property<int>("CategoryState")
+                    .ValueGeneratedOnAdd()
+                    .HasColumnType("INTEGER")
+                    .HasDefaultValue(0);
 
                 b.Property<DateTime>("CreatedOn")
                     .HasColumnType("TEXT");
@@ -189,7 +204,26 @@ partial class CastarDbContextModelSnapshot : ModelSnapshot
                 b.HasIndex("UserId", "_messageId")
                     .HasDatabaseName("IX_Incomes_UserId_MessageId");
 
+                b.HasIndex("CategoryState", "CreatedOn", "Id")
+                    .HasFilter("[CategoryState] = 1");
+
                 b.ToTable("Incomes");
+            });
+
+        modelBuilder.Entity("Castar.Domain.Models.DataBase.IncomeCategoryHistory", b =>
+            {
+                b.Property<string>("Key")
+                    .HasMaxLength(64)
+                    .HasColumnType("TEXT");
+
+                b.Property<Guid?>("CategoryId")
+                    .HasColumnType("TEXT");
+
+                b.HasKey("Key");
+
+                b.HasIndex("CategoryId");
+
+                b.ToTable("IncomeCategoryHistory");
             });
 
         modelBuilder.Entity("Castar.Domain.Models.DataBase.Item", b =>
@@ -412,6 +446,14 @@ partial class CastarDbContextModelSnapshot : ModelSnapshot
                     .HasConstraintName("FK_Incomes_Users");
 
                 b.Navigation("User");
+            });
+
+        modelBuilder.Entity("Castar.Domain.Models.DataBase.IncomeCategoryHistory", b =>
+            {
+                b.HasOne("Castar.Domain.Models.DataBase.BudgetCategory", null)
+                    .WithMany()
+                    .HasForeignKey("CategoryId")
+                    .OnDelete(DeleteBehavior.Restrict);
             });
 
         modelBuilder.Entity("Castar.Domain.Models.DataBase.Item", b =>

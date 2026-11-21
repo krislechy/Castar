@@ -87,7 +87,8 @@ public sealed class LocalAiService : IDisposable
     }, token, managesProcess: options.Mode == LocalAiMode.Managed);
 
     public Task<IReadOnlyList<LocalAiAssignment>> ClassifyAsync(LocalAiOptions options, string? shop,
-        IReadOnlyList<LocalAiItem> items, IReadOnlyList<LocalAiCategory> categories, CancellationToken token = default) =>
+        IReadOnlyList<LocalAiItem> items, IReadOnlyList<LocalAiCategory> categories, CancellationToken token = default,
+        bool isIncome = false) =>
         RunAsync<IReadOnlyList<LocalAiAssignment>>(async current =>
         {
             if (items.Count == 0 || categories.Count == 0)
@@ -117,7 +118,7 @@ public sealed class LocalAiService : IDisposable
                     var batchOptions = options.Provider == LocalAiProvider.Ollama && options.IdleMinutes == 0
                         && result.Count + batch.Length < items.Count ? options with { IdleMinutes = 1 } : options;
                     result.AddRange(await WithTimeoutAsync(
-                        ct => protocol.ClassifyAsync(endpoint, batchOptions, shop, batch, categories, ct),
+                        ct => protocol.ClassifyAsync(endpoint, batchOptions, shop, batch, categories, ct, isIncome),
                         InferenceTimeout, current).ConfigureAwait(false));
                 }
                 return result;

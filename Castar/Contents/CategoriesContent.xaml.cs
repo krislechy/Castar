@@ -10,7 +10,6 @@ using System.Net.Http;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
-using System.Windows.Automation;
 using System.Windows.Controls;
 using System.Windows.Media;
 
@@ -18,7 +17,6 @@ namespace Castar.Contents;
 
 public partial class CategoriesContent : UserControl
 {
-    private const int MaxNameLength = 100;
     private readonly CastarServerClient server;
     private readonly CategoryScreenState state = new();
     private IReadOnlyList<BudgetCategoryDto> categories = [];
@@ -151,7 +149,19 @@ public partial class CategoriesContent : UserControl
 
     private async void AddCategory_Click(object sender, RoutedEventArgs e)
     {
-        if (!state.CanAdd || sender is not Button { DataContext: CategoryListState list })
+        if (sender is Button { DataContext: CategoryListState list })
+            await OpenCategoryEditorAsync(sender, list.Kind, list.DialogTitle);
+    }
+
+    private async void EditCategory_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is Button { DataContext: BudgetCategoryDto category })
+            await OpenCategoryEditorAsync(sender, category.Kind, "Изменить категорию", category);
+    }
+
+    private async Task OpenCategoryEditorAsync(object sender, string kind, string title, BudgetCategoryDto? category = null)
+    {
+        if (!state.CanAdd)
             return;
 
         state.IsEditing = true;
@@ -159,24 +169,22 @@ public partial class CategoriesContent : UserControl
         PopupDialog.SetContentWarning(this, null);
         try
         {
-            var nameInput = new TextBox { MaxLength = MaxNameLength };
-            var label = new TextBlock { Text = "Название", Style = (Style)FindResource("FormFieldLabel") };
-            AutomationProperties.SetLabeledBy(nameInput, label);
-            var input = new StackPanel { MinWidth = 320, Children = { label, nameInput } };
+            var editor = new BudgetCategoryEditor(kind, category);
 
-            var accepted = await PopupDialog.ShowNested(this, input, options =>
+            var accepted = await PopupDialog.ShowNested(this, editor, options =>
             {
-                options.Title = list.DialogTitle;
-                options.EditorIcon = (Geometry)FindResource("CategoryTagIcon");
-                options.SuccessButton.SuccessConfirmButtonText = "Добавить";
+                options.Title = title;
+                options.EditorIcon = BudgetCategoryIcons.ForKey(category?.IconKey);
+                options.SuccessButton.SuccessConfirmButtonText = category is null ? "Добавить" : "Сохранить";
                 options.AllowMissClick = false;
                 return options;
-            }, () => string.IsNullOrWhiteSpace(nameInput.Text)
+            }, () => editor.CategoryName.Length == 0
                 ? new(false, "Укажите название категории.")
-                : new(true, null));
+                : new(true, null), retainParent: true);
 
             if (accepted == true && revision == connectionRevision)
-                await ButtonLoading.RunAsync(sender, () => SaveCategoryAsync(list.Kind, nameInput.Text.Trim()));
+                await ButtonLoading.RunAsync(sender, () => SaveCategoryAsync(category?.Id,
+                    new BudgetCategoryWriteDto(kind, editor.CategoryName, editor.IconKey)));
         }
         finally
         {
@@ -184,13 +192,15 @@ public partial class CategoriesContent : UserControl
         }
     }
 
-    private async Task SaveCategoryAsync(string kind, string name)
+    private async Task SaveCategoryAsync(Guid? id, BudgetCategoryWriteDto draft)
     {
         using var request = new CancellationTokenSource();
         addRequest = request;
         try
         {
-            var category = await server.AddBudgetCategoryAsync(kind, name, request.Token);
+            var category = id is { } categoryId
+                ? await server.UpdateCategoryAsync(categoryId, draft, request.Token)
+                : await server.AddBudgetCategoryAsync(draft, request.Token);
             if (!request.IsCancellationRequested)
             {
                 dataRevision++;
@@ -211,7 +221,7 @@ public partial class CategoriesContent : UserControl
             else
                 await PopupDialog.Show(message, PopupDialog.TypeDialogEnum.Default, options =>
                 {
-                    options.Title = "Не удалось добавить категорию";
+                    options.Title = "Не удалось сохранить категорию";
                     return options;
                 });
         }

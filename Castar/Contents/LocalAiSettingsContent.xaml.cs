@@ -104,6 +104,7 @@ public partial class LocalAiSettingsContent : UserControl
             EndpointInput.Text = saved.Endpoint;
             ExecutableInput.Text = saved.ExecutablePath ?? "";
             DirectoryInput.Text = saved.ModelDirectory ?? "";
+            PromptInput.Text = string.IsNullOrWhiteSpace(saved.Prompt) ? LocalAiOptions.DefaultPrompt : saved.Prompt;
             RestoreModel(saved.Model);
             currentTarget = ModelSource(saved);
             DiscoveryStatus.Text = "";
@@ -337,11 +338,12 @@ public partial class LocalAiSettingsContent : UserControl
         if (categorization is null)
             return;
 
-        var progress = categorization.HistoryProgress;
+        var activeProgress = categorization.HistoryProgress;
+        var progress = activeProgress.Kind is null ? activeProgress : new ExpenseHistoryProgress(0, 0, null, false, null);
         var running = startingHistory || progress.Running;
         var awaitingProgress = startingHistory && Equals(progress, historyBeforeStart);
         var hasTotal = !awaitingProgress && progress.Total > 0;
-        ProcessHistoryButton.IsEnabled = CanProcessHistory(progress);
+        ProcessHistoryButton.IsEnabled = CanProcessHistory(activeProgress);
         HistoryProgressBody.Visibility = running || hasTotal ? Visibility.Visible : Visibility.Collapsed;
         HistoryProgressLabels.Visibility = hasTotal ? Visibility.Visible : Visibility.Collapsed;
         HistoryCountText.Text = hasTotal ? $"Обработано {progress.Completed:N0} из {progress.Total:N0}" : "";
@@ -369,6 +371,14 @@ public partial class LocalAiSettingsContent : UserControl
     private void TargetSelection_Changed(object sender, SelectionChangedEventArgs e) => UpdateTarget();
 
     private void TargetText_Changed(object sender, TextChangedEventArgs e) => UpdateTarget();
+
+    private void PromptText_Changed(object sender, TextChangedEventArgs e)
+    {
+        if (!changingControls && editingDraft)
+            UpdateActions();
+    }
+
+    private void ResetPrompt_Click(object sender, RoutedEventArgs e) => PromptInput.Text = LocalAiOptions.DefaultPrompt;
 
     private void UpdateTarget()
     {
@@ -438,7 +448,12 @@ public partial class LocalAiSettingsContent : UserControl
             ModelPicker.SelectedItem as string ?? "",
             TrimToNull(ExecutableInput.Text),
             provider == LocalAiProvider.LlamaCpp ? TrimToNull(DirectoryInput.Text) : null,
-            IdlePicker.SelectedValue is int idle ? idle : saved.IdleMinutes);
+            IdlePicker.SelectedValue is int idle ? idle : saved.IdleMinutes)
+        {
+            Prompt = PromptInput.Text.Replace("\r\n", "\n", StringComparison.Ordinal).Trim() is { Length: > 0 } prompt
+                && prompt != LocalAiOptions.DefaultPrompt.Replace("\r\n", "\n", StringComparison.Ordinal)
+                ? prompt : null
+        };
     }
 
     private static string? TrimToNull(string value) => string.IsNullOrWhiteSpace(value) ? null : value.Trim();

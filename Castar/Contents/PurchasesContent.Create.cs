@@ -45,7 +45,7 @@ public partial class PurchasesContent
                 return;
             await ConfirmAndApplyAsync("Добавить покупку", editor, "Добавить",
                 request => server.CreatePurchaseAsync(editor.Result!, request), token, editor.Validate, source: sender,
-                editorIcon: (Geometry)FindResource("Ledger.PurchaseAddIcon"));
+                editorIcon: (Geometry)FindResource("Lucide.shopping-cart"));
         });
     }
 

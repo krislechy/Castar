@@ -32,6 +32,7 @@ public partial class IncomesContent : UserControl
     private readonly CastarServerClient server;
     private readonly ClientSettings settings;
     private readonly HistoricalExchangeRates exchangeRates;
+    private readonly PeriodClassification classification;
     private readonly IncomesContext context = new();
     private bool listeningForChanges;
     private CancellationTokenSource? activeRequest;
@@ -40,7 +41,8 @@ public partial class IncomesContent : UserControl
     private bool dataStale = true;
     private (DateTime Start, DateTime Finish, string Currency, string TimeZone)? renderedQuery;
     private Guid? notificationTarget;
-    private readonly HashSet<string> expandedGroups = new(StringComparer.CurrentCultureIgnoreCase);
+    private readonly HashSet<Guid> expandedGroups = [];
+    private IReadOnlyDictionary<Guid, BudgetCategoryDto>? categoryNames;
     private string incomeSearch = "";
     private bool applyingIncomes;
     private long revealGeneration;
@@ -62,7 +64,8 @@ public partial class IncomesContent : UserControl
         dataStale = true;
     }
 
-    public IncomesContent(CastarServerClient server, ClientSettings settings, HistoricalExchangeRates exchangeRates)
+    public IncomesContent(CastarServerClient server, ClientSettings settings, HistoricalExchangeRates exchangeRates,
+        ExpenseCategorizationService? categorization = null)
     {
         this.server = server;
         this.settings = settings;
@@ -70,6 +73,7 @@ public partial class IncomesContent : UserControl
         context.SummaryCurrency = settings.DisplayCurrency;
         DataContext = context;
         InitializeComponent();
+        classification = new(ClassificationButton, server, settings, categorization, BudgetEvents.Income, "Доходы");
         SelectionAmount.EnableSelectAll(IncomesListView);
         server.ConnectionChanged += Server_ConnectionChanged;
         settings.PropertyChanged += Settings_PropertyChanged;
@@ -95,6 +99,8 @@ public partial class IncomesContent : UserControl
         listeningForChanges = true;
         if (dataStale)
             await RefreshAsync();
+        else
+            classification.Refresh(Range.StartDate, Range.EndDate, force: false);
     }
 
     private void StopListening()
@@ -109,6 +115,8 @@ public partial class IncomesContent : UserControl
 
     private async void Server_ConnectionChanged(object? sender, EventArgs e)
     {
+        classification.Clear();
+        InvalidateCategoryNames();
         incomeConnectionRevision++;
         notificationTarget = null;
         expandedGroups.Clear();
@@ -154,11 +162,14 @@ public partial class IncomesContent : UserControl
         return Task.CompletedTask;
     }
 
+    internal void InvalidateCategoryNames() => categoryNames = null;
+
     private Task RefreshAsync() => RefreshAsync(Range.StartDate, Range.EndDate);
 
     private async Task RefreshAsync(DateTime start, DateTime finish)
     {
         CancelRefresh();
+        classification.Refresh(start, finish);
         dataStale = true;
         if (start > finish)
         {
@@ -191,7 +202,19 @@ public partial class IncomesContent : UserControl
             if (request != activeRequest || refreshPending)
                 return;
 
-            var rows = incomes.Select(income => CreateRow(income, target, rates)).ToArray();
+            if (categoryNames is null && incomes.Any(income => income.CategoryId.HasValue))
+            {
+                var categories = await server.GetOperationCategoriesAsync(BudgetEvents.Income, request.Token);
+                if (request != activeRequest || refreshPending)
+                    return;
+                categoryNames = categories?.ToDictionary(category => category.Id);
+            }
+            var rows = incomes.Select(income => CreateRow(income, target, rates) with
+            {
+                Category = income.CategoryId is { } categoryId
+                    ? new IncomeCategoryGroup(categoryId, categoryNames?.GetValueOrDefault(categoryId))
+                    : IncomeCategoryGroup.Uncategorized
+            }).ToArray();
             dataStale = false;
             renderedQuery = query;
             UpdateRows(rows);
@@ -348,11 +371,10 @@ public partial class IncomesContent : UserControl
             return false;
         notificationTarget = null;
         IncomeSearchBox.Clear();
-        expandedGroups.Add(selected.Income.Source ?? "");
+        expandedGroups.Add(selected.Category.Id);
         IncomesListView.UpdateLayout();
         foreach (var expander in VisualChildren<Expander>(IncomesListView))
-            if (expander.DataContext is CollectionViewGroup group &&
-                string.Equals(group.Name?.ToString(), selected.Income.Source, StringComparison.CurrentCultureIgnoreCase))
+            if (expander.DataContext is CollectionViewGroup { Name: IncomeCategoryGroup group } && group.Id == selected.Category.Id)
                 expander.IsExpanded = true;
         IncomesListView.SelectedItem = null;
         IncomesListView.SelectedItem = selected;
@@ -374,8 +396,7 @@ public partial class IncomesContent : UserControl
         VisualChildren<VirtualizingStackPanel>(IncomesListView).FirstOrDefault()?.BringIndexIntoViewPublic(index);
         IncomesListView.UpdateLayout();
         foreach (var expander in VisualChildren<Expander>(IncomesListView))
-            if (expander.DataContext is CollectionViewGroup group &&
-                string.Equals(group.Name?.ToString(), current.Income.Source, StringComparison.CurrentCultureIgnoreCase))
+            if (expander.DataContext is CollectionViewGroup { Name: IncomeCategoryGroup group } && group.Id == current.Category.Id)
                 expander.IsExpanded = true;
         IncomesListView.UpdateLayout();
         IncomesListView.ScrollIntoView(current);
@@ -387,7 +408,7 @@ public partial class IncomesContent : UserControl
         var first = previous.Income;
         var second = next.Income;
         return first.Id == second.Id && first.Sum == second.Sum && first.Currency == second.Currency
-            && first.CategoryId == second.CategoryId
+            && previous.Category == next.Category && first.CategoryState == second.CategoryState
             && first.AddedOn == second.AddedOn && first.Source == second.Source && first.UserId == second.UserId
             && first.User.Name == second.User.Name && first.User.Sex == second.User.Sex
             && first.User.ColorRaw.AsSpan().SequenceEqual(second.User.ColorRaw)
@@ -595,7 +616,7 @@ public partial class IncomesContent : UserControl
     {
         if (e.Item is not IncomeDisplayRow row || incomeSearch.Length == 0)
             return;
-        e.Accepted = new[] { row.Income.Source, row.Income.User.Name, row.Amount.Primary, row.Amount.Original,
+        e.Accepted = new[] { row.Income.Source, row.Category.Label, row.Income.User.Name, row.Amount.Primary, row.Amount.Original,
                 row.DisplayDate.ToString("dd.MM.yyyy HH:mm", CultureInfo.CurrentCulture) }
             .Any(value => value?.Contains(incomeSearch, StringComparison.CurrentCultureIgnoreCase) == true);
     }
@@ -607,18 +628,18 @@ public partial class IncomesContent : UserControl
 
     private void RestoreGroupState(Expander expander) =>
         expander.SetCurrentValue(Expander.IsExpandedProperty,
-            expander.DataContext is CollectionViewGroup group && expandedGroups.Contains(group.Name?.ToString() ?? ""));
+            expander.DataContext is CollectionViewGroup { Name: IncomeCategoryGroup group } && expandedGroups.Contains(group.Id));
 
     private void IncomeGroup_Expanded(object sender, RoutedEventArgs e)
     {
-        if (ReferenceEquals(sender, e.OriginalSource) && sender is Expander { DataContext: CollectionViewGroup group })
-            expandedGroups.Add(group.Name?.ToString() ?? "");
+        if (ReferenceEquals(sender, e.OriginalSource) && sender is Expander { DataContext: CollectionViewGroup { Name: IncomeCategoryGroup group } })
+            expandedGroups.Add(group.Id);
     }
 
     private void IncomeGroup_Collapsed(object sender, RoutedEventArgs e)
     {
-        if (ReferenceEquals(sender, e.OriginalSource) && sender is Expander { DataContext: CollectionViewGroup group })
-            expandedGroups.Remove(group.Name?.ToString() ?? "");
+        if (ReferenceEquals(sender, e.OriginalSource) && sender is Expander { DataContext: CollectionViewGroup { Name: IncomeCategoryGroup group } })
+            expandedGroups.Remove(group.Id);
     }
 
     private static bool IsActionElement(DependencyObject element)
@@ -676,8 +697,17 @@ public partial class IncomesContent : UserControl
 internal sealed record IncomeDisplayRow(
     Income Income, MoneyAmountDisplay Amount, decimal? AggregateAmount, string? AggregateCurrency, DateTime DisplayDate = default)
 {
+    public IncomeCategoryGroup Category { get; init; } = IncomeCategoryGroup.Uncategorized;
     internal static string FormatTotals(IEnumerable<IncomeDisplayRow> rows) => HistoricalExchangeRates.FormatTotals(rows
         .Where(row => row.AggregateAmount.HasValue).Select(row => (row.AggregateAmount!.Value, row.AggregateCurrency)));
+}
+
+internal sealed record IncomeCategoryGroup(Guid Id, BudgetCategoryDto? Category)
+{
+    internal static IncomeCategoryGroup Uncategorized { get; } = new(Guid.Empty, null);
+    public string Label => Category?.Name ?? (Id == Guid.Empty ? "Без категории" : "Категория недоступна");
+    public string? IconKey => Category?.IconKey;
+    public override string ToString() => Label;
 }
 
 public sealed class IncomeGroupPresentationConverter : IValueConverter, IMultiValueConverter

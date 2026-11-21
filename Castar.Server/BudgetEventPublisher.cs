@@ -30,6 +30,8 @@ internal sealed class BudgetEventPublisher(
     private bool pendingCategories;
     private bool pendingPurchaseClassification;
     private bool pendingPurchaseClassificationRequest;
+    private bool pendingIncomeClassification;
+    private bool pendingIncomeClassificationRequest;
     private long? pendingSettingsRevision;
 
     public void Queue(BudgetChange purchases, BudgetChange incomes)
@@ -63,6 +65,12 @@ internal sealed class BudgetEventPublisher(
                 case ServerSynchronization.PurchaseClassificationRequested:
                     pendingPurchaseClassificationRequest = true;
                     break;
+                case ServerSynchronization.IncomeClassification:
+                    pendingIncomeClassification = true;
+                    break;
+                case ServerSynchronization.IncomeClassificationRequested:
+                    pendingIncomeClassificationRequest = true;
+                    break;
                 case ServerSynchronization.Settings when revision is { } version:
                     pendingSettingsRevision = Math.Max(pendingSettingsRevision ?? version, version);
                     break;
@@ -78,7 +86,8 @@ internal sealed class BudgetEventPublisher(
         await foreach (var _ in wake.Reader.ReadAllAsync(stoppingToken))
         {
             BudgetChange purchases, incomes;
-            bool users, categories, purchaseClassification, purchaseClassificationRequest;
+            bool users, categories, purchaseClassification, purchaseClassificationRequest,
+                incomeClassification, incomeClassificationRequest;
             long? settingsRevision;
             lock (gate)
             {
@@ -88,6 +97,8 @@ internal sealed class BudgetEventPublisher(
                 categories = pendingCategories;
                 purchaseClassification = pendingPurchaseClassification;
                 purchaseClassificationRequest = pendingPurchaseClassificationRequest;
+                incomeClassification = pendingIncomeClassification;
+                incomeClassificationRequest = pendingIncomeClassificationRequest;
                 settingsRevision = pendingSettingsRevision;
                 pendingPurchases = default;
                 pendingIncomes = default;
@@ -95,6 +106,8 @@ internal sealed class BudgetEventPublisher(
                 pendingCategories = false;
                 pendingPurchaseClassification = false;
                 pendingPurchaseClassificationRequest = false;
+                pendingIncomeClassification = false;
+                pendingIncomeClassificationRequest = false;
                 pendingSettingsRevision = null;
             }
 
@@ -114,6 +127,12 @@ internal sealed class BudgetEventPublisher(
             if (purchaseClassificationRequest)
                 await SendToActiveKeysAsync(ServerSynchronization.Changed,
                     new ServerSynchronizationDto(ServerSynchronization.PurchaseClassificationRequested), stoppingToken);
+            if (incomeClassification)
+                await SendToActiveKeysAsync(ServerSynchronization.Changed,
+                    new ServerSynchronizationDto(ServerSynchronization.IncomeClassification), stoppingToken);
+            if (incomeClassificationRequest)
+                await SendToActiveKeysAsync(ServerSynchronization.Changed,
+                    new ServerSynchronizationDto(ServerSynchronization.IncomeClassificationRequested), stoppingToken);
             if (settingsRevision is { } revision)
                 await SendToActiveKeysAsync(ServerSynchronization.Changed,
                     new ServerSynchronizationDto(ServerSynchronization.Settings, revision), stoppingToken);

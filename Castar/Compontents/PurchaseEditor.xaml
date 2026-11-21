@@ -23,7 +23,7 @@
                      Style="{StaticResource PurchaseFormTextBox}" Tag="{StaticResource PurchaseForm.StyledInput}"/>
             <TextBlock x:Name="PurchaseNamePlaceholder" Text="Например, Продукты"
                        Style="{StaticResource PurchaseFormPlaceholder}" Tag="{Binding ElementName=PurchaseName}"/>
-            <Path Style="{StaticResource PurchaseFormFieldIcon}" Data="{StaticResource PurchaseForm.NameIcon}"/>
+            <Path Style="{StaticResource PurchaseFormFieldIcon}" Data="{StaticResource Lucide.tag}"/>
         </Grid>
         <TextBlock x:Name="PlaceLabel" Text="Место покупки" Style="{StaticResource FormFieldLabel}"/>
         <Grid>
@@ -31,7 +31,7 @@
                      Style="{StaticResource PurchaseFormTextBox}" Tag="{StaticResource PurchaseForm.StyledInput}"/>
             <TextBlock x:Name="RetailPlacePlaceholder" Text="Магазин, сервис, кафе…"
                        Style="{StaticResource PurchaseFormPlaceholder}" Tag="{Binding ElementName=RetailPlace}"/>
-            <Path Style="{StaticResource PurchaseFormFieldIcon}" Data="{StaticResource PurchaseForm.RetailIcon}"/>
+            <Path Style="{StaticResource PurchaseFormFieldIcon}" Data="{StaticResource Lucide.store}"/>
         </Grid>
         <TextBlock x:Name="AddressLabel" Text="Адрес" Style="{StaticResource FormFieldLabel}"/>
         <Grid>
@@ -39,7 +39,7 @@
                      Style="{StaticResource PurchaseFormTextBox}" Tag="{StaticResource PurchaseForm.StyledInput}"/>
             <TextBlock x:Name="RetailAddressPlaceholder" Text="Необязательно"
                        Style="{StaticResource PurchaseFormPlaceholder}" Tag="{Binding ElementName=RetailPlaceAddress}"/>
-            <Path Style="{StaticResource PurchaseFormFieldIcon}" Data="{StaticResource PurchaseForm.AddressIcon}"/>
+            <Path Style="{StaticResource PurchaseFormFieldIcon}" Data="{StaticResource Lucide.map-pin}"/>
         </Grid>
         <TextBlock x:Name="DateLabel" Text="Дата и время" Style="{StaticResource FormFieldLabel}"/>
         <Grid>
@@ -53,7 +53,7 @@
             <Grid Grid.Column="2">
                 <TextBox x:Name="OperationTime" MaxLength="8" AutomationProperties.Name="Время"
                          Style="{StaticResource PurchaseFormTextBox}" Tag="{StaticResource PurchaseForm.StyledInput}"/>
-                <Path Style="{StaticResource PurchaseFormFieldIcon}" Data="{StaticResource PurchaseForm.TimeIcon}"/>
+                <Path Style="{StaticResource PurchaseFormFieldIcon}" Data="{StaticResource Lucide.clock}"/>
             </Grid>
         </Grid>
         <UniformGrid Rows="1">
@@ -62,7 +62,7 @@
                 <Grid>
                     <c:CastarComboBox x:Name="PurchaseCurrency" DisplayMemberPath="Label" Padding="34,7,8,7"
                                       AutomationProperties.LabeledBy="{Binding ElementName=CurrencyLabel}"/>
-                    <Path Style="{StaticResource PurchaseFormFieldIcon}" Data="{StaticResource PurchaseForm.CurrencyIcon}"/>
+                    <Path Style="{StaticResource PurchaseFormFieldIcon}" Data="{StaticResource Lucide.coins}"/>
                 </Grid>
             </StackPanel>
             <c:BudgetCategoryPicker x:Name="PurchaseCategory"/>

@@ -30,7 +30,7 @@
                     AutomationProperties.Name="Добавить товар" HorizontalContentAlignment="Left"
                     Foreground="{StaticResource PurchaseForm.Accent}" IsTabStop="False" MinHeight="40" Margin="0">
                 <StackPanel Orientation="Horizontal">
-                    <Path Data="M2,7 H12 M7,2 V12" Width="14" Height="14" Stretch="Uniform"
+                    <Path Data="{StaticResource Lucide.plus}" Width="14" Height="14" Stretch="Uniform"
                           Stroke="{StaticResource PurchaseForm.Accent}" StrokeThickness="1.5" StrokeStartLineCap="Round"
                           StrokeEndLineCap="Round" VerticalAlignment="Center" Margin="0,0,8,0"/>
                     <TextBlock Text="Добавить товар" VerticalAlignment="Center"/>

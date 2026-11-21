@@ -105,6 +105,12 @@
       </ResourceDictionary>
     </UserControl.Resources>
     <Grid Background="Transparent">
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition/>
+            <ColumnDefinition x:Name="RetainedGap" Width="0"/>
+            <ColumnDefinition x:Name="RetainedColumn" Width="0"/>
+        </Grid.ColumnDefinitions>
+        <Grid x:Name="PresentationLayer">
         <Border Background="{Binding Background,ElementName=border}"
                 Width="{Binding ActualWidth,ElementName=border}"
                 Height="{Binding ActualHeight,ElementName=border}"
@@ -175,7 +181,8 @@
                                     </Style.Triggers>
                                 </Style>
                             </Button.Style>
-                            <Path Data="M2,2 L12,12 M12,2 L2,12" Stroke="{StaticResource PurchaseForm.Muted}"
+                            <Path Data="{StaticResource Lucide.x}" Width="14" Height="14" Stretch="Uniform"
+                                  Stroke="{StaticResource PurchaseForm.Muted}"
                                   StrokeThickness="1.7" StrokeStartLineCap="Round" StrokeEndLineCap="Round"/>
                         </Button>
                         <Border x:Name="EditorIconBadge" DockPanel.Dock="Left" Width="44" Height="44" CornerRadius="10"
@@ -337,5 +344,7 @@
                 </Grid>
             </Grid>
         </Border>
+        </Grid>
+        <Grid x:Name="RetainedDialogLayer" Grid.Column="2"/>
     </Grid>
 </UserControl>

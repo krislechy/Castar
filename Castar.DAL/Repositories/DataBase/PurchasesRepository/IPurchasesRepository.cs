@@ -28,8 +28,11 @@ namespace Castar.DAL.Repositories.DataBase
             Guid purchaseId, long expectedRevision, string name, double quantity, decimal price,
             CancellationToken cancellationToken = default, Guid? categoryId = null, bool updateCategory = false);
         Task<IReadOnlyList<PendingPurchaseClassification>> GetPendingClassificationAsync(
-            int limit, CancellationToken cancellationToken);
-        Task<(int QueuedCount, int PendingCount)> QueueUncategorizedItemsAsync(CancellationToken cancellationToken);
+            int limit, CancellationToken cancellationToken, DateTime? first = null, DateTime? endExclusive = null);
+        Task<(int QueuedCount, int PendingCount)> QueueUncategorizedItemsAsync(CancellationToken cancellationToken,
+            DateTime? first = null, DateTime? endExclusive = null);
+        Task<int> CountUncategorizedPurchasesAsync(DateTime? first, DateTime? endExclusive, CancellationToken token);
+        Task<int> CountPendingItemsAsync(DateTime? first, DateTime? endExclusive, CancellationToken token);
         Task<PurchaseMutationResult> ApplyClassificationAsync(Guid purchaseId, long expectedRevision,
             IReadOnlyDictionary<Guid, Guid?> results, CancellationToken cancellationToken);
     }

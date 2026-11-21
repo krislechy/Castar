@@ -14,6 +14,7 @@ public sealed record UserWriteDto(long TelegramId, string Name, int Sex, byte[] 
 public sealed record IncomeDto(Guid Id, Guid UserId, UserDto User, long MessageId, decimal Sum, string Source, DateTime AddedOn)
 {
     public Guid? CategoryId { get; init; }
+    public bool CategoryConfirmed { get; init; }
     public string? Currency { get; init; }
     public DateTimeOffset? AddedOnUtc { get; init; }
     public DateOnly? RateDate { get; init; }
@@ -57,6 +58,7 @@ public sealed record PurchaseItemDto(Guid Id, string Name, int? Category, double
 {
     public Guid? BudgetCategoryId { get; init; }
     public string? BudgetCategoryName { get; init; }
+    public string? BudgetCategoryIconKey { get; init; }
     public bool CategoryConfirmed { get; init; }
     public bool IsEdited { get; init; }
 }

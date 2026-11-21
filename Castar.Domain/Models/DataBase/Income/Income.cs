@@ -7,6 +7,8 @@ namespace Castar.Domain.Models.DataBase
         public User User { get; set; } = null!;
         public Guid UserId { get; set; }
         public Guid? CategoryId { get; set; }
+        public IncomeCategoryState CategoryState { get; set; }
+        public long CategoryRevision { get; set; }
         public long MessageId
         {
             get => _messageId.GetValueOrDefault();

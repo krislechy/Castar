@@ -36,6 +36,9 @@ internal static class FieldTabNavigation
 
     internal static bool MoveFocus(UIElement scope, bool backwards, bool fromStart = false)
     {
+        if (scope is PopupDialog dialog)
+            scope = dialog.Topmost;
+
         var fields = new List<Control>();
         CollectFields(scope, fields);
         if (fields.Count == 0)

@@ -7,6 +7,7 @@
             <ResourceDictionary.MergedDictionaries>
                 <ResourceDictionary Source="pack://application:,,,/Castar;component/Styles/Chrome.xaml"/>
                 <ResourceDictionary Source="pack://application:,,,/Castar;component/Styles/MainStyle.xaml"/>
+                <ResourceDictionary Source="pack://application:,,,/Castar;component/Styles/LucideIcons.xaml"/>
 
                 <ResourceDictionary Source="pack://application:,,,/Castar;component/Svgs/SystemControls.xaml"/>
                 <ResourceDictionary Source="pack://application:,,,/Castar;component/Svgs/Menu.xaml"/>

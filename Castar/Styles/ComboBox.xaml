@@ -63,7 +63,8 @@
                                     <ToggleButton.Template>
                                         <ControlTemplate TargetType="{x:Type ToggleButton}">
                                             <Border Background="Transparent">
-                                                <Path Data="M 1,1 L 5,5 L 9,1" Stroke="{TemplateBinding Foreground}" StrokeThickness="1.5"
+                                                <Path Data="{StaticResource Lucide.chevron-down}" Width="10" Height="7" Stretch="Uniform"
+                                                      Stroke="{TemplateBinding Foreground}" StrokeThickness="1.5"
                                                       StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round"
                                                       HorizontalAlignment="Right" VerticalAlignment="Center" Margin="0,0,9,0"/>
                                             </Border>

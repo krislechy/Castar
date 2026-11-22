@@ -7,6 +7,7 @@ public sealed record ServerUpdateSnapshotDto(long Sequence, ServerUpdateStatusDt
 public static class ServerSynchronization
 {
     public const string Categories = "categories";
+    public const string RecurringPurchases = "recurring-purchases";
     public const string PurchaseClassification = "purchase-classification";
     public const string PurchaseClassificationRequested = "purchase-classification-requested";
     public const string IncomeClassification = "income-classification";

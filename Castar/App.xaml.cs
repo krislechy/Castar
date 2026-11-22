@@ -176,6 +176,7 @@ public partial class App : Application
             serviceProvider.GetRequiredService<CastarServerClient>().ClearAvatarCache();
             incomes.InvalidateCategoryNames();
             purchases.ResumePurchaseItemQueue();
+            purchases.RefreshRecurringPurchasesAfterServerChange();
             _ = purchases.RefreshAfterServerChangeAsync();
             _ = incomes.RefreshAfterServerChangeAsync();
             _ = categories.RefreshAfterServerChangeAsync();
@@ -183,6 +184,11 @@ public partial class App : Application
         };
         budgetEvents.ConfigurationChanged += change =>
         {
+            if (change.Kind == ServerSynchronization.RecurringPurchases)
+            {
+                purchases.RefreshRecurringPurchasesAfterServerChange();
+                return;
+            }
             if (change.Kind == ServerSynchronization.PurchaseClassification)
             {
                 _ = purchases.RefreshAfterServerChangeAsync();
@@ -198,6 +204,7 @@ public partial class App : Application
             if (change.Kind == ServerSynchronization.Categories)
             {
                 _ = categories.RefreshAfterServerChangeAsync();
+                purchases.RefreshRecurringPurchasesAfterServerChange();
                 _ = purchases.RefreshAfterServerChangeAsync();
                 incomes.InvalidateCategoryNames();
                 _ = incomes.RefreshAfterServerChangeAsync();
@@ -207,6 +214,7 @@ public partial class App : Application
             if (change.Kind == ServerSynchronization.Users)
             {
                 serviceProvider.GetRequiredService<CastarServerClient>().ClearAvatarCache();
+                purchases.RefreshRecurringPurchasesAfterServerChange();
                 _ = purchases.RefreshAfterServerChangeAsync();
                 _ = incomes.RefreshAfterServerChangeAsync();
             }

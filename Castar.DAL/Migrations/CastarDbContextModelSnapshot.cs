@@ -15,7 +15,7 @@ partial class CastarDbContextModelSnapshot : ModelSnapshot
     // If you encounter a merge conflict in the line below, it means you need to
     // discard one of the migration branches and recreate its migrations on top of
     // the other branch. See https://aka.ms/efcore-docs-migrations-conflicts for more info.
-    public override string LastMigrationId => "20261121180251_DefaultBudgetCategories";
+    public override string LastMigrationId => "20261122153253_RecurringPurchaseRetries";
 
     protected override void BuildModel(ModelBuilder modelBuilder)
     {
@@ -395,6 +395,50 @@ partial class CastarDbContextModelSnapshot : ModelSnapshot
                 b.ToTable("Purchases");
             });
 
+        modelBuilder.Entity("Castar.Domain.Models.DataBase.RecurringPurchase", b =>
+            {
+                b.Property<Guid>("Id")
+                    .ValueGeneratedOnAdd()
+                    .HasColumnType("TEXT");
+
+                b.Property<bool>("IsPaused")
+                    .HasColumnType("INTEGER");
+
+                b.Property<DateTime?>("LastRunUtc")
+                    .HasColumnType("TEXT");
+
+                b.Property<int>("NextOccurrence")
+                    .HasColumnType("INTEGER");
+
+                b.Property<DateTime?>("NextRunUtc")
+                    .HasColumnType("TEXT");
+
+                b.Property<DateTime?>("RetryAfterUtc")
+                    .HasColumnType("TEXT");
+
+                b.Property<int>("RetryCount")
+                    .HasColumnType("INTEGER");
+
+                b.Property<long>("Revision")
+                    .IsConcurrencyToken()
+                    .HasColumnType("INTEGER");
+
+                b.Property<string>("ScheduleJson")
+                    .IsRequired()
+                    .HasColumnType("TEXT");
+
+                b.Property<Guid>("UserId")
+                    .HasColumnType("TEXT");
+
+                b.HasKey("Id");
+
+                b.HasIndex("UserId");
+
+                b.HasIndex("IsPaused", "NextRunUtc", "Id");
+
+                b.ToTable("RecurringPurchases");
+            });
+
         modelBuilder.Entity("Castar.Domain.Models.DataBase.User", b =>
             {
                 b.Property<Guid>("Id")
@@ -502,6 +546,15 @@ partial class CastarDbContextModelSnapshot : ModelSnapshot
                     .HasConstraintName("FK_Purchases_Users");
 
                 b.Navigation("User");
+            });
+
+        modelBuilder.Entity("Castar.Domain.Models.DataBase.RecurringPurchase", b =>
+            {
+                b.HasOne("Castar.Domain.Models.DataBase.User", null)
+                    .WithMany()
+                    .HasForeignKey("UserId")
+                    .OnDelete(DeleteBehavior.Cascade)
+                    .IsRequired();
             });
 
         modelBuilder.Entity("Castar.Domain.Models.DataBase.Purchase", b =>

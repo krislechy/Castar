@@ -75,4 +75,32 @@
             </Trigger>
         </ControlTemplate.Triggers>
     </ControlTemplate>
+    <Style x:Key="CastarTextEditingMenuItem" TargetType="MenuItem" BasedOn="{StaticResource {x:Type MenuItem}}">
+        <Setter Property="Template" Value="{StaticResource {x:Static MenuItem.SubmenuItemTemplateKey}}"/>
+        <Setter Property="CommandTarget" Value="{Binding PlacementTarget, RelativeSource={RelativeSource AncestorType=ContextMenu}}"/>
+    </Style>
+    <ContextMenu x:Key="CastarTextEditingMenu" x:Shared="False" Style="{StaticResource {x:Type ContextMenu}}">
+        <ContextMenu.Resources>
+            <Style TargetType="MenuItem" BasedOn="{StaticResource CastarTextEditingMenuItem}"/>
+            <Style x:Key="CastarTextEditingSeparator" TargetType="Separator">
+                <Setter Property="Margin" Value="12,4"/>
+                <Setter Property="Template">
+                    <Setter.Value>
+                        <ControlTemplate TargetType="Separator">
+                            <Border Height="1" Background="{DynamicResource Castar.Divider}" SnapsToDevicePixels="True"/>
+                        </ControlTemplate>
+                    </Setter.Value>
+                </Setter>
+            </Style>
+        </ContextMenu.Resources>
+        <MenuItem Header="Отменить" Command="ApplicationCommands.Undo" InputGestureText="Ctrl+Z"/>
+        <MenuItem Header="Повторить" Command="ApplicationCommands.Redo" InputGestureText="Ctrl+Y"/>
+        <Separator Style="{StaticResource CastarTextEditingSeparator}"/>
+        <MenuItem Header="Вырезать" Command="ApplicationCommands.Cut" InputGestureText="Ctrl+X"/>
+        <MenuItem Header="Копировать" Command="ApplicationCommands.Copy" InputGestureText="Ctrl+C"/>
+        <MenuItem Header="Вставить" Command="ApplicationCommands.Paste" InputGestureText="Ctrl+V"/>
+        <MenuItem Header="Удалить" Command="ApplicationCommands.Delete" InputGestureText="Del"/>
+        <Separator Style="{StaticResource CastarTextEditingSeparator}"/>
+        <MenuItem Header="Выделить всё" Command="ApplicationCommands.SelectAll" InputGestureText="Ctrl+A"/>
+    </ContextMenu>
 </ResourceDictionary>

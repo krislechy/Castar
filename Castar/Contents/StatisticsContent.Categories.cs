@@ -18,6 +18,9 @@ public partial class StatisticsContent
 
     internal void RefreshCategoryChartAfterServerChange()
     {
+        uncategorizedStale = true;
+        uncategorizedRevision++;
+        _ = EnsureUncategorizedAsync();
         categoryChartStale = true;
         categoryChartVersion++;
         EnsureCategoryChart();

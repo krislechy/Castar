@@ -331,6 +331,7 @@ namespace Castar
                     if (!statisticsNavigationAttached)
                     {
                         statisticsContent.Value.ExpenseDayRequested += ShowExpenseDay;
+                        statisticsContent.Value.UncategorizedRequested += ShowUncategorized;
                         statisticsNavigationAttached = true;
                     }
                     MainContent.Content = statisticsContent.Value;
@@ -356,6 +357,20 @@ namespace Castar
             button.IsChecked = true;
             ResetMenuToggleButtons(button);
             SelectSection("Purchases");
+        }
+
+        private void ShowUncategorized(string kind)
+        {
+            if (kind == BudgetEvents.Purchase)
+            {
+                purchasesContent.ShowUncategorized();
+                SelectSection("Purchases");
+            }
+            else if (kind == BudgetEvents.Income)
+            {
+                incomesContent.ShowUncategorized();
+                SelectSection("Incomes");
+            }
         }
 
         internal void SetNavigationExpanded(bool expanded, bool animate = true)

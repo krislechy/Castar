@@ -263,18 +263,22 @@ public sealed class CastarServerClient(ClientSettings settings) : IDisposable
         return purchases.Select(DisplayPurchase).ToArray();
     }
 
-    internal async Task<PurchaseDto[]> GetPurchaseSummariesAsync(DateTime start, DateTime finish, CancellationToken token)
+    internal async Task<PurchaseDto[]> GetPurchaseSummariesAsync(DateTime start, DateTime finish,
+        CancellationToken token, bool requireCategoryCoverage = false)
     {
+        PurchaseDto[] summaries;
         try
         {
-            var summaries = await SendAsync<PurchaseDto[]>(HttpMethod.Get, $"api/purchases/summary?{DateQuery(start, finish)}",
+            summaries = await SendAsync<PurchaseDto[]>(HttpMethod.Get, $"api/purchases/summary?{DateQuery(start, finish)}",
                 cancellationToken: token);
-            return summaries.Select(DisplayPurchase).ToArray();
         }
         catch (HttpRequestException error) when (MissingRoute(error))
         {
             return await GetPurchasesAsync(start, finish, token);
         }
+        if (requireCategoryCoverage && summaries.Any(row => row.ItemsDeferred && row.HasUncategorizedItems is null))
+            return await GetPurchasesAsync(start, finish, token);
+        return summaries.Select(DisplayPurchase).ToArray();
     }
 
     internal async Task<PurchaseDto> GetPurchaseDetailsAsync(Guid id, CancellationToken token) =>
@@ -348,6 +352,28 @@ public sealed class CastarServerClient(ClientSettings settings) : IDisposable
         SendMutationAsync(HttpMethod.Post, "api/purchases", cancellationToken,
             draft with { Purchase = WritePurchaseTime(draft.Purchase) });
 
+    private const string RecurringPurchasesPath = "api/recurring-purchases";
+
+    internal Task<RecurringPurchaseDto[]> GetRecurringPurchasesAsync(CancellationToken token) =>
+        SendAsync<RecurringPurchaseDto[]>(HttpMethod.Get, RecurringPurchasesPath, cancellationToken: token);
+
+    internal Task<RecurringPurchaseDto> SaveRecurringPurchaseAsync(RecurringPurchaseWriteDto schedule,
+        RecurringPurchaseDto? existing, CancellationToken token) =>
+        existing is null
+            ? SendAsync<RecurringPurchaseDto>(HttpMethod.Post, RecurringPurchasesPath, schedule, token, readProblemDetails: true)
+            : SendAsync<RecurringPurchaseDto>(HttpMethod.Put, RecurringPurchasePath(existing), schedule, token, readProblemDetails: true);
+
+    internal Task<RecurringPurchaseDto> ChangeRecurringPurchaseAsync(RecurringPurchaseDto schedule, string action,
+        CancellationToken token) =>
+        SendAsync<RecurringPurchaseDto>(HttpMethod.Post, RecurringPurchasePath(schedule, "/" + action),
+            cancellationToken: token, readProblemDetails: true);
+
+    internal Task<bool> DeleteRecurringPurchaseAsync(RecurringPurchaseDto schedule, CancellationToken token) =>
+        DeleteAsync(RecurringPurchasePath(schedule), token);
+
+    private static string RecurringPurchasePath(RecurringPurchaseDto schedule, string suffix = "") =>
+        FormattableString.Invariant($"{RecurringPurchasesPath}/{schedule.Id:D}{suffix}?revision={schedule.Revision}");
+
     public Task<bool> AddPurchaseItemAsync(Guid purchaseId, long revision, PurchaseItemWriteDto item,
         CancellationToken cancellationToken) =>
         SendMutationAsync(HttpMethod.Post, FormattableString.Invariant($"api/purchases/{purchaseId:D}/items?revision={revision}"),
@@ -399,6 +425,23 @@ public sealed class CastarServerClient(ClientSettings settings) : IDisposable
         CancellationToken token) => (await SendAsync<ClassificationCountDto>(HttpMethod.Get,
             $"{ClassificationPath(kind)}/count?{ExclusiveUtcRange(startUtc, endUtc)}", cancellationToken: token)
             .ConfigureAwait(false)).Count;
+
+    internal async Task<(int Purchases, int Incomes)?> GetUncategorizedCountsAsync(DateTime start, DateTime finish,
+        CancellationToken token)
+    {
+        var period = GetUtcPeriod(start, finish);
+        var purchases = GetClassificationCountAsync(BudgetEvents.Purchase, period.StartUtc, period.EndUtc, token);
+        var incomes = GetClassificationCountAsync(BudgetEvents.Income, period.StartUtc, period.EndUtc, token);
+        try
+        {
+            await Task.WhenAll(purchases, incomes).ConfigureAwait(false);
+            return (await purchases.ConfigureAwait(false), await incomes.ConfigureAwait(false));
+        }
+        catch (HttpRequestException error) when (MissingRoute(error) && !token.IsCancellationRequested)
+        {
+            return null;
+        }
+    }
 
     public (DateTime StartUtc, DateTime EndUtc) GetUtcPeriod(DateTime start, DateTime finish)
     {
@@ -506,6 +549,9 @@ public sealed class CastarServerClient(ClientSettings settings) : IDisposable
     public Task<BudgetCategoryDto> UpdateCategoryAsync(Guid id, BudgetCategoryWriteDto category,
         CancellationToken token = default) => SendAsync<BudgetCategoryDto>(HttpMethod.Put, $"api/categories/{id:D}",
             category, token, readProblemDetails: true);
+
+    internal Task<bool> DeleteBudgetCategoryAsync(Guid id, CancellationToken token) =>
+        DeleteAsync($"api/categories/{id:D}", token);
 
     internal async Task<IReadOnlyList<BudgetCategoryDto>?> GetOperationCategoriesAsync(string kind, CancellationToken token = default)
     {

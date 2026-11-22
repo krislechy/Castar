@@ -25,6 +25,7 @@ public static partial class CastarEndpoints
         var api = endpoints.MapGroup("/api");
         api.AddEndpointFilter(HandleDatabaseConflicts);
         api.MapExchangeRates();
+        MapRecurringPurchases(api);
         api.MapPost("/backup", DatabaseBackup.DownloadAsync);
         api.MapGet("/settings", (ServerSettings settings) => Results.Ok(settings.Read()));
         api.MapPut("/settings", UpdateServerSettingsAsync);
@@ -38,6 +39,7 @@ public static partial class CastarEndpoints
         api.MapGet("/categories", GetCategories);
         api.MapPost("/categories", CreateCategory);
         api.MapPut("/categories/{id:guid}", UpdateCategory);
+        api.MapDelete("/categories/{id:guid}", DeleteCategory);
 
         api.MapGet("/incomes", GetIncomes);
         api.MapGet("/incomes/{id:guid}", GetIncome);
@@ -376,11 +378,12 @@ public static partial class CastarEndpoints
             return InvalidInput("Укажите допустимый период.");
 
         var rows = await db.Purchases.AsNoTracking().Where(row => row.AddedOn >= first && row.AddedOn <= last)
+            .Select(row => new { Purchase = row, HasUncategorizedItems = row.Items.Any(item => item.BudgetCategoryId == null) })
             .ToListAsync(token);
         if (rows.Count == 0)
             return Results.Ok(Array.Empty<PurchaseDto>());
 
-        var ownerIds = rows.Select(row => row.UserId).Distinct().ToArray();
+        var ownerIds = rows.Select(row => row.Purchase.UserId).Distinct().ToArray();
         var owners = await db.Users.AsNoTracking().Where(user => ownerIds.Contains(user.Id))
             .Select(user => new
             {
@@ -388,13 +391,13 @@ public static partial class CastarEndpoints
                 Owner = new PurchaseOwnerDto(user.Name, user.ImageRaw != null && user.ImageRaw.Length > 0)
             }).ToDictionaryAsync(user => user.Id, user => user.Owner, token);
 
-        var editedIds = rows.Where(row => row.Revision != 0 && row.OriginalReceiptSnapshot != null)
-            .Select(row => row.Id).ToArray();
+        var editedIds = rows.Where(row => row.Purchase.Revision != 0 && row.Purchase.OriginalReceiptSnapshot != null)
+            .Select(row => row.Purchase.Id).ToArray();
         var changedLines = editedIds.Length == 0 ? [] : await db.Items.AsNoTracking()
             .Where(item => editedIds.Contains(item.PurchaseId)).ToListAsync(token);
         var lines = changedLines.ToLookup(item => item.PurchaseId);
-        var result = rows.Select(row => PurchaseDtoFrom(row, owners.GetValueOrDefault(row.UserId),
-            lines[row.Id], deferItems: true)).ToArray();
+        var result = rows.Select(row => PurchaseDtoFrom(row.Purchase, owners.GetValueOrDefault(row.Purchase.UserId),
+            lines[row.Purchase.Id], deferItems: true) with { HasUncategorizedItems = row.HasUncategorizedItems }).ToArray();
         return Results.Json(result, SummaryJson);
     }
 

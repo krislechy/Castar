@@ -40,6 +40,8 @@ public sealed record PurchaseDto(Guid Id, Guid UserId, string Name, decimal Tota
     public PurchaseOwnerDto? Owner { get; init; }
     public bool IsEdited { get; init; }
     public bool ItemsDeferred { get; init; }
+    [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    public bool? HasUncategorizedItems { get; init; }
 }
 
 public sealed record BudgetOperationDto(bool IsIncome, string? Currency, decimal Amount,

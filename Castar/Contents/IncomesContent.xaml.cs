@@ -44,6 +44,7 @@ public partial class IncomesContent : UserControl
     private readonly HashSet<Guid> expandedGroups = [];
     private IReadOnlyDictionary<Guid, BudgetCategoryDto>? categoryNames;
     private string incomeSearch = "";
+    private bool uncategorizedOnly;
     private bool applyingIncomes;
     private bool editingIncome;
     private long revealGeneration;
@@ -372,6 +373,7 @@ public partial class IncomesContent : UserControl
 
     internal void RevealNotification(Guid id, DateTime? addedOn)
     {
+        SetUncategorizedFilter(false);
         notificationTarget = id;
         if (!SelectorRangeDatesElement.IncludeOperationDate(addedOn) && !SelectNotificationTarget())
             _ = RefreshAfterServerChangeAsync();
@@ -627,19 +629,48 @@ public partial class IncomesContent : UserControl
         incomeSearch = (sender as TextBox)?.Text.Trim() ?? "";
         if (SearchPlaceholder is not null)
             SearchPlaceholder.Visibility = incomeSearch.Length == 0 ? Visibility.Visible : Visibility.Collapsed;
+        RefreshIncomeFilter();
+    }
+
+    internal void ShowUncategorized()
+    {
+        IncomeSearchBox.Clear();
+        expandedGroups.Add(Guid.Empty);
+        SetUncategorizedFilter(true);
+        IncomesListView.UpdateLayout();
+        foreach (var expander in VisualChildren<Expander>(IncomesListView))
+            RestoreGroupState(expander);
+    }
+
+    private void ClearUncategorizedFilter_Click(object sender, RoutedEventArgs e) => SetUncategorizedFilter(false);
+
+    private void SetUncategorizedFilter(bool enabled)
+    {
+        if (uncategorizedOnly == enabled)
+            return;
+
+        uncategorizedOnly = enabled;
+        UncategorizedFilterButton.Visibility = enabled ? Visibility.Visible : Visibility.Collapsed;
+        RefreshIncomeFilter();
+    }
+
+    private void RefreshIncomeFilter()
+    {
         if (Resources["IncomesSRC"] is CollectionViewSource { View: { } view })
             view.Refresh();
         if (EmptyIncomeText is not null)
-            EmptyIncomeText.Text = incomeSearch.Length == 0 ? "Нет доходов" : "Ничего не найдено";
+            EmptyIncomeText.Text = incomeSearch.Length != 0 ? "Ничего не найдено"
+                : uncategorizedOnly ? "Нет доходов без категории" : "Нет доходов";
     }
 
     private void Incomes_Filter(object sender, FilterEventArgs e)
     {
-        if (e.Item is not IncomeDisplayRow row || incomeSearch.Length == 0)
+        if (e.Item is not IncomeDisplayRow row)
             return;
-        e.Accepted = new[] { row.Income.Source, row.Category.Label, row.Income.User.Name, row.Amount.Primary, row.Amount.Original,
+        e.Accepted = (!uncategorizedOnly || row.Income.CategoryId is null) &&
+            (incomeSearch.Length == 0 || new[] { row.Income.Source, row.Category.Label, row.Income.User.Name, row.Amount.Primary, row.Amount.Original,
                 row.DisplayDate.ToString("dd.MM.yyyy HH:mm", CultureInfo.CurrentCulture) }
-            .Any(value => value?.Contains(incomeSearch, StringComparison.CurrentCultureIgnoreCase) == true);
+            .Any(value => value?.Contains(incomeSearch, StringComparison.CurrentCultureIgnoreCase) == true));
     }
 
     private void IncomeGroup_Loaded(object sender, RoutedEventArgs e) => RestoreGroupState((Expander)sender);

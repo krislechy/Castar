@@ -22,7 +22,7 @@ public partial class CategoriesContent : UserControl
     private IReadOnlyList<BudgetCategoryDto> categories = [];
     private Task? refreshTask;
     private CancellationTokenSource? loadRequest;
-    private CancellationTokenSource? addRequest;
+    private CancellationTokenSource? mutationRequest;
     private bool refreshNeeded = true;
     private long connectionRevision;
     private long dataRevision;
@@ -68,7 +68,7 @@ public partial class CategoriesContent : UserControl
     {
         connectionRevision++;
         loadRequest?.Cancel();
-        addRequest?.Cancel();
+        mutationRequest?.Cancel();
         state.HasLoaded = false;
         state.Error = "";
         SetCategories([]);
@@ -159,6 +159,68 @@ public partial class CategoriesContent : UserControl
             await OpenCategoryEditorAsync(sender, category.Kind, "Изменить категорию", category);
     }
 
+    private async void DeleteCategory_Click(object sender, RoutedEventArgs e)
+    {
+        if (!state.CanAdd || sender is not Button { DataContext: BudgetCategoryDto category })
+            return;
+
+        var revision = connectionRevision;
+        state.IsEditing = true;
+        PopupDialog.SetContentWarning(this, null);
+        try
+        {
+            var affected = category.Kind == BudgetEvents.Income ? "Связанные доходы" : "Связанные товары";
+            var accepted = await PopupDialog.ShowNested(this,
+                $"Удалить «{category.Name}»? {affected} останутся без категории.",
+                options =>
+                {
+                    options.Title = "Удалить категорию";
+                    options.EditorIcon = (Geometry)FindResource("Lucide.trash-2");
+                    options.SuccessButton.SuccessConfirmButtonText = "Удалить";
+                    options.SuccessButton.SuccessConfirmButtonForeground = Brushes.OrangeRed;
+                    options.AllowMissClick = false;
+                    return options;
+                }, retainParent: true);
+            if (accepted == true && revision == connectionRevision)
+                await ButtonLoading.RunAsync(sender, () => DeleteCategoryAsync(category.Id));
+        }
+        finally
+        {
+            state.IsEditing = false;
+        }
+    }
+
+    private async Task DeleteCategoryAsync(Guid categoryId)
+    {
+        using var request = new CancellationTokenSource();
+        mutationRequest = request;
+        try
+        {
+            var deleted = await server.DeleteBudgetCategoryAsync(categoryId, request.Token);
+            if (request.IsCancellationRequested)
+                return;
+            if (!deleted)
+            {
+                await RefreshAfterServerChangeAsync();
+                if (!request.IsCancellationRequested && categories.Any(category => category.Id == categoryId))
+                    PopupDialog.SetContentWarning(this, "Обновите Castar Server для удаления категорий.");
+                return;
+            }
+
+            dataRevision++;
+            SetCategories(categories.Where(category => category.Id != categoryId).ToArray());
+        }
+        catch (Exception error) when (CastarServerClient.IsConnectionError(error))
+        {
+            if (!request.IsCancellationRequested)
+                await ShowCategoryActionErrorAsync("Не удалось удалить категорию", error);
+        }
+        finally
+        {
+            mutationRequest = null;
+        }
+    }
+
     private async Task OpenCategoryEditorAsync(object sender, string kind, string title, BudgetCategoryDto? category = null)
     {
         if (!state.CanAdd)
@@ -199,7 +261,7 @@ public partial class CategoriesContent : UserControl
     private async Task SaveCategoryAsync(Guid? id, BudgetCategoryWriteDto draft)
     {
         using var request = new CancellationTokenSource();
-        addRequest = request;
+        mutationRequest = request;
         try
         {
             var category = id is { } categoryId
@@ -221,20 +283,25 @@ public partial class CategoriesContent : UserControl
             if (request.IsCancellationRequested)
                 return;
 
-            var message = CastarServerClient.DescribeError(error);
-            if (Application.Current?.MainWindow is MainWindow { MainDialog.ActiveDialog.Content: CategoriesContent })
-                PopupDialog.SetContentWarning(this, message);
-            else
-                await PopupDialog.Show(message, PopupDialog.TypeDialogEnum.Default, options =>
-                {
-                    options.Title = "Не удалось сохранить категорию";
-                    return options;
-                });
+            await ShowCategoryActionErrorAsync("Не удалось сохранить категорию", error);
         }
         finally
         {
-            addRequest = null;
+            mutationRequest = null;
         }
+    }
+
+    private async Task ShowCategoryActionErrorAsync(string title, Exception error)
+    {
+        var message = CastarServerClient.DescribeError(error);
+        if (Application.Current?.MainWindow is MainWindow { MainDialog.ActiveDialog.Content: CategoriesContent })
+            PopupDialog.SetContentWarning(this, message);
+        else
+            await PopupDialog.Show(message, PopupDialog.TypeDialogEnum.Default, options =>
+            {
+                options.Title = title;
+                return options;
+            });
     }
 
     private sealed class CategoryScreenState : BaseSettingsModel

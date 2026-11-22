@@ -28,6 +28,7 @@ internal sealed class BudgetEventPublisher(
     private BudgetChange pendingIncomes;
     private bool pendingUsers;
     private bool pendingCategories;
+    private bool pendingRecurringPurchases;
     private bool pendingPurchaseClassification;
     private bool pendingPurchaseClassificationRequest;
     private bool pendingIncomeClassification;
@@ -59,6 +60,9 @@ internal sealed class BudgetEventPublisher(
                 case ServerSynchronization.Categories:
                     pendingCategories = true;
                     break;
+                case ServerSynchronization.RecurringPurchases:
+                    pendingRecurringPurchases = true;
+                    break;
                 case ServerSynchronization.PurchaseClassification:
                     pendingPurchaseClassification = true;
                     break;
@@ -86,7 +90,7 @@ internal sealed class BudgetEventPublisher(
         await foreach (var _ in wake.Reader.ReadAllAsync(stoppingToken))
         {
             BudgetChange purchases, incomes;
-            bool users, categories, purchaseClassification, purchaseClassificationRequest,
+            bool users, categories, recurringPurchases, purchaseClassification, purchaseClassificationRequest,
                 incomeClassification, incomeClassificationRequest;
             long? settingsRevision;
             lock (gate)
@@ -95,6 +99,7 @@ internal sealed class BudgetEventPublisher(
                 incomes = pendingIncomes;
                 users = pendingUsers;
                 categories = pendingCategories;
+                recurringPurchases = pendingRecurringPurchases;
                 purchaseClassification = pendingPurchaseClassification;
                 purchaseClassificationRequest = pendingPurchaseClassificationRequest;
                 incomeClassification = pendingIncomeClassification;
@@ -104,6 +109,7 @@ internal sealed class BudgetEventPublisher(
                 pendingIncomes = default;
                 pendingUsers = false;
                 pendingCategories = false;
+                pendingRecurringPurchases = false;
                 pendingPurchaseClassification = false;
                 pendingPurchaseClassificationRequest = false;
                 pendingIncomeClassification = false;
@@ -121,6 +127,9 @@ internal sealed class BudgetEventPublisher(
             if (categories)
                 await SendToActiveKeysAsync(ServerSynchronization.Changed,
                     new ServerSynchronizationDto(ServerSynchronization.Categories), stoppingToken);
+            if (recurringPurchases)
+                await SendToActiveKeysAsync(ServerSynchronization.Changed,
+                    new ServerSynchronizationDto(ServerSynchronization.RecurringPurchases), stoppingToken);
             if (purchaseClassification)
                 await SendToActiveKeysAsync(ServerSynchronization.Changed,
                     new ServerSynchronizationDto(ServerSynchronization.PurchaseClassification), stoppingToken);

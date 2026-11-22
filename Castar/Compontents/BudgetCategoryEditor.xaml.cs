@@ -6,6 +6,7 @@ using System.Linq;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
+using System.Windows.Media;
 
 namespace Castar.Compontents;
 
@@ -21,7 +22,7 @@ public partial class BudgetCategoryEditor : UserControl
         IconPicker.SelectedValue = BudgetCategoryIconKeys.Canonicalize(kind, category?.IconKey);
         foreach (var tag in category?.Tags ?? [])
             tags.Add(tag);
-        TagChips.ItemsSource = tags;
+        TagsCount.DataContext = tags;
     }
 
     internal string CategoryName => NameInput.Text.Trim();
@@ -70,13 +71,23 @@ public partial class BudgetCategoryEditor : UserControl
             TagWarning.Text = "";
     }
 
-    private void RemoveTag_Click(object sender, RoutedEventArgs e)
+    private async void ManageTags_Click(object sender, RoutedEventArgs e)
     {
-        if (sender is Button { DataContext: string tag } && tags.Remove(tag))
+        var list = new BudgetCategoryTagsContent(tags);
+        var accepted = await PopupDialog.ShowNested(this, list, options =>
         {
-            TagWarning.Text = "";
-            TagInput.Focus();
-        }
+            options.Title = "Теги";
+            options.EditorIcon = (Geometry)FindResource("Lucide.tags");
+            options.SuccessButton.SuccessConfirmButtonText = "Готово";
+            options.AllowMissClick = false;
+            return options;
+        });
+        if (accepted != true)
+            return;
+
+        foreach (var removed in tags.Except(list.Tags).ToArray())
+            tags.Remove(removed);
+        TagWarning.Text = "";
     }
 
     private void ClearIcon_Click(object sender, RoutedEventArgs e) => IconPicker.SelectedIndex = -1;

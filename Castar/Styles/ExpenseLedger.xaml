@@ -11,6 +11,7 @@
   <Setter Property="Border.CornerRadius" Value="{DynamicResource Castar.Corner.Control}"/>
  </Style>
  <Style x:Key="ExpensePurchaseDayRow" TargetType="ListViewItem" BasedOn="{StaticResource ExpensePurchaseRow}">
+  <Setter Property="BorderThickness" Value="0"/>
   <Setter Property="Template">
    <Setter.Value>
     <ControlTemplate TargetType="ListViewItem">
@@ -18,15 +19,14 @@
       <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
       <Grid x:Name="PurchaseDaySeparator" Margin="8,4,8,3" Visibility="Collapsed" IsHitTestVisible="False">
        <Grid.ColumnDefinitions><ColumnDefinition Width="30"/><ColumnDefinition/></Grid.ColumnDefinitions>
-       <Border x:Name="PurchaseDayBadge" Width="26" Height="22" HorizontalAlignment="Center" VerticalAlignment="Center"
-               Background="{DynamicResource Castar.Field}" BorderBrush="{DynamicResource Castar.FieldBorder}"
-               BorderThickness="1" CornerRadius="{DynamicResource Castar.Corner.Control}" SnapsToDevicePixels="True">
-        <TextBlock Text="{Binding PurchaseDayLabel}" Foreground="{DynamicResource Foreground.White}"
+       <Grid x:Name="PurchaseDayBadge" Width="26" Height="26" HorizontalAlignment="Center" VerticalAlignment="Center">
+        <Ellipse Fill="{DynamicResource Castar.Selection}"/>
+        <TextBlock Text="{Binding PurchaseDayLabel}" Foreground="{DynamicResource Castar.Accent}"
                    FontSize="{StaticResource Castar.Font.Caption}" FontWeight="SemiBold"
                    HorizontalAlignment="Center" VerticalAlignment="Center"/>
-       </Border>
+       </Grid>
        <Border x:Name="PurchaseDaySeparatorLine" Grid.Column="1" Height="1" Margin="8,0,0,0" VerticalAlignment="Center"
-               Background="{DynamicResource Castar.Divider}" SnapsToDevicePixels="True"/>
+               Background="{DynamicResource Castar.Accent}" Opacity="0.15" SnapsToDevicePixels="True"/>
       </Grid>
       <Border x:Name="PurchaseRowSurface" Grid.Row="1" MinHeight="{TemplateBinding MinHeight}"
               Background="{TemplateBinding Background}" Padding="{TemplateBinding Padding}"
@@ -45,7 +45,8 @@
   </Setter>
  </Style>
  <Style x:Key="ExpenseItemRow" TargetType="ListViewItem" BasedOn="{StaticResource ExpensePurchaseRow}">
-  <Setter Property="Margin" Value="0"/><Setter Property="Padding" Value="8,6,0,6"/><Setter Property="MinHeight" Value="40"/>
+  <Setter Property="Margin" Value="0"/><Setter Property="Padding" Value="8,6,0,7"/><Setter Property="MinHeight" Value="40"/>
+  <Setter Property="BorderThickness" Value="0"/>
  </Style>
  <Style x:Key="ExpenseRowActions" TargetType="Button" BasedOn="{StaticResource LedgerIconButton}">
   <Setter Property="MinHeight" Value="30"/><Setter Property="Height" Value="30"/><Setter Property="Width" Value="28"/><Setter Property="Padding" Value="5"/>

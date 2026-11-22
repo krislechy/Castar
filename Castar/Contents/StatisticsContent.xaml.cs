@@ -1,4 +1,5 @@
 using Castar.Compontents;
+using Castar.Api;
 using Castar.Currency;
 using Castar.ServerConnection;
 using Castar.Settings;
@@ -32,6 +33,12 @@ public partial class StatisticsContent : UserControl
 {
     private readonly BudgetStatistics statistics;
     private readonly ClientSettings settings;
+    private readonly CastarServerClient server;
+    private readonly UncategorizedStatusState uncategorizedStatus = new();
+    private CancellationTokenSource? uncategorizedRequest;
+    private (DateTime Start, DateTime Finish, string Zone)? uncategorizedPeriod;
+    private bool uncategorizedStale = true;
+    private int uncategorizedRevision;
     private readonly CartesianChart remainingChart;
     private readonly CartesianChart monthlyChart;
     private readonly CartesianChart burnChart;
@@ -68,6 +75,7 @@ public partial class StatisticsContent : UserControl
     public string ReserveHistorySelection => reserveHistoryMonths.ToString(CultureInfo.InvariantCulture);
     private Task<StatisticsSnapshot>? periodTask;
     internal event Action<DateOnly>? ExpenseDayRequested;
+    internal event Action<string>? UncategorizedRequested;
     private SelectorRangeDates? periodSelector;
     private bool periodChanged;
     internal SelectorRangeDates Dates => periodSelector
@@ -90,6 +98,7 @@ public partial class StatisticsContent : UserControl
     {
         this.statistics = statistics;
         this.settings = settings;
+        this.server = server;
         InitializeComponent();
         BurnHistoryPicker.ItemsSource = BurnHistoryPeriods;
         BurnHistoryPicker.SelectedValue = burnHistoryMonths;
@@ -100,7 +109,15 @@ public partial class StatisticsContent : UserControl
         HeatPanel.Plot.Height = double.NaN;
         CategoriesPanel.KindChanged += (_, _) => DrawCategoryChart();
         CategoriesPanel.FilterChanged += (_, _) => SaveCategoryChartFilter();
-        server.ConnectionChanged += async (_, _) => { statistics.InvalidateCache(); InvalidateCurrentBalance(); await ResetAsync(); };
+        server.ConnectionChanged += async (_, _) =>
+        {
+            CancelUncategorized();
+            uncategorizedPeriod = null;
+            uncategorizedStale = true;
+            statistics.InvalidateCache();
+            InvalidateCurrentBalance();
+            await ResetAsync();
+        };
         settings.PropertyChanged += Settings_PropertyChanged;
     }
 
@@ -116,6 +133,7 @@ public partial class StatisticsContent : UserControl
     {
         if (!IsVisible || listeningForChanges || periodSelector is null) return;
         listeningForChanges = true;
+        _ = EnsureUncategorizedAsync();
         if (periodChanged)
         {
             periodChanged = false;
@@ -134,13 +152,81 @@ public partial class StatisticsContent : UserControl
         if (burnRequest is not null) dataStale = true;
         if (currentBalanceRequest is not null) InvalidateCurrentBalance();
         CancelRefresh();
+        CancelUncategorized();
         CancelCategoryChart(clear: false);
         foreach (var card in Cards) card.Stop();
     }
     private void BudgetContent_SizeChanged(object sender, SizeChangedEventArgs e)
     {
         if (Totals is not null)
-            Totals.Tag = e.NewSize.Width >= 1100 ? 5 : 3;
+            Totals.Tag = e.NewSize.Width >= 1100 ? 6 : 3;
+    }
+    private void UncategorizedPurchases_Click(object sender, RoutedEventArgs e) =>
+        UncategorizedRequested?.Invoke(BudgetEvents.Purchase);
+
+    private void UncategorizedIncomes_Click(object sender, RoutedEventArgs e) =>
+        UncategorizedRequested?.Invoke(BudgetEvents.Income);
+
+    private void CancelUncategorized()
+    {
+        var previous = uncategorizedRequest;
+        uncategorizedRequest = null;
+        previous?.Cancel();
+        if (previous is not null) uncategorizedStale = true;
+        uncategorizedStatus.Update(false, uncategorizedStatus.IsAvailable,
+            uncategorizedStatus.Purchases, uncategorizedStatus.Incomes, uncategorizedStatus.Message);
+    }
+
+    private async Task EnsureUncategorizedAsync()
+    {
+        if (!listeningForChanges || periodSelector is not { HasCompleteRange: true }) return;
+        var range = Dates.RangeDate;
+        if (range.StartDate > range.EndDate) return;
+        var period = (range.StartDate, range.EndDate, settings.DisplayTimeZoneId);
+        if (uncategorizedPeriod != period)
+        {
+            CancelUncategorized();
+            uncategorizedPeriod = period;
+            uncategorizedStale = true;
+            uncategorizedStatus.Update(false, false);
+        }
+        if (!uncategorizedStale || uncategorizedRequest is not null) return;
+        using var request = new CancellationTokenSource();
+        uncategorizedRequest = request;
+        uncategorizedStale = false;
+        var version = uncategorizedRevision;
+        uncategorizedStatus.Update(true, uncategorizedStatus.IsAvailable,
+            uncategorizedStatus.Purchases, uncategorizedStatus.Incomes);
+        try
+        {
+            var counts = await server.GetUncategorizedCountsAsync(range.StartDate, range.EndDate, request.Token);
+            if (request != uncategorizedRequest || request.IsCancellationRequested || version != uncategorizedRevision) return;
+            if (counts is { } available)
+                uncategorizedStatus.Update(false, true, available.Purchases, available.Incomes);
+            else
+                uncategorizedStatus.Update(false, false, message: "Требуется обновление сервера.");
+        }
+        catch (OperationCanceledException) when (request.IsCancellationRequested) { }
+        catch (Exception error) when (CastarServerClient.IsConnectionError(error))
+        {
+            if (request == uncategorizedRequest)
+            {
+                uncategorizedStale = true;
+                uncategorizedStatus.Update(false, false, message: CastarServerClient.DescribeError(error));
+            }
+        }
+        finally
+        {
+            if (request == uncategorizedRequest)
+            {
+                uncategorizedRequest = null;
+                if (version != uncategorizedRevision)
+                {
+                    uncategorizedStale = true;
+                    _ = EnsureUncategorizedAsync();
+                }
+            }
+        }
     }
     private async void Dates_DateRangeChanged(object? sender, EventArgs e)
     {
@@ -164,6 +250,14 @@ public partial class StatisticsContent : UserControl
     }
     private Task ResetAsync()
     {
+        if (periodSelector is not { HasCompleteRange: true })
+        {
+            CancelUncategorized();
+            uncategorizedPeriod = null;
+            uncategorizedStatus.Update(false, false, message: "Укажите период.");
+        }
+        else
+            _ = EnsureUncategorizedAsync();
         CancelRefresh();
         CancelCategoryChart(clear: true);
         if (periodSelector is { HasCompleteRange: false } && currentBalanceRequest is not null)
@@ -263,7 +357,7 @@ public partial class StatisticsContent : UserControl
                     ?? "Начальный остаток недоступен: в истории отсутствует валюта или курс.";
         }
         var reserve = FinancialReserve(current, amount, code);
-        if (reserveOnly && Totals.Items[^1] is StatisticsTotal existing)
+        if (reserveOnly && Totals.Items.OfType<StatisticsTotal>().FirstOrDefault(row => row.HasReserveSelector) is { } existing)
         {
             existing.UpdateReserve(reserve);
             return;
@@ -281,7 +375,8 @@ public partial class StatisticsContent : UserControl
             new StatisticsTotal("Текущий остаток", amount is { } balance
                 ? HistoricalExchangeRates.Format(decimal.Round(balance, 2, MidpointRounding.AwayFromZero), code)
                 : "—", warning, currentBalanceRequest is not null),
-            reserve
+            reserve,
+            new StatisticsTotal("Категории", "") { CategoryStatus = uncategorizedStatus }
         };
     }
 
@@ -841,6 +936,8 @@ public partial class StatisticsContent : UserControl
         public string Warning { get; set; } = Warning;
         public int Sign { get; init; }
         public bool HasReserveSelector { get; init; }
+        public UncategorizedStatusState? CategoryStatus { get; init; }
+        public bool HasCategoryStatus => CategoryStatus is not null;
         public string? AverageMonthlyExpenses { get; set; }
         public string? EstimatedDepletion { get; set; }
         public event PropertyChangedEventHandler? PropertyChanged;

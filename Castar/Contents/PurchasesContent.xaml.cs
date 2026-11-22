@@ -33,12 +33,14 @@ public partial class PurchasesContent : UserControl
     private readonly ObservableCollection<PurchaseRow> purchases = [];
     private ICollectionView? purchaseView;
     private string purchaseSearch = "";
+    private bool uncategorizedOnly;
     private CancellationTokenSource? activeRequest;
     private CancellationTokenSource? comparisonRequest;
     private readonly PeriodComparison comparison = new(increaseIsFavorable: false);
     private CancellationTokenSource? detailsRequest;
     private CancellationTokenSource? avatarRequest;
     private CancellationTokenSource? purchaseAction;
+    private (Guid Id, int Completed, int Total)? reclassificationProgress;
     private long connectionRevision;
     private bool hasLoaded;
     private bool refreshPending;
@@ -202,6 +204,7 @@ public partial class PurchasesContent : UserControl
 
     internal void ShowDay(DateOnly day)
     {
+        SetUncategorizedFilter(false);
         notificationTarget = null;
         Dates.RangeDate = new RangeDate(day.ToDateTime(TimeOnly.MinValue), day.ToDateTime(TimeOnly.MinValue));
     }
@@ -233,7 +236,8 @@ public partial class PurchasesContent : UserControl
         Progress.IsLoading = showProgress || !hasLoaded;
         try
         {
-            var rows = await server.GetPurchaseSummariesAsync(range.StartDate, range.EndDate, request.Token);
+            var rows = await server.GetPurchaseSummariesAsync(range.StartDate, range.EndDate, request.Token,
+                requireCategoryCoverage: uncategorizedOnly);
             if (request != activeRequest || refreshPending)
                 return;
 
@@ -257,7 +261,7 @@ public partial class PurchasesContent : UserControl
         {
             if (request == activeRequest && IsAccessDenied(error))
                 ShowAccessDenied(error);
-            else if (request == activeRequest && !refreshPending && !hasLoaded)
+            else if (request == activeRequest && !refreshPending && (showProgress || !hasLoaded))
                 ShowStatus(CastarServerClient.DescribeError(error));
         }
         finally
@@ -571,35 +575,63 @@ public partial class PurchasesContent : UserControl
     {
         var modelConfigured = categorization is not null && !string.IsNullOrWhiteSpace(settings.LocalAi.Model);
         var eligible = ReclassifiablePurchase is not null;
-        ReclassifyPurchaseButton.IsEnabled = modelConfigured && eligible && purchaseAction is null;
+        ReclassifyPurchaseButton.IsAvailable = modelConfigured && eligible && purchaseAction is null;
+        if (reclassificationProgress is { } progress &&
+            PurchasesList.SelectedItem is PurchaseRow selected && selected.Id == progress.Id)
+        {
+            ReclassifyPurchaseButton.IsBusy = true;
+            ReclassifyPurchaseButton.ShowProgress(progress.Completed, progress.Total);
+        }
+        else
+        {
+            ReclassifyPurchaseButton.IsBusy = false;
+            ReclassifyPurchaseButton.ProgressText = "";
+        }
         ReclassifyPurchaseButton.ToolTip = !eligible ? null : modelConfigured
             ? "Повторить категоризацию покупки" : "Выберите модель в настройках автоматической категоризации.";
     }
 
     private async void ReclassifyPurchase_Click(object sender, RoutedEventArgs e)
     {
-        if (categorization is null || !ReclassifyPurchaseButton.IsEnabled || ReclassifiablePurchase is not { } row)
+        if (categorization is null || !ReclassifyPurchaseButton.IsAvailable || ReclassifiablePurchase is not { } row)
             return;
 
         await RunPurchaseActionAsync(async token =>
         {
+            var total = row.Source.Items.Count;
+            reclassificationProgress = (row.Id, 0, total);
+            UpdatePurchaseClassificationButton();
+            var report = new Progress<int>(completed =>
+            {
+                if (token.IsCancellationRequested || purchaseAction?.Token != token || reclassificationProgress is null)
+                    return;
+                reclassificationProgress = (row.Id, completed, total);
+                UpdatePurchaseClassificationButton();
+            });
+            var applied = false;
+            string? message = null;
             try
             {
-                var applied = false;
-                await ButtonLoading.RunAsync(sender, async () =>
-                    applied = await categorization.ReclassifyPurchaseAsync(row.Source, token));
-                if (!applied && !token.IsCancellationRequested)
-                    await ShowPurchaseActionMessageAsync("Повторная категоризация недоступна. Проверьте версию Castar Server.");
+                applied = await categorization.ReclassifyPurchaseAsync(row.Source, token, report);
             }
             catch (InvalidOperationException error) when (!token.IsCancellationRequested)
             {
-                await ShowPurchaseActionMessageAsync(error.Message);
+                message = error.Message;
             }
+            finally
+            {
+                reclassificationProgress = null;
+                UpdatePurchaseClassificationButton();
+            }
+            if (!token.IsCancellationRequested && !applied)
+                await ShowPurchaseActionMessageAsync(message ??
+                    "Повторная категоризация недоступна. Проверьте версию Castar Server.");
         });
     }
 
     internal void RevealNotification(Guid id, DateTime? addedOn)
     {
+        SetUncategorizedFilter(false);
         notificationTarget = id;
         if (!Dates.IncludeOperationDate(addedOn) && !SelectNotificationTarget())
             _ = RefreshAfterServerChangeAsync();
@@ -652,6 +684,35 @@ public partial class PurchasesContent : UserControl
         purchaseSearch = PurchaseSearchBox.Text.Trim();
         if (PurchaseSearchPlaceholder is not null)
             PurchaseSearchPlaceholder.Visibility = purchaseSearch.Length == 0 ? Visibility.Visible : Visibility.Collapsed;
+        RefreshPurchaseFilter();
+    }
+
+    internal void ShowUncategorized()
+    {
+        PurchaseSearchBox.Clear();
+        SetUncategorizedFilter(true);
+    }
+
+    private void ClearUncategorizedFilter_Click(object sender, RoutedEventArgs e) => SetUncategorizedFilter(false);
+
+    private void SetUncategorizedFilter(bool enabled)
+    {
+        if (uncategorizedOnly == enabled)
+            return;
+
+        uncategorizedOnly = enabled;
+        UncategorizedFilterButton.Visibility = enabled ? Visibility.Visible : Visibility.Collapsed;
+        RefreshPurchaseFilter();
+        if (enabled && (activeRequest is not null || purchases.Any(row => row.HasUncategorizedItems is null)))
+        {
+            dataStale = true;
+            if (listeningForChanges)
+                _ = RefreshAsync(showProgress: true);
+        }
+    }
+
+    private void RefreshPurchaseFilter()
+    {
         purchaseView?.Refresh();
         UpdatePurchaseDaySeparators();
         UpdateEmptyPurchases();
@@ -671,16 +732,19 @@ public partial class PurchasesContent : UserControl
         }
     }
 
-    private bool PurchaseMatches(object item) => purchaseSearch.Length == 0 || item is PurchaseRow row &&
-        new[] { row.Name, row.OwnerName, row.RetailPlace, row.RetailPlaceAddress, row.Amount.Primary, row.Amount.Original,
-            row.AddedOn?.ToString("dd.MM.yyyy HH:mm") }.Any(value =>
-            value?.Contains(purchaseSearch, StringComparison.CurrentCultureIgnoreCase) == true);
+    private bool PurchaseMatches(object item) => item is PurchaseRow row &&
+        (!uncategorizedOnly || row.HasUncategorizedItems == true) &&
+        (purchaseSearch.Length == 0 ||
+            new[] { row.Name, row.OwnerName, row.RetailPlace, row.RetailPlaceAddress, row.Amount.Primary, row.Amount.Original,
+                row.AddedOn?.ToString("dd.MM.yyyy HH:mm") }.Any(value =>
+                value?.Contains(purchaseSearch, StringComparison.CurrentCultureIgnoreCase) == true));
 
     private void UpdateEmptyPurchases()
     {
         if (EmptyPurchases is null)
             return;
-        EmptyPurchases.Text = purchaseSearch.Length == 0 ? "Нет покупок" : "Ничего не найдено";
+        EmptyPurchases.Text = purchaseSearch.Length != 0 ? "Ничего не найдено"
+            : uncategorizedOnly ? "Нет покупок с товарами без категории" : "Нет покупок";
         EmptyPurchases.Visibility = hasLoaded && StatusText.Text.Length == 0 && purchaseView?.IsEmpty == true
             ? Visibility.Visible : Visibility.Collapsed;
     }
@@ -947,6 +1011,8 @@ public partial class PurchasesContent : UserControl
         public string? AmountWarning { get; } = GetAmountWarning(source, target, rate);
         public string? SelectionCurrency => Target.Length == 0 ? Source.Currency : Target;
         public int UncategorizedItemCount { get; } = source.Items.Count(item => item.BudgetCategoryId is null);
+        public bool? HasUncategorizedItems => Source.HasUncategorizedItems ??
+            (Source.ItemsDeferred ? null : UncategorizedItemCount > 0);
 
         public ItemRow[] Items { get; } = source.Items.Select(item => new ItemRow(source.Id, item, source.Currency, source.Revision,
             source.Items.Count == 1,

@@ -171,12 +171,16 @@ internal sealed class PeriodClassification
     {
         var modelConfigured = !string.IsNullOrWhiteSpace(settings.LocalAi.Model);
         var progress = categorization?.HistoryProgress;
-        button.IsBusy = submitting || (progress is { Running: true } && progress.Kind == kind
-            && progress.StartUtc == period?.StartUtc && progress.EndUtc == period?.EndUtc);
+        var currentProgress = progress is not null && progress.Kind == kind
+            && progress.StartUtc == period?.StartUtc && progress.EndUtc == period?.EndUtc ? progress : null;
+        button.IsBusy = submitting || currentProgress is { Running: true };
+        if (button.IsBusy)
+            button.ShowProgress(currentProgress?.Completed ?? 0, currentProgress?.Total ?? 0);
+        else
+            button.ProgressText = "";
         button.IsAvailable = categorization is not null && hasCount && button.Count > 0 && modelConfigured
             && !submitting && progress?.Running != true;
-        button.ToolTip = button.IsBusy && progress is { Total: > 0 }
-            ? $"Обработано {progress.Completed:N0} из {progress.Total:N0}"
+        button.ToolTip = button.IsBusy ? null
             : !modelConfigured ? "Выберите модель в настройках автоматической категоризации."
             : button.Count > 0 ? $"{target} без категории · {button.Count:N0}" : "Категоризация за выбранный период";
     }

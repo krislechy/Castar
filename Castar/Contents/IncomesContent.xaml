@@ -77,6 +77,14 @@
              Tag="{Binding Text, ElementName=IncomeSearchBox}" Click="ClearIncomeSearch_Click"/>
     </Grid>
     </Border>
+    <Button x:Name="UncategorizedFilterButton" Style="{StaticResource LedgerActionButton}" Margin="0,0,8,4"
+            Visibility="Collapsed" Click="ClearUncategorizedFilter_Click" AutomationProperties.Name="Сбросить фильтр Без категории">
+     <StackPanel Orientation="Horizontal">
+      <TextBlock Text="Без категории" VerticalAlignment="Center"/>
+      <Path Data="{StaticResource Lucide.x}" Width="12" Height="12" Margin="8,0,0,0" Stretch="Uniform"
+            Stroke="{Binding Foreground, ElementName=UncategorizedFilterButton}" StrokeThickness="1.5"/>
+     </StackPanel>
+    </Button>
     <Border x:Name="SelectionTotal" Style="{StaticResource LedgerSelectionTotal}" Margin="0,0,0,4">
      <TextBlock x:Name="SelectionTotalText" Style="{StaticResource LedgerSelectionTotalText}"/>
     </Border>

@@ -88,7 +88,7 @@ public sealed class LocalAiService : IDisposable
 
     public Task<IReadOnlyList<LocalAiAssignment>> ClassifyAsync(LocalAiOptions options, string? shop,
         IReadOnlyList<LocalAiItem> items, IReadOnlyList<LocalAiCategory> categories, CancellationToken token = default,
-        bool isIncome = false) =>
+        bool isIncome = false, IProgress<int>? progress = null) =>
         RunAsync<IReadOnlyList<LocalAiAssignment>>(async current =>
         {
             if (items.Count == 0 || categories.Count == 0)
@@ -124,6 +124,7 @@ public sealed class LocalAiService : IDisposable
                         result.AddRange(await WithTimeoutAsync(
                             ct => protocol.ClassifyAsync(endpoint, batchOptions, shop, batch, categories, ct, isIncome),
                             InferenceTimeout, current).ConfigureAwait(false));
+                        progress?.Report(result.Count);
                     }
                     catch (LocalAiProtocol.ContextLimitException) when (batch.Length > 1)
                     {

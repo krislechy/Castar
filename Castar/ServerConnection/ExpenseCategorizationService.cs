@@ -45,7 +45,8 @@ public sealed class ExpenseCategorizationService(
 
     public Task CategorizeHistoryAsync(CancellationToken token = default) => StartRun(null, null, null, token);
 
-    internal async Task<bool> ReclassifyPurchaseAsync(PurchaseDto purchase, CancellationToken token = default)
+    internal async Task<bool> ReclassifyPurchaseAsync(PurchaseDto purchase, CancellationToken token = default,
+        IProgress<int>? progress = null)
     {
         if (purchase.Revision is not { } revision || purchase.ItemsDeferred)
             throw new InvalidOperationException("Дождитесь загрузки товаров покупки.");
@@ -64,7 +65,8 @@ public sealed class ExpenseCategorizationService(
         IReadOnlyList<LocalAiAssignment> assignments;
         try
         {
-            assignments = await localAi.ClassifyAsync(options, purchase.RetailPlace, items, categories, token).ConfigureAwait(false);
+            assignments = await localAi.ClassifyAsync(options, purchase.RetailPlace, items, categories, token,
+                progress: progress).ConfigureAwait(false);
         }
         catch (LocalAiProtocol.ContextLimitException)
         {

@@ -1,0 +1,90 @@
+<UserControl x:Class="Castar.Compontents.RecurringPurchasesPanel"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             Width="512" UseLayoutRounding="True" SnapsToDevicePixels="True">
+    <UserControl.Resources>
+        <ResourceDictionary>
+            <ResourceDictionary.MergedDictionaries>
+                <ResourceDictionary Source="/Castar;component/Styles/LedgerCards.xaml"/>
+            </ResourceDictionary.MergedDictionaries>
+            <BooleanToVisibilityConverter x:Key="VisibleWhenTrue"/>
+            <Style x:Key="SubscriptionAction" TargetType="Button" BasedOn="{StaticResource LedgerIconButton}">
+                <Setter Property="Width" Value="32"/>
+                <Setter Property="Height" Value="32"/>
+                <Setter Property="MinHeight" Value="32"/>
+                <Setter Property="Padding" Value="7"/>
+                <Setter Property="VerticalAlignment" Value="Center"/>
+            </Style>
+        </ResourceDictionary>
+    </UserControl.Resources>
+    <StackPanel>
+        <DockPanel Margin="0,0,0,12">
+            <Button x:Name="AddSubscription" Content="Добавить подписку" DockPanel.Dock="Right"
+                    Style="{StaticResource LedgerPrimaryActionButton}" Click="Add_Click"/>
+            <ProgressBar x:Name="Loading" IsIndeterminate="True" Height="3" Width="100"
+                         Margin="0,0,12,0" VerticalAlignment="Center" HorizontalAlignment="Left" Visibility="Collapsed"
+                         AutomationProperties.Name="Загрузка подписок"/>
+        </DockPanel>
+        <TextBlock x:Name="Error" Visibility="Collapsed" Margin="0,0,0,12" TextWrapping="Wrap"
+                   Foreground="{DynamicResource Warning.Svg.Brush}" AutomationProperties.LiveSetting="Polite"/>
+        <TextBlock x:Name="Empty" Text="Нет подписок" Visibility="Collapsed" TextAlignment="Center"
+                   Foreground="{DynamicResource Foreground.Gray}" Margin="0,24,0,32"/>
+        <ListView x:Name="Subscriptions" MaxHeight="344" Style="{StaticResource BudgetList}" Visibility="Collapsed"
+                  HorizontalContentAlignment="Stretch" Background="Transparent" BorderThickness="0"
+                  ScrollViewer.HorizontalScrollBarVisibility="Disabled" AutomationProperties.Name="Список подписок">
+            <ListView.Resources>
+                <Style TargetType="ScrollViewer" BasedOn="{StaticResource LedgerScrollViewer}"/>
+            </ListView.Resources>
+            <ListView.ItemContainerStyle>
+                <Style TargetType="ListViewItem" BasedOn="{StaticResource LedgerCardRow}">
+                    <Setter Property="Padding" Value="12,8"/>
+                    <Setter Property="MinHeight" Value="62"/>
+                    <Setter Property="Margin" Value="0,0,0,4"/>
+                    <Setter Property="BorderThickness" Value="0"/>
+                    <Setter Property="Border.CornerRadius" Value="{DynamicResource Castar.Corner.Control}"/>
+                </Style>
+            </ListView.ItemContainerStyle>
+            <ListView.ItemTemplate>
+                <DataTemplate>
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition/>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+                        <StackPanel Margin="0,0,12,0">
+                            <TextBlock Text="{Binding Name}" TextTrimming="CharacterEllipsis" FontWeight="SemiBold"/>
+                            <TextBlock Text="{Binding Timing}" TextTrimming="CharacterEllipsis"
+                                       Foreground="{DynamicResource Foreground.Gray}" FontSize="12" Margin="0,4,0,0"/>
+                        </StackPanel>
+                        <StackPanel Grid.Column="1" VerticalAlignment="Center" Margin="0,0,12,0" MaxWidth="148">
+                            <TextBlock Text="{Binding Amount}" TextTrimming="CharacterEllipsis"
+                                       TextAlignment="Right" FontWeight="SemiBold" Typography.NumeralAlignment="Tabular"/>
+                            <TextBlock Text="На паузе" FontSize="12" TextAlignment="Right" Margin="0,4,0,0"
+                                       Visibility="{Binding Subscription.IsPaused, Converter={StaticResource VisibleWhenTrue}}"
+                                       Foreground="{DynamicResource Foreground.Gray}"/>
+                        </StackPanel>
+                        <Button Grid.Column="2" Style="{StaticResource SubscriptionAction}" ToolTip="Редактировать"
+                                AutomationProperties.Name="{Binding Name, StringFormat='Редактировать подписку {0}'}"
+                                Click="Edit_Click" Content="{StaticResource Ledger.EditIcon}"/>
+                        <Button Grid.Column="3" Style="{StaticResource SubscriptionAction}" ToolTip="Действия"
+                                AutomationProperties.Name="{Binding Name, StringFormat='Действия с подпиской {0}'}" Click="Menu_Click">
+                            <Path Data="{StaticResource Lucide.ellipsis}" Width="16" Height="6" Stretch="Uniform"
+                                  Stroke="{DynamicResource Foreground.White}" StrokeThickness="1.5" StrokeStartLineCap="Round" StrokeEndLineCap="Round"/>
+                            <Button.ContextMenu>
+                                <ContextMenu Style="{StaticResource LedgerContextMenu}" Opened="Menu_Opened">
+                                    <MenuItem x:Name="TogglePause" Style="{StaticResource LedgerMenuItem}" Click="PauseResume_Click"/>
+                                    <MenuItem x:Name="SkipNext" Style="{StaticResource LedgerMenuItem}" Header="Пропустить ближайшую покупку"
+                                              Click="Skip_Click"/>
+                                    <MenuItem Style="{StaticResource LedgerMenuItem}" Header="Удалить подписку" Click="Delete_Click"
+                                              Icon="{StaticResource Ledger.DeleteIcon}"/>
+                                </ContextMenu>
+                            </Button.ContextMenu>
+                        </Button>
+                    </Grid>
+                </DataTemplate>
+            </ListView.ItemTemplate>
+        </ListView>
+    </StackPanel>
+</UserControl>

@@ -14,6 +14,9 @@ public sealed class PeriodClassificationButton : Button
     public static readonly DependencyProperty IsAvailableProperty = DependencyProperty.Register(
         nameof(IsAvailable), typeof(bool), typeof(PeriodClassificationButton), new PropertyMetadata(false));
 
+    public static readonly DependencyProperty ProgressTextProperty = DependencyProperty.Register(
+        nameof(ProgressText), typeof(string), typeof(PeriodClassificationButton), new PropertyMetadata(""));
+
     public PeriodClassificationButton() => SetResourceReference(StyleProperty, "LedgerPeriodClassificationButton");
 
     public int Count
@@ -33,4 +36,13 @@ public sealed class PeriodClassificationButton : Button
         get => (bool)GetValue(IsAvailableProperty);
         set => SetValue(IsAvailableProperty, value);
     }
+
+    public string ProgressText
+    {
+        get => (string)GetValue(ProgressTextProperty);
+        set => SetValue(ProgressTextProperty, value);
+    }
+
+    internal void ShowProgress(int completed, int total) =>
+        ProgressText = total > 0 ? $"{completed:N0} / {total:N0}" : "…";
 }

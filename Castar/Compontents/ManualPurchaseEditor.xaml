@@ -1,6 +1,7 @@
 <UserControl UseLayoutRounding="True" SnapsToDevicePixels="True" x:Class="Castar.Compontents.ManualPurchaseEditor"
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
-             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:c="clr-namespace:Castar.Compontents">
     <UserControl.Resources>
         <ResourceDictionary>
             <ResourceDictionary.MergedDictionaries>
@@ -21,6 +22,24 @@
     </UserControl.Resources>
     <StackPanel MinWidth="536" Margin="0,0,8,0">
         <ContentControl x:Name="HeaderFields" Focusable="False" IsTabStop="False" HorizontalContentAlignment="Stretch"/>
+        <CheckBox x:Name="RepeatPurchase" Content="Повторять покупку" Margin="0,12,0,4"/>
+        <Grid Margin="0,4,0,0"
+              Visibility="{Binding IsChecked, ElementName=RepeatPurchase, Converter={StaticResource PurchaseFormVisibility}}">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="184"/>
+                <ColumnDefinition Width="*"/>
+            </Grid.ColumnDefinitions>
+            <StackPanel>
+                <TextBlock x:Name="FrequencyLabel" Style="{StaticResource FormFieldLabel}" Text="Периодичность"/>
+                <c:CastarComboBox x:Name="FrequencyPicker" DisplayMemberPath="Label" SelectedValuePath="Value"
+                                 AutomationProperties.LabeledBy="{Binding ElementName=FrequencyLabel}"/>
+            </StackPanel>
+            <StackPanel Grid.Column="1" Margin="12,0,0,0">
+                <TextBlock x:Name="ScheduleZoneLabel" Style="{StaticResource FormFieldLabel}" Text="Часовой пояс"/>
+                <c:CastarComboBox x:Name="ScheduleZonePicker" DisplayMemberPath="Label" SelectedValuePath="Id"
+                                 AutomationProperties.LabeledBy="{Binding ElementName=ScheduleZoneLabel}"/>
+            </StackPanel>
+        </Grid>
         <Separator Margin="0,16,0,0" Background="{StaticResource PurchaseForm.Divider}"/>
         <StackPanel x:Name="ItemFields"/>
         <Grid Margin="0,8,0,0">

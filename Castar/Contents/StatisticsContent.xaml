@@ -71,7 +71,7 @@
                            Foreground="{DynamicResource Foreground.Gray}" AutomationProperties.LiveSetting="Polite"
                            Visibility="Collapsed"/>
                 <Grid x:Name="Dashboard" Visibility="Collapsed">
-                  <ItemsControl x:Name="Totals" Tag="5" Margin="0,0,0,6">
+                  <ItemsControl x:Name="Totals" Tag="6" Margin="0,0,0,6">
                     <ItemsControl.ItemsPanel>
                         <ItemsPanelTemplate>
                             <UniformGrid Columns="{Binding Tag, RelativeSource={RelativeSource AncestorType=ItemsControl}}"/>
@@ -80,7 +80,30 @@
                     <ItemsControl.ItemTemplate>
                         <DataTemplate>
                             <Border Style="{StaticResource StatisticsChartSurface}">
-                                <Grid ToolTip="{Binding Warning}">
+                                <Grid>
+                                    <c:UncategorizedStatisticsContent DataContext="{Binding CategoryStatus}"
+                                                                      PurchasesRequested="UncategorizedPurchases_Click"
+                                                                      IncomesRequested="UncategorizedIncomes_Click">
+                                        <c:UncategorizedStatisticsContent.Style>
+                                            <Style TargetType="c:UncategorizedStatisticsContent">
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding}" Value="{x:Null}">
+                                                        <Setter Property="Visibility" Value="Collapsed"/>
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </c:UncategorizedStatisticsContent.Style>
+                                    </c:UncategorizedStatisticsContent>
+                                    <Grid ToolTip="{Binding Warning}">
+                                        <Grid.Style>
+                                            <Style TargetType="Grid">
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding HasCategoryStatus}" Value="True">
+                                                        <Setter Property="Visibility" Value="Collapsed"/>
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </Grid.Style>
                                     <Grid.RowDefinitions>
                                         <RowDefinition Height="Auto"/>
                                         <RowDefinition Height="Auto"/>
@@ -134,6 +157,7 @@
                                             <Style.Triggers><DataTrigger Binding="{Binding IsLoading}" Value="True"><Setter Property="Visibility" Value="Visible"/></DataTrigger></Style.Triggers>
                                         </Style></ProgressBar.Style>
                                     </ProgressBar>
+                                </Grid>
                                 </Grid>
                             </Border>
                         </DataTemplate>

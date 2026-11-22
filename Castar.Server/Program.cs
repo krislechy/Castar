@@ -76,6 +76,11 @@ builder.Services.AddSingleton<IReceiptProvider>(_ => new Nalog(() =>
 }));
 builder.Services.AddSingleton<ServerSettings>();
 builder.Services.AddSingleton(TimeProvider.System);
+builder.Services.AddSingleton(provider => new RecurringPurchaseScheduler(
+    provider.GetRequiredService<IServiceScopeFactory>(), provider.GetRequiredService<BudgetEventPublisher>(),
+    provider.GetRequiredService<TimeProvider>(), provider.GetRequiredService<ILogger<RecurringPurchaseScheduler>>(), IsUpdating));
+if (!verifyingUpdate)
+    builder.Services.AddHostedService(provider => provider.GetRequiredService<RecurringPurchaseScheduler>());
 builder.Services.AddSingleton(provider => new ReceiptQueueNotifications(settings,
     provider.GetRequiredService<ILogger<ReceiptQueueNotifications>>(),
     new HttpClient { Timeout = TimeSpan.FromSeconds(30) }));

@@ -13,6 +13,7 @@ namespace Castar.DAL
 
         public DbSet<User> Users => Set<User>();
         public DbSet<Purchase> Purchases => Set<Purchase>();
+        public DbSet<RecurringPurchase> RecurringPurchases => Set<RecurringPurchase>();
         public DbSet<Item> Items => Set<Item>();
         public DbSet<ItemCategoryHistory> ItemCategoryHistory => Set<ItemCategoryHistory>();
         public DbSet<Income> Incomes => Set<Income>();
@@ -62,6 +63,14 @@ namespace Castar.DAL
                 .OnDelete(DeleteBehavior.NoAction).HasConstraintName("FK_Purchases_Users");
             purchases.HasOne<BudgetCategory>().WithMany().HasForeignKey(x => x.CategoryId)
                 .OnDelete(DeleteBehavior.Restrict);
+
+            var recurringPurchases = modelBuilder.Entity<RecurringPurchase>();
+            recurringPurchases.ToTable("RecurringPurchases");
+            recurringPurchases.HasKey(x => x.Id);
+            recurringPurchases.Property(x => x.Revision).IsConcurrencyToken();
+            recurringPurchases.HasIndex(x => new { x.IsPaused, x.NextRunUtc, x.Id });
+            recurringPurchases.HasOne<User>().WithMany().HasForeignKey(x => x.UserId)
+                .OnDelete(DeleteBehavior.Cascade);
 
             var items = modelBuilder.Entity<Item>();
             MapTable(items, "Items");

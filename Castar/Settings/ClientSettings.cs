@@ -150,7 +150,9 @@ public sealed class ClientSettings : INotifyPropertyChanged
         ? zone : TimeZoneInfo.Local;
 
     [XmlIgnore]
-    public IReadOnlyList<DisplayTimeZoneOption> DisplayTimeZones { get; } =
+    public IReadOnlyList<DisplayTimeZoneOption> DisplayTimeZones => DisplayTimeZoneOptions;
+
+    internal static IReadOnlyList<DisplayTimeZoneOption> DisplayTimeZoneOptions { get; } =
         [new("", "Системный"), .. TimeZoneInfo.GetSystemTimeZones().Select(item => new DisplayTimeZoneOption(item.Id, item.DisplayName))];
 
     [XmlIgnore]

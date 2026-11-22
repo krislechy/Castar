@@ -29,6 +29,9 @@
                 <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="Hover" Property="Opacity" Value="1"/></Trigger>
                 <Trigger Property="IsPressed" Value="True"><Setter TargetName="Pressed" Property="Opacity" Value="1"/></Trigger>
                 <Trigger Property="IsEnabled" Value="False"><Setter TargetName="Surface" Property="Opacity" Value="0.45"/></Trigger>
+                <Trigger Property="c:PeriodClassificationButton.IsBusy" Value="True">
+                    <Setter TargetName="Surface" Property="Opacity" Value="1"/>
+                </Trigger>
                 <Trigger Property="c:ButtonLoading.IsBusy" Value="True">
                     <Setter TargetName="ButtonContent" Property="Opacity" Value="0"/>
                     <Setter TargetName="Surface" Property="Opacity" Value="1"/>
@@ -91,27 +94,36 @@
   <Setter Property="MinWidth" Value="44"/>
   <Setter Property="Padding" Value="12,8"/>
   <Setter Property="Margin" Value="0,0,8,0"/>
-  <Setter Property="c:ButtonLoading.IsBusy" Value="{Binding IsBusy, RelativeSource={RelativeSource Self}}"/>
   <Setter Property="ContentTemplate">
    <Setter.Value>
     <DataTemplate>
      <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-      <Path Data="{StaticResource Lucide.wand-sparkles}"
-            Width="17" Height="17" Stretch="Uniform" VerticalAlignment="Center"
-            Stroke="{DynamicResource Castar.Accent}" StrokeThickness="1.55"
-            StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round"/>
-      <StackPanel x:Name="PendingCount" Orientation="Horizontal" VerticalAlignment="Center" Margin="8,0,0,0">
-       <Path Data="{StaticResource Lucide.triangle-alert}"
-             Width="14" Height="14" Stretch="Uniform" VerticalAlignment="Center"
-             Stroke="{DynamicResource Warning.Svg.Brush}" StrokeThickness="1.4"
+      <Grid Width="17" Height="17" VerticalAlignment="Center">
+       <Path x:Name="ClassificationGlyph" Data="{StaticResource Lucide.wand-sparkles}"
+             Stretch="Uniform" Stroke="{DynamicResource Castar.Accent}" StrokeThickness="1.55"
              StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round"/>
+       <ContentControl x:Name="ClassificationSpinner" Style="{StaticResource Castar.BusyIndicator}"
+                       Foreground="{DynamicResource Castar.Accent}" Visibility="Collapsed"/>
+      </Grid>
+      <StackPanel x:Name="PendingCount" Orientation="Horizontal" VerticalAlignment="Center" Margin="8,0,0,0">
+       <ContentControl Content="{DynamicResource Svg.Warning}" VerticalAlignment="Center"/>
        <TextBlock Text="{Binding Count, RelativeSource={RelativeSource AncestorType=c:PeriodClassificationButton}}"
                   Foreground="{DynamicResource Warning.Svg.Brush}" FontWeight="SemiBold" Margin="4,0,0,0" VerticalAlignment="Center"/>
       </StackPanel>
+      <TextBlock x:Name="ClassificationProgress" Visibility="Collapsed" MinWidth="32" Margin="8,0,0,0"
+                 Text="{Binding ProgressText, RelativeSource={RelativeSource AncestorType=c:PeriodClassificationButton}}"
+                 Foreground="{DynamicResource Foreground.White}" FontWeight="SemiBold"
+                 Typography.NumeralAlignment="Tabular" VerticalAlignment="Center"/>
      </StackPanel>
      <DataTemplate.Triggers>
       <DataTrigger Binding="{Binding Count, RelativeSource={RelativeSource AncestorType=c:PeriodClassificationButton}}" Value="0">
        <Setter TargetName="PendingCount" Property="Visibility" Value="Collapsed"/>
+      </DataTrigger>
+      <DataTrigger Binding="{Binding IsBusy, RelativeSource={RelativeSource AncestorType=c:PeriodClassificationButton}}" Value="True">
+       <Setter TargetName="PendingCount" Property="Visibility" Value="Collapsed"/>
+       <Setter TargetName="ClassificationGlyph" Property="Visibility" Value="Collapsed"/>
+       <Setter TargetName="ClassificationSpinner" Property="Visibility" Value="Visible"/>
+       <Setter TargetName="ClassificationProgress" Property="Visibility" Value="Visible"/>
       </DataTrigger>
      </DataTemplate.Triggers>
     </DataTemplate>
@@ -119,6 +131,12 @@
   </Setter>
   <Style.Triggers>
    <Trigger Property="IsAvailable" Value="False"><Setter Property="IsEnabled" Value="False"/></Trigger>
+   <Trigger Property="IsBusy" Value="True">
+    <Setter Property="IsEnabled" Value="False"/>
+    <Setter Property="AutomationProperties.ItemStatus"
+            Value="{Binding ProgressText, RelativeSource={RelativeSource Self}, StringFormat='Категоризация: {0}'}"/>
+    <Setter Property="AutomationProperties.HelpText" Value=""/>
+   </Trigger>
   </Style.Triggers>
  </Style>
  <Style x:Key="LedgerSearchSurface" TargetType="Border" BasedOn="{StaticResource Castar.Panel}">
@@ -202,6 +220,9 @@
 
  <Style x:Key="LedgerIncomeRow" TargetType="ListViewItem" BasedOn="{StaticResource LedgerCardRow}">
   <Setter Property="Padding" Value="26,13"/>
+  <Style.Triggers>
+   <Trigger Property="IsSelected" Value="True"><Setter Property="BorderBrush" Value="Transparent"/></Trigger>
+  </Style.Triggers>
  </Style>
 
  <Style x:Key="LedgerPeriodComparison" TargetType="ContentControl">

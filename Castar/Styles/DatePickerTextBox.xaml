@@ -2,6 +2,7 @@
                     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
     
     <Style TargetType="{x:Type DatePickerTextBox}">
+        <Setter Property="ContextMenu" Value="{DynamicResource CastarTextEditingMenu}"/>
         <Setter Property="Foreground" Value="{StaticResource Foreground.White}"/>
         <Setter Property="ScrollViewer.PanningMode" Value="VerticalFirst"/>
         <Setter Property="Stylus.IsFlicksEnabled" Value="False"/>

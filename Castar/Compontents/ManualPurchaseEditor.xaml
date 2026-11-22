@@ -36,8 +36,18 @@
             </StackPanel>
             <StackPanel Grid.Column="1" Margin="12,0,0,0">
                 <TextBlock x:Name="ScheduleZoneLabel" Style="{StaticResource FormFieldLabel}" Text="Часовой пояс"/>
-                <c:CastarComboBox x:Name="ScheduleZonePicker" DisplayMemberPath="Label" SelectedValuePath="Id"
-                                 AutomationProperties.LabeledBy="{Binding ElementName=ScheduleZoneLabel}"/>
+                <c:CastarComboBox x:Name="ScheduleZonePicker" TextSearch.TextPath="Label" SelectedValuePath="Minutes"
+                                 ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                                 AutomationProperties.LabeledBy="{Binding ElementName=ScheduleZoneLabel}">
+                    <c:CastarComboBox.ItemTemplate>
+                        <DataTemplate>
+                            <TextBlock Text="{Binding Label}" MaxWidth="300" HorizontalAlignment="Left"
+                                       TextTrimming="CharacterEllipsis"/>
+                        </DataTemplate>
+                    </c:CastarComboBox.ItemTemplate>
+                </c:CastarComboBox>
+                <CheckBox x:Name="UseSeasonalTime" Content="Учитывать переход на летнее и зимнее время"
+                          Margin="0,8,0,0"/>
             </StackPanel>
         </Grid>
         <Separator Margin="0,16,0,0" Background="{StaticResource PurchaseForm.Divider}"/>

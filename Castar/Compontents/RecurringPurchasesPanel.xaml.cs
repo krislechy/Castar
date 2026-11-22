@@ -78,13 +78,17 @@ public partial class RecurringPurchasesPanel : UserControl
             RecurringPurchaseFrequency.Yearly => "Ежегодно",
             _ => ""
         };
-        var zone = TimeZoneInfo.TryFindSystemTimeZoneById(item.Schedule.TimeZoneId, out var savedZone)
+        var zone = RecurringPurchaseTime.TryResolve(item.Schedule, out var savedZone)
             ? savedZone : displayZone;
-        var timing = frequency;
+        var hasNumericZone = item.Schedule.ZoneRuleId.HasValue || item.Schedule.UtcOffsetMinutes.HasValue;
+        var timing = hasNumericZone
+            ? $"{frequency} · {RecurringPurchaseTime.FormatOffset((int)zone.GetUtcOffset(DateTimeOffset.UtcNow).TotalMinutes)}"
+            : frequency;
         if (!item.IsPaused && item.NextRunUtc is { } next)
         {
             var local = TimeZoneInfo.ConvertTime(next, zone);
-            var offset = zone.Id == displayZone.Id ? "" : $" (UTC{local:zzz})";
+            var offset = hasNumericZone || zone.Id != displayZone.Id
+                ? $" ({RecurringPurchaseTime.FormatOffset((int)local.Offset.TotalMinutes)})" : "";
             timing = $"{local:dd.MM.yyyy, HH:mm}{offset} · {frequency}";
         }
         return new(item, template.Purchase.Name, timing, FormatAmount(template));

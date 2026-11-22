@@ -3,6 +3,7 @@ using Castar.DAL;
 using Castar.Domain.Models.DataBase;
 using Castar.Domain.Models.SettingsModel;
 using Microsoft.EntityFrameworkCore;
+using TimeZoneConverter;
 
 namespace Castar.Server;
 
@@ -44,9 +45,14 @@ public static partial class CastarEndpoints
             return InvalidInput("Укажите покупку с 1–250 товарами.");
         if (header.UserId is not { } owner || owner == Guid.Empty)
             return InvalidInput("Выберите существующего пользователя.");
-        if (!Enum.IsDefined(input.Frequency) || string.IsNullOrWhiteSpace(input.TimeZoneId) ||
-            !TimeZoneInfo.TryFindSystemTimeZoneById(input.TimeZoneId, out var zone))
-            return InvalidInput("Выберите период повторения и действующий часовой пояс.");
+        if (!Enum.IsDefined(input.Frequency))
+            return InvalidInput("Выберите период повторения.");
+        string? canonicalZone = null;
+        if (input.ZoneRuleId is null && input.UtcOffsetMinutes is null && !string.IsNullOrWhiteSpace(input.TimeZoneId))
+            canonicalZone = TimeZoneInfo.TryConvertWindowsIdToIanaId(input.TimeZoneId, out var iana) ||
+                TZConvert.TryWindowsToIana(input.TimeZoneId, out iana) ? iana : input.TimeZoneId;
+        if (!RecurringPurchaseTime.TryResolve(input with { TimeZoneId = canonicalZone }, out var zone))
+            return InvalidInput("Выберите доступный часовой пояс или смещение UTC от −14:00 до +14:00.");
         if (ValidatePurchase(header) is { } invalidHeader)
             return invalidHeader;
         try
@@ -69,11 +75,11 @@ public static partial class CastarEndpoints
         var localStart = DateTime.SpecifyKind(header.AddedOn, DateTimeKind.Unspecified);
         var policy = settings.ManualCurrencies;
         var currency = header.Currency is null ? policy.DefaultCurrency : ManualCurrencySettings.NormalizeCode(header.Currency);
-        var canonicalZone = TimeZoneInfo.TryConvertWindowsIdToIanaId(input.TimeZoneId, out var iana)
-            ? iana : input.TimeZoneId;
         var schedule = input with
         {
             TimeZoneId = canonicalZone,
+            UtcOffsetMinutes = input.ZoneRuleId is null ? input.UtcOffsetMinutes :
+                (int)zone.GetUtcOffset(localStart).TotalMinutes,
             Template = new(id, header with { Currency = currency, AddedOn = localStart, AddedOnUtc = null }, items)
         };
         var json = RecurringPurchaseScheduler.Serialize(schedule);
@@ -118,7 +124,8 @@ public static partial class CastarEndpoints
             row.NextRunUtc = row.NextOccurrence == 0 ? next :
                 RecurringPurchaseCalendar.GetUtc(localStart, input.Frequency, zone, row.NextOccurrence);
         }
-        else if (previous!.TimeZoneId != schedule.TimeZoneId)
+        else if (previous!.TimeZoneId != schedule.TimeZoneId || previous.ZoneRuleId != schedule.ZoneRuleId ||
+            schedule.ZoneRuleId is null && previous.UtcOffsetMinutes != schedule.UtcOffsetMinutes)
         {
             row.NextRunUtc = RecurringPurchaseCalendar.GetUtc(localStart, input.Frequency, zone, row.NextOccurrence);
         }
@@ -174,7 +181,7 @@ public static partial class CastarEndpoints
 
         var schedule = RecurringPurchaseScheduler.Read(row);
         var anchor = schedule.Template.Purchase.AddedOn;
-        if (!TimeZoneInfo.TryFindSystemTimeZoneById(schedule.TimeZoneId, out var zone))
+        if (!RecurringPurchaseTime.TryResolve(schedule, out var zone))
             return InvalidInput("Измените часовой пояс регулярной покупки.");
         switch (action)
         {

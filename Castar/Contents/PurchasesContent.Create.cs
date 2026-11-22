@@ -26,32 +26,49 @@ public partial class PurchasesContent
             }
             if (editor is null || token.IsCancellationRequested)
                 return;
-            while (!token.IsCancellationRequested)
+            var accepted = await PopupDialog.Show(editor, PopupDialog.TypeDialogEnum.Confirm, options =>
             {
-                try
-                {
-                    await ConfirmAndApplyAsync("Добавить покупку", editor, "Добавить",
-                        async request =>
-                        {
-                            if (editor.SelectedFrequency is null)
-                                return await server.CreatePurchaseAsync(editor.Result!, request);
-                            await server.SaveRecurringPurchaseAsync(CreateRecurringDraft(editor), null, request);
-                            return true;
-                        }, token, editor.Validate, source: sender,
-                        editorIcon: (Geometry)FindResource("Lucide.shopping-cart"));
-                    return;
-                }
-                catch (HttpRequestException error) when (!token.IsCancellationRequested &&
-                    editor.SelectedFrequency.HasValue && error.StatusCode is HttpStatusCode.BadRequest
-                    or HttpStatusCode.NotFound or HttpStatusCode.MethodNotAllowed or HttpStatusCode.UnprocessableEntity)
-                {
-                    await ShowPurchaseActionMessageAsync(error.StatusCode is HttpStatusCode.NotFound
-                        or HttpStatusCode.MethodNotAllowed
-                        ? "Обновите Castar Server для работы с подписками."
-                        : CastarServerClient.DescribeError(error));
-                }
-            }
+                options.Title = "Добавить покупку";
+                options.EditorIcon = (Geometry)FindResource("Lucide.shopping-cart");
+                options.SuccessButton.SuccessConfirmButtonText = "Добавить";
+                options.AllowMissClick = false;
+                options.ConfirmAsync = () => SaveManualPurchaseAsync(editor, null, token);
+                return options;
+            }, editor.Validate);
+            if (accepted == true && !token.IsCancellationRequested)
+                await RefreshAfterPurchaseMutationAsync(token);
         });
+    }
+
+    private async Task<ValidatePopupDialog> SaveManualPurchaseAsync(ManualPurchaseEditor editor,
+        RecurringPurchaseDto? schedule, CancellationToken token)
+    {
+        var isRecurring = editor.SelectedFrequency.HasValue;
+        try
+        {
+            token.ThrowIfCancellationRequested();
+            if (!isRecurring)
+                return await server.CreatePurchaseAsync(editor.Result!, token)
+                    ? new(true, null) : new(false, "Сервер не смог добавить покупку.");
+
+            await server.SaveRecurringPurchaseAsync(CreateRecurringDraft(editor), schedule, token);
+            return new(true, null);
+        }
+        catch (HttpRequestException error) when (isRecurring &&
+            (error.StatusCode == HttpStatusCode.MethodNotAllowed ||
+             error.StatusCode == HttpStatusCode.NotFound && schedule is null))
+        {
+            return new(false, "Обновите Castar Server для работы с подписками.");
+        }
+        catch (HttpRequestException error) when (schedule is not null &&
+            error.StatusCode is HttpStatusCode.Conflict or HttpStatusCode.NotFound or HttpStatusCode.PreconditionFailed)
+        {
+            return new(false, "Подписка изменилась. Откройте её заново для редактирования.");
+        }
+        catch (Exception error) when (CastarServerClient.IsConnectionError(error))
+        {
+            return new(false, CastarServerClient.DescribeError(error));
+        }
     }
 
     private async Task<(ManualPurchaseEditor? Editor, string? Error)> LoadManualPurchaseEditorAsync(
@@ -78,7 +95,7 @@ public partial class PurchasesContent
             }
 
             var zone = settings.DisplayTimeZone;
-            if (recurring is not null && !TimeZoneInfo.TryFindSystemTimeZoneById(recurring.Schedule.TimeZoneId, out zone))
+            if (recurring is not null && !RecurringPurchaseTime.TryResolve(recurring.Schedule, out zone))
             {
                 error = "Часовой пояс подписки недоступен.";
                 return;
@@ -99,7 +116,8 @@ public partial class PurchasesContent
                 AddedOn = DateTime.SpecifyKind(draft.Purchase.AddedOn, DateTimeKind.Unspecified),
                 AddedOnUtc = null
             }
-        }, editor.SelectedFrequency!.Value, editor.ScheduleZone.Id);
+        }, editor.SelectedFrequency!.Value, editor.SelectedLegacyTimeZoneId, editor.SelectedUtcOffsetMinutes,
+            editor.SelectedZoneRuleId);
     }
 
     private async void AddPurchaseItem_Click(object sender, RoutedEventArgs e)

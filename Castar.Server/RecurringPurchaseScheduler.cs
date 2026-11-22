@@ -175,7 +175,7 @@ internal sealed class RecurringPurchaseScheduler(IServiceScopeFactory scopes, Bu
         var header = schedule.Template.Purchase;
         var purchaseId = PurchaseId(row.Id, due);
         var created = false;
-        if (!TimeZoneInfo.TryFindSystemTimeZoneById(schedule.TimeZoneId, out var zone))
+        if (!RecurringPurchaseTime.TryResolve(schedule, out var zone))
             throw new TimeZoneNotFoundException();
         if (!await db.Users.AnyAsync(user => user.Id == row.UserId, token))
             throw new InvalidOperationException("Владелец регулярной покупки недоступен.");

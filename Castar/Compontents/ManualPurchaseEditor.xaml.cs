@@ -8,12 +8,15 @@ using System.Windows.Automation;
 using System.Windows.Controls;
 using System.Windows.Media;
 using System.Windows.Shapes;
-using ClientSettings = Castar.Settings.ClientSettings;
 
 namespace Castar.Compontents;
 
 public partial class ManualPurchaseEditor : UserControl
 {
+    private static readonly (RecurringPurchaseZoneRule Rule, TimeZoneInfo Zone)[] ZoneRules = RecurringPurchaseTime.ZoneRules
+        .Select(rule => (Rule: rule, Zone: rule.TryResolve(out var zone) ? zone : null))
+        .Where(rule => rule.Zone is not null).Select(rule => (rule.Rule, rule.Zone!)).ToArray();
+
     private readonly PurchaseEditor header;
     private readonly string defaultCurrency;
     private readonly IReadOnlyList<BudgetCategoryDto>? categories;
@@ -21,6 +24,11 @@ public partial class ManualPurchaseEditor : UserControl
     private readonly PurchaseWriteDto? originalHeader;
     private readonly RecurringPurchaseFrequency? originalFrequency;
     private readonly TimeZoneInfo initialScheduleZone;
+    private readonly string? legacyZoneId;
+    private readonly bool hasDefaultFixedOffset;
+    private readonly int? savedFixedOffset;
+    private bool updatingOffset;
+    private DateTime? offsetLabelsTime;
 
     internal ManualPurchaseEditor(DateTime localDate, ManualCurrencySettingsDto currencies, IReadOnlyList<User> owners,
         IReadOnlyList<BudgetCategoryDto>? categories = null, RecurringPurchaseDto? recurring = null,
@@ -32,8 +40,13 @@ public partial class ManualPurchaseEditor : UserControl
         purchaseId = recurring?.Id ?? Guid.NewGuid();
         originalHeader = template?.Purchase;
         originalFrequency = recurring?.Schedule.Frequency;
-        initialScheduleZone = scheduleZone ?? (recurring is null
-            ? TimeZoneInfo.Local : TimeZoneInfo.FindSystemTimeZoneById(recurring.Schedule.TimeZoneId));
+        initialScheduleZone = scheduleZone ?? (recurring is not null &&
+            RecurringPurchaseTime.TryResolve(recurring.Schedule, out var resolved)
+                ? resolved : TimeZoneInfo.Local);
+        legacyZoneId = recurring?.Schedule is { UtcOffsetMinutes: null, ZoneRuleId: null } legacy ? legacy.TimeZoneId : null;
+        var ruleId = recurring is null ? MatchZoneRule(initialScheduleZone.Id) : recurring.Schedule.ZoneRuleId;
+        hasDefaultFixedOffset = recurring is null && ruleId is null;
+        savedFixedOffset = recurring?.Schedule is { ZoneRuleId: null } fixedSchedule ? fixedSchedule.UtcOffsetMinutes : null;
         InitializeComponent();
         FrequencyPicker.ItemsSource = new FrequencyOption[]
         {
@@ -44,17 +57,24 @@ public partial class ManualPurchaseEditor : UserControl
         FrequencyPicker.SelectedValue = recurring?.Schedule.Frequency ?? RecurringPurchaseFrequency.Monthly;
         RepeatPurchase.IsChecked = recurring is not null || startRecurring;
         RepeatPurchase.IsEnabled = recurring is null && !startRecurring;
-        var zoneOptions = ClientSettings.DisplayTimeZoneOptions.Where(option => option.Id.Length > 0).ToList();
-        if (!zoneOptions.Any(option => option.Id == initialScheduleZone.Id))
-            zoneOptions.Insert(0, new(initialScheduleZone.Id, initialScheduleZone.DisplayName));
-        ScheduleZonePicker.ItemsSource = zoneOptions;
-        ScheduleZonePicker.SelectedValue = initialScheduleZone.Id;
+        var anchor = originalHeader?.AddedOn ?? localDate;
+        var selection = legacyZoneId is not null ? new ZoneKey(null, null) : ruleId.HasValue
+            ? new ZoneKey(null, ruleId) : new ZoneKey(savedFixedOffset ?? DefaultOffset(anchor), null);
+        UseSeasonalTime.IsChecked = legacyZoneId is not null || ruleId.HasValue;
+        UpdateOffsetOptions(anchor, selection);
         header = new PurchaseEditor(
             new(purchaseId, originalHeader?.UserId ?? Guid.Empty, originalHeader?.Name ?? "", 0,
                 originalHeader?.Currency ?? defaultCurrency, 0, originalHeader?.AddedOn ?? localDate,
                 originalHeader?.RetailPlace, originalHeader?.RetailPlaceAddress, []),
             currencies.Currencies, owners, manualEntry: true);
         HeaderFields.Content = header;
+        ScheduleZonePicker.SelectionChanged += (_, _) =>
+        {
+            if (!updatingOffset)
+                UpdateSeasonalAvailability();
+        };
+        header.OperationDate.SelectedDateChanged += (_, _) => RefreshOffsetOptions();
+        header.OperationTime.TextChanged += (_, _) => RefreshOffsetOptions();
         if (template is { Items.Length: > 0 })
         {
             foreach (var item in template.Items)
@@ -64,8 +84,12 @@ public partial class ManualPurchaseEditor : UserControl
             AddItem();
     }
 
-    internal TimeZoneInfo ScheduleZone => ScheduleZonePicker.SelectedValue is string id &&
-        TimeZoneInfo.TryFindSystemTimeZoneById(id, out var selectedZone) ? selectedZone : initialScheduleZone;
+    private OffsetOption? SelectedOffset => ScheduleZonePicker.SelectedItem as OffsetOption;
+    private bool FollowsSeasonalTime => UseSeasonalTime.IsChecked == true;
+    internal int? SelectedUtcOffsetMinutes => SelectedLegacyTimeZoneId is null ? SelectedOffset?.Minutes : null;
+    internal int? SelectedZoneRuleId => FollowsSeasonalTime ? SelectedOffset?.Key.RuleId : null;
+    internal string? SelectedLegacyTimeZoneId => FollowsSeasonalTime &&
+        SelectedOffset is { Key: { FixedMinutes: null, RuleId: null } } ? legacyZoneId : null;
     internal RecurringPurchaseFrequency? SelectedFrequency => RepeatPurchase.IsChecked == true &&
         FrequencyPicker.SelectedValue is RecurringPurchaseFrequency frequency ? frequency : null;
     internal PurchaseCreateDto? Result { get; private set; }
@@ -82,8 +106,14 @@ public partial class ManualPurchaseEditor : UserControl
         {
             if (SelectedFrequency is not { } frequency)
                 return new(false, "Выберите частоту повторения.");
+            UpdateOffsetOptions(draft.AddedOn, GetZoneSelection(draft.AddedOn));
+            if (SelectedOffset is not { } selected)
+                return new(false, "Выберите часовой пояс.");
             var calendarChanged = draft.AddedOn != originalHeader?.AddedOn || frequency != originalFrequency;
-            if (calendarChanged && draft.AddedOn.Date < TimeZoneInfo.ConvertTime(DateTimeOffset.UtcNow, ScheduleZone).Date)
+            var now = DateTimeOffset.UtcNow;
+            var today = FollowsSeasonalTime && selected.Zone is { } zone ? TimeZoneInfo.ConvertTime(now, zone).Date
+                : now.ToOffset(TimeSpan.FromMinutes(selected.Minutes)).Date;
+            if (calendarChanged && draft.AddedOn.Date < today)
                 return new(false, "Укажите сегодняшнюю или будущую дату для повторения.");
         }
 
@@ -104,6 +134,80 @@ public partial class ManualPurchaseEditor : UserControl
         }, items.ToArray());
         return new(true, null);
     }
+
+    private void RefreshOffsetOptions()
+    {
+        if (header.OperationDate.TryGetDateTime(header.OperationTime.Text, null, out var time))
+            UpdateOffsetOptions(time, GetZoneSelection(time));
+    }
+
+    private ZoneKey? GetZoneSelection(DateTime localDateTime) => hasDefaultFixedOffset && SelectedOffset?.Key.FixedMinutes is not null
+        ? new ZoneKey(DefaultOffset(localDateTime), null) : SelectedOffset?.Key;
+
+    private void UpdateOffsetOptions(DateTime localDateTime, ZoneKey? selection)
+    {
+        if (offsetLabelsTime == localDateTime)
+            return;
+
+        var wallTime = DateTime.SpecifyKind(localDateTime, DateTimeKind.Unspecified);
+        var zoneOptions = ZoneRules.Select(option =>
+        {
+            var minutes = (int)option.Zone.GetUtcOffset(wallTime).TotalMinutes;
+            var cities = ZoneCities(option.Zone.DisplayName, option.Rule.IanaId);
+            return new OffsetOption(new(null, option.Rule.Id), minutes,
+                $"{RecurringPurchaseTime.FormatOffset(minutes)} · {cities}", option.Zone);
+        });
+        IEnumerable<OffsetOption> options = zoneOptions.OrderBy(option => option.Minutes)
+            .ThenBy(option => option.Label, StringComparer.CurrentCultureIgnoreCase);
+        var fallback = hasDefaultFixedOffset ? DefaultOffset(localDateTime) : savedFixedOffset;
+        if (fallback is { } minutes)
+            options = options.Prepend(new OffsetOption(new(minutes, null), minutes,
+                $"{RecurringPurchaseTime.FormatOffset(minutes)} · фиксированный", null));
+        if (legacyZoneId is not null)
+        {
+            var legacyMinutes = (int)initialScheduleZone.GetUtcOffset(wallTime).TotalMinutes;
+            var cities = ZoneCities(initialScheduleZone.DisplayName, legacyZoneId);
+            options = options.Prepend(new OffsetOption(new(null, null), legacyMinutes,
+                $"{RecurringPurchaseTime.FormatOffset(legacyMinutes)} · {cities} (сохранённый)", initialScheduleZone));
+        }
+
+        offsetLabelsTime = localDateTime;
+        updatingOffset = true;
+        var offsetOptions = options.ToArray();
+        ScheduleZonePicker.ItemsSource = offsetOptions;
+        ScheduleZonePicker.SelectedItem = offsetOptions.FirstOrDefault(option => option.Key == selection);
+        updatingOffset = false;
+        UpdateSeasonalAvailability();
+    }
+
+    private void UpdateSeasonalAvailability()
+    {
+        UseSeasonalTime.IsEnabled = SelectedOffset?.Zone is not null;
+        if (!UseSeasonalTime.IsEnabled)
+            UseSeasonalTime.IsChecked = false;
+    }
+
+    private static string ZoneCities(string displayName, string ianaId)
+    {
+        var suffix = displayName.IndexOf(") ", StringComparison.Ordinal);
+        if (suffix < 0)
+            return ianaId[(ianaId.LastIndexOf('/') + 1)..].Replace('_', ' ');
+        return string.Join(", ", displayName[(suffix + 2)..]
+            .Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries).Take(3));
+    }
+
+    private static int? MatchZoneRule(string zoneId)
+    {
+        var windowsId = TimeZoneInfo.TryConvertIanaIdToWindowsId(zoneId, out var mapped) ? mapped : zoneId;
+        return ZoneRules.Select(pair => pair.Rule).FirstOrDefault(rule => rule.IanaId == zoneId)?.Id
+            ?? ZoneRules.Select(pair => pair.Rule).FirstOrDefault(rule => rule.WindowsId == windowsId)?.Id;
+    }
+
+    private int DefaultOffset(DateTime localDateTime) => (int)initialScheduleZone
+        .GetUtcOffset(DateTime.SpecifyKind(localDateTime, DateTimeKind.Unspecified)).TotalMinutes;
+
+    private readonly record struct ZoneKey(int? FixedMinutes, int? RuleId);
+    private sealed record OffsetOption(ZoneKey Key, int Minutes, string Label, TimeZoneInfo? Zone);
 
     private void AddItem_Click(object sender, RoutedEventArgs e) => AddItem()?.FocusItemName();
 

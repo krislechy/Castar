@@ -1,3 +1,5 @@
+using System.Text.Json.Serialization;
+
 namespace Castar.Api;
 
 public enum RecurringPurchaseFrequency
@@ -8,7 +10,10 @@ public enum RecurringPurchaseFrequency
 }
 
 public sealed record RecurringPurchaseWriteDto(PurchaseCreateDto Template,
-    RecurringPurchaseFrequency Frequency, string TimeZoneId);
+    RecurringPurchaseFrequency Frequency,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? TimeZoneId = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] int? UtcOffsetMinutes = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] int? ZoneRuleId = null);
 
 public sealed record RecurringPurchaseDto(Guid Id, RecurringPurchaseWriteDto Schedule,
     DateTimeOffset? NextRunUtc, bool IsPaused, long Revision)

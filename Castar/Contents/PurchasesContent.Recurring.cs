@@ -149,39 +149,16 @@ public partial class PurchasesContent
                 return false;
             }
 
-            while (!token.IsCancellationRequested)
+            var saved = await PopupDialog.ShowNested(panel, editor, options =>
             {
-                var saved = await PopupDialog.ShowNested(panel, editor, options =>
-                {
-                    options.Title = schedule is null ? "Добавить подписку" : "Изменить подписку";
-                    options.EditorIcon = (Geometry)FindResource("Lucide.repeat");
-                    options.SuccessButton.SuccessConfirmButtonText = "Сохранить";
-                    options.AllowMissClick = false;
-                    return options;
-                }, editor.Validate);
-                if (saved != true || token.IsCancellationRequested)
-                    return false;
-
-                try
-                {
-                    await server.SaveRecurringPurchaseAsync(CreateRecurringDraft(editor), schedule, token);
-                    return true;
-                }
-                catch (HttpRequestException validation) when (!token.IsCancellationRequested &&
-                    validation.StatusCode is HttpStatusCode.BadRequest or HttpStatusCode.UnprocessableEntity)
-                {
-                    var retry = await PopupDialog.ShowNested(panel, CastarServerClient.DescribeError(validation), options =>
-                    {
-                        options.Title = "Не удалось сохранить подписку";
-                        options.SuccessButton.SuccessConfirmButtonText = "Исправить";
-                        options.AllowMissClick = false;
-                        return options;
-                    });
-                    if (retry != true)
-                        return false;
-                }
-            }
-            return false;
+                options.Title = schedule is null ? "Добавить подписку" : "Изменить подписку";
+                options.EditorIcon = (Geometry)FindResource("Lucide.repeat");
+                options.SuccessButton.SuccessConfirmButtonText = "Сохранить";
+                options.AllowMissClick = false;
+                options.ConfirmAsync = () => SaveManualPurchaseAsync(editor, schedule, token);
+                return options;
+            }, editor.Validate);
+            return saved == true && !token.IsCancellationRequested;
         }
 
         if (schedule is null)

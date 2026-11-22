@@ -41,6 +41,7 @@ public partial class PopupDialog : UserControl
             (SolidColorBrush)Application.Current.FindResource("Main.Background.lvl3");
         public string? Title { get; set; }
         public Geometry? EditorIcon { get; set; }
+        internal Func<Task<ValidatePopupDialog>>? ConfirmAsync { get; set; }
 
         public sealed class DefaultButtonClass
         {
@@ -98,6 +99,7 @@ public partial class PopupDialog : UserControl
     {
         if (Application.Current?.MainWindow is not MainWindow window
             || window.MainDialog.Topmost is not { ActiveDialog: { } active, closing: false } dialog
+            || active.IsConfirming
             || !dialog.DialogContent.IsAncestorOf(parent))
             return Task.FromResult<bool?>(null);
 
@@ -193,18 +195,18 @@ public partial class PopupDialog : UserControl
         owner = null;
     }
 
-    private void Close(bool? result)
+    private void Close(bool? result, bool validate = true)
     {
         if (retainedChild is { } child)
         {
-            child.Close(result);
+            child.Close(result, validate);
             return;
         }
 
-        if (ActiveDialog is not { } request || closing)
+        if (ActiveDialog is not { IsConfirming: false } request || closing)
             return;
 
-        if (result == true && request.Validation?.Invoke() is { Result: false } invalid)
+        if (validate && result == true && request.Validation?.Invoke() is { Result: false } invalid)
         {
             request.Warning = invalid.Message;
             return;
@@ -280,7 +282,43 @@ public partial class PopupDialog : UserControl
         Close(ActiveDialog is { Type: TypeDialogEnum.Confirm, EscapeReturnsNull: false } ? false : null);
     }
 
-    private void SuccessConfirmEvent(object sender, RoutedEventArgs e) => Close(true);
+    private async void SuccessConfirmEvent(object sender, RoutedEventArgs e) => await ConfirmAsync();
+
+    private async Task ConfirmAsync()
+    {
+        if (ActiveDialog is not { IsConfirming: false } request || closing || retainedChild is not null)
+            return;
+        if (request.ConfirmAsync is not { } submit)
+        {
+            Close(true);
+            return;
+        }
+
+        if (request.Validation?.Invoke() is { Result: false } invalid)
+        {
+            request.Warning = invalid.Message;
+            return;
+        }
+
+        request.Warning = null;
+        request.IsConfirming = true;
+        ValidatePopupDialog result;
+        try
+        {
+            result = await submit();
+        }
+        finally
+        {
+            request.IsConfirming = false;
+        }
+        if (ActiveDialog != request || closing)
+            return;
+        if (result.Result)
+            Close(true, validate: false);
+        else
+            request.Warning = result.Message;
+    }
+
     private void CancelConfirmEvent(object sender, RoutedEventArgs e) => Close(false);
     private void DefaultEvent(object sender, RoutedEventArgs e) => Close(null);
 
@@ -293,6 +331,7 @@ public partial class PopupDialog : UserControl
     public sealed class Request : BaseSettingsModel
     {
         private string? warning;
+        private bool isConfirming;
 
         internal Request(object content, TypeDialogEnum type, Options options, Func<ValidatePopupDialog>? validation)
         {
@@ -307,6 +346,7 @@ public partial class PopupDialog : UserControl
             AllowMissClick = options.AllowMissClick;
             EscapeReturnsNull = options.EscapeReturnsNull;
             Validation = validation;
+            ConfirmAsync = options.ConfirmAsync;
         }
 
         public object Content { get; }
@@ -319,9 +359,11 @@ public partial class PopupDialog : UserControl
         public ButtonPresentation ConfirmButton { get; }
         public ButtonPresentation CancelButton { get; }
         public string? Warning { get => warning; internal set => SetField(ref warning, value); }
+        public bool IsConfirming { get => isConfirming; internal set => SetField(ref isConfirming, value); }
         internal bool AllowMissClick { get; }
         internal bool EscapeReturnsNull { get; }
         internal Func<ValidatePopupDialog>? Validation { get; }
+        internal Func<Task<ValidatePopupDialog>>? ConfirmAsync { get; }
         internal TaskCompletionSource<bool?> Completion { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
     }
 

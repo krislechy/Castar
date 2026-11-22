@@ -3,8 +3,13 @@
     <TargetFramework>net11.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
-    <Version>0.11.16</Version>
+    <Version>0.11.17</Version>
   </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="TimeZoneConverter" />
+    <None Include="..\Castar.Server.iOS\notices\TimeZoneConverter-LICENSE.txt"
+          Link="notices\TimeZoneConverter-LICENSE.txt" CopyToPublishDirectory="PreserveNewest" />
+  </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\Castar.Api\Castar.Api.csproj" />
     <ProjectReference Include="..\Castar.ReleaseUpdates\Castar.ReleaseUpdates.csproj" />

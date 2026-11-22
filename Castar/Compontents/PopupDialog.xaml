@@ -43,9 +43,10 @@
                     BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="{TemplateBinding Border.CornerRadius}" SnapsToDevicePixels="True">
                 <Grid>
                     <Border x:Name="Interaction" Background="Transparent" CornerRadius="{TemplateBinding Border.CornerRadius}" IsHitTestVisible="False"/>
-                    <ContentPresenter Margin="{TemplateBinding Padding}" RecognizesAccessKey="True"
+                    <ContentPresenter x:Name="ActionContent" Margin="{TemplateBinding Padding}" RecognizesAccessKey="True"
                                       HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"
                                       VerticalAlignment="{TemplateBinding VerticalContentAlignment}"/>
+                    <ContentControl Style="{StaticResource Castar.ButtonBusyIndicator}"/>
                 </Grid>
             </Border>
             <ControlTemplate.Triggers>
@@ -57,6 +58,10 @@
                 </Trigger>
                 <Trigger Property="IsEnabled" Value="False">
                     <Setter TargetName="Frame" Property="Opacity" Value="0.45"/>
+                </Trigger>
+                <Trigger Property="local:ButtonLoading.IsBusy" Value="True">
+                    <Setter TargetName="Frame" Property="Opacity" Value="1"/>
+                    <Setter TargetName="ActionContent" Property="Opacity" Value="0"/>
                 </Trigger>
             </ControlTemplate.Triggers>
         </ControlTemplate>
@@ -175,6 +180,9 @@
                                     <Setter Property="Visibility" Value="Collapsed"/>
                                     <Setter Property="Border.CornerRadius" Value="7"/>
                                     <Style.Triggers>
+                                        <DataTrigger Binding="{Binding ActiveDialog.IsConfirming, RelativeSource={RelativeSource AncestorType=local:PopupDialog}}" Value="True">
+                                            <Setter Property="IsEnabled" Value="False"/>
+                                        </DataTrigger>
                                         <DataTrigger Binding="{Binding ActiveDialog.HasEditorHeader, RelativeSource={RelativeSource AncestorType=local:PopupDialog}}" Value="True">
                                             <Setter Property="Visibility" Value="Visible"/>
                                         </DataTrigger>
@@ -222,6 +230,15 @@
                                 </Style>
                             </ScrollViewer.Style>
                             <ContentPresenter x:Name="DialogContent" Content="{Binding ActiveDialog.Content,RelativeSource={RelativeSource AncestorType=local:PopupDialog}}">
+                                <ContentPresenter.Style>
+                                    <Style TargetType="ContentPresenter">
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding ActiveDialog.IsConfirming, RelativeSource={RelativeSource AncestorType=local:PopupDialog}}" Value="True">
+                                                <Setter Property="IsEnabled" Value="False"/>
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </ContentPresenter.Style>
                                 <ContentPresenter.Resources>
                                     <Style TargetType="TextBlock">
                                         <Setter Property="TextWrapping" Value="Wrap"/>
@@ -301,6 +318,7 @@
                         </Grid.Style>
                         <Button x:Name="ConfirmButton"
                                 Content="{Binding ActiveDialog.ConfirmButton.Text,RelativeSource={RelativeSource AncestorType=local:PopupDialog}}"
+                                local:ButtonLoading.IsBusy="{Binding ActiveDialog.IsConfirming, RelativeSource={RelativeSource AncestorType=local:PopupDialog}, FallbackValue=False}"
                                 Padding="16,8"
                                 Click="SuccessConfirmEvent">
                             <Button.Style>
@@ -329,6 +347,9 @@
                                     <Setter Property="Margin" Value="8,0,0,0"/>
                                     <Setter Property="Foreground" Value="{Binding ActiveDialog.CancelButton.Foreground, RelativeSource={RelativeSource AncestorType=local:PopupDialog}}"/>
                                     <Style.Triggers>
+                                        <DataTrigger Binding="{Binding ActiveDialog.IsConfirming, RelativeSource={RelativeSource AncestorType=local:PopupDialog}}" Value="True">
+                                            <Setter Property="IsEnabled" Value="False"/>
+                                        </DataTrigger>
                                         <DataTrigger Binding="{Binding ActiveDialog.HasEditorHeader, RelativeSource={RelativeSource AncestorType=local:PopupDialog}}" Value="True">
                                             <Setter Property="Grid.Column" Value="0"/>
                                             <Setter Property="Margin" Value="0"/>

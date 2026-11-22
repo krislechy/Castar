@@ -64,7 +64,7 @@
         <TextBlock x:Name="MissingAmounts" Grid.Row="1" Margin="{StaticResource BudgetStatusMargin}"
                    Foreground="{DynamicResource Warning.Svg.Brush}" TextWrapping="Wrap"
                    AutomationProperties.LiveSetting="Polite" Visibility="Collapsed"/>
-        <Grid x:Name="BudgetContent" Grid.Row="2" Margin="{StaticResource BudgetContentMargin}" SizeChanged="Charts_SizeChanged">
+        <Grid x:Name="BudgetContent" Grid.Row="2" Margin="{StaticResource BudgetContentMargin}" SizeChanged="BudgetContent_SizeChanged">
           <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
             <StackPanel>
                 <TextBlock x:Name="StatusText" TextWrapping="Wrap" Margin="3,0,3,6"
@@ -141,10 +141,8 @@
                   </ItemsControl>
                 </Grid>
                 <Grid x:Name="Charts">
-                    <Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition x:Name="RemainingColumn"/></Grid.ColumnDefinitions>
+                    <Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition/></Grid.ColumnDefinitions>
                     <Grid.RowDefinitions>
-                        <RowDefinition Height="Auto"/>
-                        <RowDefinition Height="Auto"/>
                         <RowDefinition Height="Auto"/>
                         <RowDefinition Height="Auto"/>
                         <RowDefinition Height="Auto"/>
@@ -165,7 +163,7 @@
                     <c:StatisticsChartCard x:Name="MonthlyPanel" Grid.Row="1" Title="Доходы и расходы по месяцам"
                                            HeaderIcon="{StaticResource Lucide.chart-column-increasing}"/>
                     <c:CategoryStatisticsChart x:Name="CategoriesPanel" Grid.Row="1" Grid.Column="1"/>
-                    <c:StatisticsChartCard x:Name="HeatPanel" Grid.Row="2" Grid.ColumnSpan="2" Title="Тепловая карта расходов"
+                    <c:StatisticsChartCard x:Name="HeatPanel" Grid.Row="2" Title="Тепловая карта расходов"
                                            HeaderIcon="{StaticResource Lucide.calendar-days}"/>
                 </Grid>
             </StackPanel>

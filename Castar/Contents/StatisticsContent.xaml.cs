@@ -137,18 +137,10 @@ public partial class StatisticsContent : UserControl
         CancelCategoryChart(clear: false);
         foreach (var card in Cards) card.Stop();
     }
-    private void Charts_SizeChanged(object sender, SizeChangedEventArgs e)
+    private void BudgetContent_SizeChanged(object sender, SizeChangedEventArgs e)
     {
-        if (RemainingColumn is null) return;
-        var wide = BudgetContent.ActualWidth >= 1100;
-        Totals.Tag = wide ? 5 : 3;
-        RemainingColumn.Width = wide ? new GridLength(1, GridUnitType.Star) : new GridLength(0);
-        Grid.SetColumn(BurnPanel, wide ? 1 : 0);
-        Grid.SetRow(BurnPanel, wide ? 0 : 1);
-        Grid.SetRow(MonthlyPanel, wide ? 1 : 2);
-        Grid.SetColumn(CategoriesPanel, wide ? 1 : 0);
-        Grid.SetRow(CategoriesPanel, wide ? 1 : 3);
-        Grid.SetRow(HeatPanel, wide ? 2 : 4);
+        if (Totals is not null)
+            Totals.Tag = e.NewSize.Width >= 1100 ? 5 : 3;
     }
     private async void Dates_DateRangeChanged(object? sender, EventArgs e)
     {

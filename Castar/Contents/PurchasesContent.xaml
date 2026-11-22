@@ -79,7 +79,7 @@
    <Grid>
     <ListView x:Name="PurchasesList" Style="{StaticResource BudgetList}" Background="Transparent" Padding="0" BorderThickness="0" SelectionMode="Extended" SelectionChanged="PurchasesList_SelectionChanged" ScrollViewer.HorizontalScrollBarVisibility="Disabled" AutomationProperties.Name="Покупки за период">
      <ListView.Resources><Style TargetType="ScrollViewer" BasedOn="{StaticResource LedgerScrollViewer}"/></ListView.Resources>
-     <ListView.ItemContainerStyle><Style TargetType="ListViewItem" BasedOn="{StaticResource ExpensePurchaseRow}"><EventSetter Event="MouseDoubleClick" Handler="PurchaseRow_DoubleClick"/></Style></ListView.ItemContainerStyle>
+     <ListView.ItemContainerStyle><Style TargetType="ListViewItem" BasedOn="{StaticResource ExpensePurchaseDayRow}"><EventSetter Event="MouseDoubleClick" Handler="PurchaseRow_DoubleClick"/></Style></ListView.ItemContainerStyle>
      <ListView.ItemTemplate><DataTemplate>
       <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="32"/></Grid.ColumnDefinitions>
        <c:UserAvatar Width="30" Height="30" Margin="0,0,10,0" Photo="{Binding OwnerAvatar, Converter={StaticResource UserAvatarImageConverter}}" UserName="{Binding OwnerName}" VerticalAlignment="Center"/>

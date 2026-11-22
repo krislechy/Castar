@@ -1,8 +1,8 @@
-## Castar 0.11.14
+## Castar 0.11.15
 
-- Новые товары сохраняются в очереди клиента. Castar повторяет отправку после явного конфликта ревизий покупки и показывает количество ожидающих товаров. При обрыве связи с неизвестным результатом запись остаётся на проверку.
-- При открытии редактора товара, покупки, дохода или пользователя отображается индикатор ожидания. Общий индикатор также работает для сетевых действий из меню, у которых нет видимой кнопки. Быстрые запросы проходят без мигания.
+- Графики статистики расположены в двух равных колонках. Тепловая карта занимает левую половину последней строки.
+- В левом списке расходов покупки по дням разделены тонкой линией и числом дня в скруглённой плашке. При поиске метка переносится к первой видимой покупке дня.
 
 Пакеты Windows, Linux и iPhone входят в один выпуск. Контрольные суммы указаны в `SHA256SUMS.txt`.
 
-[Развёртывание Windows и Linux](https://github.com/krislechy/Castar/blob/v0.11.14/Castar.Server/DEPLOYMENT.md) · [Развёртывание на iPhone](https://github.com/krislechy/Castar/blob/v0.11.14/Castar.Server.iOS/DEPLOYMENT.md) · [Лицензия Lucide](https://github.com/krislechy/Castar/blob/v0.11.14/Castar/Licenses/Lucide.txt)
+[Развёртывание Windows и Linux](https://github.com/krislechy/Castar/blob/v0.11.15/Castar.Server/DEPLOYMENT.md) · [Развёртывание на iPhone](https://github.com/krislechy/Castar/blob/v0.11.15/Castar.Server.iOS/DEPLOYMENT.md) · [Лицензия Lucide](https://github.com/krislechy/Castar/blob/v0.11.15/Castar/Licenses/Lucide.txt)

@@ -237,7 +237,8 @@ public partial class PurchasesContent : UserControl
             if (request != activeRequest || refreshPending)
                 return;
 
-            rows = rows.OrderByDescending(purchase => purchase.AddedOnUtc?.UtcDateTime ?? purchase.AddedOn)
+            rows = rows.OrderByDescending(purchase => purchase.AddedOn?.Date)
+                .ThenByDescending(purchase => purchase.AddedOnUtc?.UtcDateTime ?? purchase.AddedOn)
                 .ThenByDescending(purchase => purchase.Id).ToArray();
             var views = await ConvertPurchasesAsync(rows, target, request.Token);
             if (request != activeRequest || refreshPending)
@@ -442,6 +443,7 @@ public partial class PurchasesContent : UserControl
         finally
         {
             applyingPurchases = false;
+            UpdatePurchaseDaySeparators();
             UpdatePurchaseSelection();
             UpdateEmptyPurchases();
         }
@@ -651,7 +653,22 @@ public partial class PurchasesContent : UserControl
         if (PurchaseSearchPlaceholder is not null)
             PurchaseSearchPlaceholder.Visibility = purchaseSearch.Length == 0 ? Visibility.Visible : Visibility.Collapsed;
         purchaseView?.Refresh();
+        UpdatePurchaseDaySeparators();
         UpdateEmptyPurchases();
+    }
+
+    private void UpdatePurchaseDaySeparators()
+    {
+        if (purchaseView is null)
+            return;
+
+        DateOnly? previousDay = null;
+        foreach (var row in purchaseView.OfType<PurchaseRow>())
+        {
+            var day = row.PurchaseDay;
+            row.SetStartsPurchaseDay(day.HasValue && day != previousDay);
+            previousDay = day;
+        }
     }
 
     private bool PurchaseMatches(object item) => purchaseSearch.Length == 0 || item is PurchaseRow row &&
@@ -919,6 +936,9 @@ public partial class PurchasesContent : UserControl
         public bool CanDelete => Source.Revision.HasValue;
         public bool HasReceiptSource => Source.HasReceiptSource;
         public DateTime? AddedOn => Source.AddedOn;
+        public DateOnly? PurchaseDay => AddedOn is { } time ? DateOnly.FromDateTime(time) : null;
+        public string? PurchaseDayLabel => PurchaseDay?.Day.ToString();
+        public bool StartsPurchaseDay { get; private set; }
         public string? RetailPlace => string.IsNullOrWhiteSpace(Source.RetailPlace) ? null : Source.RetailPlace;
         public string? RetailPlaceAddress => string.IsNullOrWhiteSpace(Source.RetailPlaceAddress) ? null : Source.RetailPlaceAddress;
         public decimal DisplayTotal => Rate is { } value && Source.Currency != Target
@@ -947,6 +967,14 @@ public partial class PurchasesContent : UserControl
                 return;
             OwnerAvatar = image;
             PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(OwnerAvatar)));
+        }
+
+        public void SetStartsPurchaseDay(bool value)
+        {
+            if (StartsPurchaseDay == value)
+                return;
+            StartsPurchaseDay = value;
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(StartsPurchaseDay)));
         }
 
         public PurchaseRow WithDetails(PurchaseDto detail) => new(detail, Target,

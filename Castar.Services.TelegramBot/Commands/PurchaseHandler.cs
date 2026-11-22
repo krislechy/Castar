@@ -22,6 +22,8 @@ public sealed partial class CommandHandler
         var existing = await purchasesService.GetManualPurchaseByMessageId(user.TelegramId, message.MessageId, cancellationToken);
         if (existing is not null && !edited)
             return null;
+        if (existing?.HasMultipleCurrencies() == true)
+            throw new FormatException("Эта покупка содержит товары в разных валютах. Измените её в Castar.");
 
         var policy = settings.ManualCurrencies;
         var inputs = lines.Select(line => ParseItem(line, policy)).ToArray();
@@ -38,13 +40,12 @@ public sealed partial class CommandHandler
             var purchase = new Purchase
             {
                 MessageId = message.MessageId,
-                Name = inputs.Length == 1 ? inputs[0].Name : $"№{message.MessageId}",
-                Currency = currency
+                Name = inputs.Length == 1 ? inputs[0].Name : $"№{message.MessageId}"
             };
             var created = new StringBuilder();
             foreach (var (name, sum, _) in inputs)
             {
-                purchase.Items.Add(NewManualItem(name, sum));
+                purchase.Items.Add(NewManualItem(name, sum, currency));
                 created.AppendLine($"{settings.TelegramBot.PurchaseCreateEmoji} {user.Name} добавил(а) товар [{name}] — {FormatManualAmount(sum, currency)}");
             }
 
@@ -72,7 +73,6 @@ public sealed partial class CommandHandler
 
         var originalItems = existing.Items.ToArray();
         var result = new StringBuilder();
-        existing.Currency = currency;
         for (var index = 0; index < inputs.Length; index++)
         {
             var (name, sum, _) = inputs[index];
@@ -82,26 +82,27 @@ public sealed partial class CommandHandler
                 item.Name = name;
                 item.Price = sum;
                 item.Sum = sum * (decimal)item.Quantity;
+                item.Currency = currency;
                 result.AppendLine($"{settings.TelegramBot.PurchaseUpdateEmoji} {user.Name} обновил(а) товар [{name}] — {FormatManualAmount(item.Sum, currency)}");
                 continue;
             }
 
-            existing.Items.Add(NewManualItem(name, sum));
+            existing.Items.Add(NewManualItem(name, sum, currency));
             result.AppendLine($"{settings.TelegramBot.PurchaseCreateEmoji} {user.Name} добавил(а) товар [{name}] — {FormatManualAmount(sum, currency)}");
         }
 
         foreach (var item in originalItems.Skip(inputs.Length))
         {
             existing.Items.Remove(item);
-            result.AppendLine($"{settings.TelegramBot.PurchaseDeleteEmoji} {user.Name} удалил(а) товар [{item.Name}] — {FormatManualAmount(item.Sum, currency)}");
+            result.AppendLine($"{settings.TelegramBot.PurchaseDeleteEmoji} {user.Name} удалил(а) товар [{item.Name}] — {FormatManualAmount(item.Sum, item.Currency)}");
         }
 
         await purchasesService.Update(existing, cancellationToken);
         return result.ToString();
     }
 
-    private static Item NewManualItem(string name, decimal sum) =>
-        new() { Name = name, Price = sum, Sum = sum, Quantity = 1 };
+    private static Item NewManualItem(string name, decimal sum, string? currency = null) =>
+        new() { Name = name, Price = sum, Sum = sum, Quantity = 1, Currency = currency };
 
     private static (string Name, decimal Sum, string? Currency) ParseItem(string line, ManualCurrencySettings policy) =>
         ParseManualAmount(line, policy) ?? throw new FormatException(PurchaseFormat);

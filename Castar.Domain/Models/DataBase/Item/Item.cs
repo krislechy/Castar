@@ -12,6 +12,7 @@ namespace Castar.Domain.Models.DataBase
         public double Quantity { get; set; }
         public decimal Price { get; set; }
         public decimal Sum { get; set; }
+        public string? Currency { get; set; }
         public ObservableCollection<User> Users { get; set; } = new();
     }
 }

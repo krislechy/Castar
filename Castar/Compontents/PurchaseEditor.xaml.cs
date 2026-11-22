@@ -13,8 +13,7 @@ public partial class PurchaseEditor : UserControl
 {
     private readonly PurchaseDto original;
 
-    internal PurchaseEditor(PurchaseDto purchase, IReadOnlyList<string>? allowedCurrencies = null,
-        IReadOnlyList<User>? owners = null, bool manualEntry = false)
+    internal PurchaseEditor(PurchaseDto purchase, IReadOnlyList<User>? owners = null, bool manualEntry = false)
     {
         original = purchase;
         InitializeComponent();
@@ -31,16 +30,6 @@ public partial class PurchaseEditor : UserControl
             PurchaseOwner.SelectedUser = owners.FirstOrDefault(user => user.Id == purchase.UserId)
                 ?? (owners.Count == 1 ? owners[0] : null);
             PurchaseOwner.Visibility = Visibility.Visible;
-        }
-        if (allowedCurrencies is not null)
-        {
-            var options = allowedCurrencies.Append(purchase.Currency)
-                .Distinct(StringComparer.Ordinal)
-                .Select(code => new CurrencyOption(code, code ?? "Не указана"))
-                .ToArray();
-            PurchaseCurrency.ItemsSource = options;
-            PurchaseCurrency.SelectedItem = options.First(option => option.Code == purchase.Currency);
-            CurrencyField.Visibility = Visibility.Visible;
         }
         if (manualEntry)
         {
@@ -68,10 +57,8 @@ public partial class PurchaseEditor : UserControl
 
         if (!OperationDate.TryGetDateTime(OperationTime.Text, original.AddedOn, out var date))
             return new(false, "Введите дату и время в формате ДД.ММ.ГГГГ ЧЧ:ММ.");
-        var currency = (PurchaseCurrency.SelectedItem as CurrencyOption)?.Code;
         Result = new(name, place, address, DateTime.SpecifyKind(date, DateTimeKind.Unspecified))
         {
-            Currency = currency == original.Currency ? null : currency,
             UserId = owner is not null && owner.Id != original.UserId ? owner.Id : null,
             AddedOnUtc = date == original.AddedOn ? original.AddedOnUtc : null
         };
@@ -84,6 +71,4 @@ public partial class PurchaseEditor : UserControl
             return original;
         return string.IsNullOrWhiteSpace(text) ? null : text.Trim();
     }
-
-    private sealed record CurrencyOption(string? Code, string Label);
 }

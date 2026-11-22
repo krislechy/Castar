@@ -311,10 +311,11 @@ public sealed class CastarServerClient(ClientSettings settings) : IDisposable
             await Task.WhenAll(incomes, purchases);
             return MarkOpening((await incomes).Select(row => new BudgetOperationDto(true, row.Currency, row.Sum,
                     row.AddedOnUtc ?? ReadLegacyDate(row.AddedOn), row.RateDate ?? DateOnly.FromDateTime(row.AddedOn)))
-                .Concat((await purchases).Select(row => new BudgetOperationDto(false, row.Currency, row.TotalSum,
+                .Concat((await purchases).SelectMany(row =>
+                    (row.AmountsByCurrency ?? [new(row.TotalSum, row.Currency)]).Select(amount => new BudgetOperationDto(false, amount.Currency, amount.Amount,
                     row.AddedOnUtc ?? (row.AddedOn is { } date ? ReadLegacyDate(date) : null),
                     row.RateDate ?? row.ReceiptDate ?? (row.AddedOn is { } legacy ? DateOnly.FromDateTime(legacy) : null),
-                    row.ReceiptDate))).ToArray());
+                    row.ReceiptDate)))).ToArray());
         }
 
         BudgetOperationDto[] MarkOpening(BudgetOperationDto[] rows)
@@ -679,10 +680,13 @@ public sealed class CastarServerClient(ClientSettings settings) : IDisposable
     {
         if (apiKey.Length < 32 || apiKey.Any(char.IsWhiteSpace))
             throw new ArgumentException(ConnectionNotEstablished);
-        return new HttpRequestMessage(method, new Uri(server, path))
+        var request = new HttpRequestMessage(method, new Uri(server, path))
         {
             Headers = { Authorization = new AuthenticationHeaderValue("Bearer", apiKey) }
         };
+        if (path.StartsWith("api/purchases", StringComparison.Ordinal) || path.StartsWith("api/recurring-purchases", StringComparison.Ordinal))
+            request.Headers.Add("X-Castar-Item-Currency", "1");
+        return request;
     }
 
     private HttpClient TransportFor(HttpRequestMessage request) =>

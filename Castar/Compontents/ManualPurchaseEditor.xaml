@@ -35,9 +35,15 @@
                                  AutomationProperties.LabeledBy="{Binding ElementName=FrequencyLabel}"/>
             </StackPanel>
             <StackPanel Grid.Column="1" Margin="12,0,0,0">
-                <TextBlock x:Name="ScheduleZoneLabel" Style="{StaticResource FormFieldLabel}" Text="Часовой пояс"/>
+                <DockPanel>
+                    <TextBlock x:Name="DisplayZoneHint" DockPanel.Dock="Right" Text="Из настроек"
+                               Style="{StaticResource FormFieldLabel}" Foreground="{DynamicResource Foreground.Gray}"
+                               FontWeight="Normal" Visibility="Collapsed"/>
+                    <TextBlock x:Name="ScheduleZoneLabel" Style="{StaticResource FormFieldLabel}" Text="Часовой пояс"/>
+                </DockPanel>
                 <c:CastarComboBox x:Name="ScheduleZonePicker" TextSearch.TextPath="Label" SelectedValuePath="Minutes"
                                  ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                                 ToolTip="{Binding SelectedItem.Label, RelativeSource={RelativeSource Self}}"
                                  AutomationProperties.LabeledBy="{Binding ElementName=ScheduleZoneLabel}">
                     <c:CastarComboBox.ItemTemplate>
                         <DataTemplate>

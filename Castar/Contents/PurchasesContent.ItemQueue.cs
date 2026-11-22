@@ -149,7 +149,16 @@ public partial class PurchasesContent
             var purchase = await server.GetPurchaseDetailsAsync(item.PurchaseId, CancellationToken.None);
             if (item.Scope != PurchaseItemQueueScope)
                 return false;
-            if (!string.Equals(purchase.Currency, item.Currency, StringComparison.OrdinalIgnoreCase))
+            if (item.Item.Currency is not null && !purchase.SupportsItemCurrencyEdit)
+            {
+                purchaseItemQueueErrors[item.Key] = "Сервер или покупка не поддерживает валюту товара. Товар сохранён в очереди.";
+                return false;
+            }
+            var currentCurrency = purchase.Currency ?? (purchase.AmountsByCurrency is { Count: 1 } amounts ? amounts[0].Currency : null);
+            var payload = item.Item;
+            if (payload.Currency is null && purchase.SupportsItemCurrencyEdit && item.Currency is not null)
+                payload = payload with { Currency = item.Currency };
+            if (payload.Currency is null && !string.Equals(currentCurrency, item.Currency, StringComparison.OrdinalIgnoreCase))
             {
                 purchaseItemQueueErrors[item.Key] = "Валюта покупки изменилась. Товар сохранён в очереди.";
                 return false;
@@ -162,7 +171,7 @@ public partial class PurchasesContent
             bool added;
             try
             {
-                added = await server.AddPurchaseItemAsync(item.PurchaseId, revision, item.Item, CancellationToken.None);
+                added = await server.AddPurchaseItemAsync(item.PurchaseId, revision, payload, CancellationToken.None);
             }
             catch (HttpRequestException error) when (error.StatusCode is HttpStatusCode.Conflict or HttpStatusCode.PreconditionFailed)
             {

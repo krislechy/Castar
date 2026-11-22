@@ -1,5 +1,6 @@
 using Castar.Api;
 using Castar.Currency;
+using Castar.Domain.Models.DataBase;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -91,19 +92,22 @@ public partial class RecurringPurchasesPanel : UserControl
                 ? $" ({RecurringPurchaseTime.FormatOffset((int)local.Offset.TotalMinutes)})" : "";
             timing = $"{local:dd.MM.yyyy, HH:mm}{offset} · {frequency}";
         }
-        return new(item, template.Purchase.Name, timing, FormatAmount(template));
+        return new(item, template.Purchase.Name, timing, FormatAmounts(template));
     }
 
-    private static string FormatAmount(PurchaseCreateDto template)
+    private static string[] FormatAmounts(PurchaseCreateDto template)
     {
         try
         {
-            return HistoricalExchangeRates.Format(template.Items.Sum(item => (decimal)item.Quantity * item.Price),
-                template.Purchase.Currency);
+            var purchase = new Purchase { Currency = template.Purchase.Currency };
+            return template.Items.GroupBy(item => item.Currency ?? purchase.Currency)
+                .Select(group => HistoricalExchangeRates.Format(group.Sum(item =>
+                    purchase.CalculateManualItemAmounts(item.Quantity, item.Price, item.Currency).Sum), group.Key))
+                .ToArray();
         }
         catch (OverflowException)
         {
-            return "—";
+            return ["—"];
         }
     }
 
@@ -161,5 +165,5 @@ public partial class RecurringPurchasesPanel : UserControl
             ActionRequested?.Invoke(action, item);
     }
 
-    private sealed record SubscriptionRow(RecurringPurchaseDto Subscription, string Name, string Timing, string Amount);
+    private sealed record SubscriptionRow(RecurringPurchaseDto Subscription, string Name, string Timing, string[] Amounts);
 }

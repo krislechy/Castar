@@ -198,13 +198,31 @@ internal sealed class BudgetEventPublisher(
             await using var scope = scopes.CreateAsyncScope();
             var database = scope.ServiceProvider.GetRequiredService<CastarDbContext>();
             database.Database.SetCommandTimeout(1);
-            return kind == BudgetEvents.Purchase
-                ? await database.Purchases.AsNoTracking().Where(x => x.Id == id)
-                    .Select(x => new BudgetOperationPreviewDto(x.UserId, x.User.Name, x.Name, x.TotalSum, x.Currency,
-                        x.User.ImageRaw != null && x.User.ImageRaw.Length != 0)).SingleOrDefaultAsync(timeout.Token)
-                : await database.Incomes.AsNoTracking().Where(x => x.Id == id)
+            if (kind != BudgetEvents.Purchase)
+                return await database.Incomes.AsNoTracking().Where(x => x.Id == id)
                     .Select(x => new BudgetOperationPreviewDto(x.UserId, x.User.Name, x.Source, x.Sum, x.Currency,
                         x.User.ImageRaw != null && x.User.ImageRaw.Length != 0)).SingleOrDefaultAsync(timeout.Token);
+
+            var purchase = await database.Purchases.AsNoTracking().Where(row => row.Id == id)
+                .Select(row => new
+                {
+                    row.UserId, Author = row.User.Name, row.Name,
+                    HasAvatar = row.User.ImageRaw != null && row.User.ImageRaw.Length != 0,
+                    Items = row.Items.Select(item => new PurchaseAmountDto(item.Sum, item.Currency)).ToList(),
+                    row.Adjustment
+                }).SingleOrDefaultAsync(timeout.Token);
+            if (purchase is null)
+                return null;
+
+            if (purchase.Adjustment is { } adjustment && (adjustment.Amount != 0 || purchase.Items.Count == 0))
+                purchase.Items.Add(new(adjustment.Amount, adjustment.Currency));
+            var amounts = purchase.Items.GroupBy(line => line.Currency)
+                .Select(group => new PurchaseAmountDto(group.Sum(line => line.Amount), group.Key)).ToArray();
+            var amount = amounts.Length == 1 ? amounts[0] : null;
+            return new(purchase.UserId, purchase.Author, purchase.Name, amount?.Amount ?? 0, amount?.Currency, purchase.HasAvatar)
+            {
+                AmountsByCurrency = amounts.Length > 1 ? amounts : null
+            };
         }
         catch (Exception error) when (!stoppingToken.IsCancellationRequested)
         {

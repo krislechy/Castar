@@ -14,7 +14,11 @@ public sealed record BudgetEventDto(string Kind, bool Created)
 }
 
 public sealed record BudgetOperationPreviewDto(Guid UserId, string Author, string Title, decimal Amount,
-    string? Currency, bool HasAvatar);
+    string? Currency, bool HasAvatar)
+{
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public IReadOnlyList<PurchaseAmountDto>? AmountsByCurrency { get; init; }
+}
 
 public static class BudgetEvents
 {

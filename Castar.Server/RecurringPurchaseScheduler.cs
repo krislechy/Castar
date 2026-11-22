@@ -191,7 +191,8 @@ internal sealed class RecurringPurchaseScheduler(IServiceScopeFactory scopes, Bu
             foreach (var item in RemoveDeletedCategories(schedule, categories).Template.Items)
                 purchase.Items.Add(new Item
                 {
-                    Name = item.Name, Quantity = item.Quantity, Price = item.Price, BudgetCategoryId = item.Category?.Id,
+                    Name = item.Name, Quantity = item.Quantity, Price = item.Price, Currency = item.Currency,
+                    BudgetCategoryId = item.Category?.Id,
                     CategoryState = item.Category is null ? ItemCategoryState.Pending : ItemCategoryState.Confirmed
                 });
             await services.GetRequiredService<IPurchasesRepository>().Add(purchase, token);

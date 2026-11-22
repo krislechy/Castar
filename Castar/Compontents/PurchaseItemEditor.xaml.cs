@@ -3,6 +3,7 @@ using Castar.Currency;
 using System;
 using System.Collections.Generic;
 using System.Globalization;
+using System.Linq;
 using System.Windows;
 using System.Windows.Automation;
 using System.Windows.Controls;
@@ -15,9 +16,12 @@ public partial class PurchaseItemEditor : UserControl
     private readonly string originalName;
     private readonly Guid? originalCategoryId;
     private readonly bool confirmExistingCategory;
+    private readonly string? initialCurrency;
+    private readonly bool retainInheritedCurrency;
 
     internal PurchaseItemEditor(PurchaseItemDto item, string? currency, bool manualEntry = false, bool usePurchaseFormStyle = false,
-        IReadOnlyList<BudgetCategoryDto>? categories = null)
+        IReadOnlyList<BudgetCategoryDto>? categories = null, IReadOnlyList<string>? allowedCurrencies = null,
+        string? defaultCurrency = null, bool currencyReadOnly = false, bool preserveInheritedCurrency = false)
     {
         originalName = item.Name;
         originalCategoryId = item.BudgetCategoryId;
@@ -29,12 +33,34 @@ public partial class PurchaseItemEditor : UserControl
         Quantity.Text = item.Quantity.ToString(CultureInfo.CurrentCulture);
         UnitPrice.Text = item.Price.ToString(CultureInfo.CurrentCulture);
         ItemCategory.Load(categories, originalCategoryId, compact: manualEntry);
-        if (HistoricalExchangeRates.IsCurrencyCode(currency))
-            PriceLabel.Text = $"Цена ({currency})";
+        var isNew = item.Id == Guid.Empty && !preserveInheritedCurrency;
+        retainInheritedCurrency = !isNew && (item.Currency is null || item.Currency == currency);
+        initialCurrency = item.Currency ?? (isNew ? defaultCurrency ?? currency : currency);
+        if (allowedCurrencies is not null && !currencyReadOnly)
+        {
+            var codes = allowedCurrencies.Where(HistoricalExchangeRates.IsCurrencyCode).Distinct(StringComparer.Ordinal).ToList();
+            if (HistoricalExchangeRates.IsCurrencyCode(initialCurrency) && !codes.Contains(initialCurrency!))
+                codes.Add(initialCurrency!);
+            if (isNew && !HistoricalExchangeRates.IsCurrencyCode(initialCurrency))
+                initialCurrency = codes.FirstOrDefault();
+
+            var options = codes.Select(code => new CurrencyOption(code, code)).ToList();
+            if (!isNew && !HistoricalExchangeRates.IsCurrencyCode(initialCurrency))
+            {
+                initialCurrency = null;
+                options.Insert(0, new(null, "—"));
+            }
+            ItemCurrency.ItemsSource = options;
+            ItemCurrency.SelectedItem = options.FirstOrDefault(option => option.Code == initialCurrency);
+            ItemCurrency.SelectionChanged += (_, _) => CurrencyChanged?.Invoke(SelectedCurrency);
+            CurrencyField.Visibility = Visibility.Visible;
+        }
+        else if (HistoricalExchangeRates.IsCurrencyCode(initialCurrency))
+            PriceLabel.Text = $"Цена ({initialCurrency})";
         if (manualEntry)
         {
             Grid.SetRow(ItemCategory, 0);
-            Grid.SetColumn(ItemCategory, 3);
+            Grid.SetColumn(ItemCategory, 4);
             Grid.SetColumnSpan(ItemCategory, 1);
             ItemCategory.Margin = new Thickness(8, 0, 0, 0);
             ItemCategory.VerticalAlignment = VerticalAlignment.Bottom;
@@ -49,11 +75,14 @@ public partial class PurchaseItemEditor : UserControl
 
     public bool IsManualEntry { get; }
     public bool UsesPurchaseFormStyle { get; }
+    internal string? SelectedCurrency => (ItemCurrency.SelectedItem as CurrencyOption)?.Code ?? initialCurrency;
+    internal event Action<string?>? CurrencyChanged;
     internal void FocusItemName() => ItemName.Focus();
 
     internal void ShowHeadings(bool show)
     {
-        NameLabel.Visibility = QuantityLabel.Visibility = PriceLabel.Visibility = show ? Visibility.Visible : Visibility.Collapsed;
+        NameLabel.Visibility = QuantityLabel.Visibility = PriceLabel.Visibility = CurrencyLabel.Visibility =
+            show ? Visibility.Visible : Visibility.Collapsed;
         AutomationProperties.SetName(ItemName, NameLabel.Text);
         AutomationProperties.SetName(Quantity, QuantityLabel.Text);
         AutomationProperties.SetName(UnitPrice, PriceLabel.Text);
@@ -102,10 +131,16 @@ public partial class PurchaseItemEditor : UserControl
             || decimal.Abs(price) >= 10_000_000_000_000_000_000_000m)
             return new(false, "Укажите цену в допустимом диапазоне.");
 
+        var currency = ItemCurrency.SelectedItem as CurrencyOption;
+        if (CurrencyField.Visibility == Visibility.Visible && currency is null)
+            return new(false, "Выберите валюту товара.");
         Result = new(name, quantity, price)
         {
-            Category = ItemCategory.GetChange(originalCategoryId, confirmExistingCategory)
+            Category = ItemCategory.GetChange(originalCategoryId, confirmExistingCategory),
+            Currency = retainInheritedCurrency && currency?.Code == initialCurrency ? null : currency?.Code
         };
         return new(true, null);
     }
+
+    private sealed record CurrencyOption(string? Code, string Label);
 }

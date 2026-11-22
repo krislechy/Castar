@@ -46,8 +46,7 @@ public static partial class CastarEndpoints
         if (!await category.AnyAsync(token))
             return Results.NotFound();
 
-        var purchases = db.Purchases.Where(purchase => purchase.CategoryId == id ||
-            purchase.Items.Any(item => item.BudgetCategoryId == id));
+        var purchases = db.Purchases.Where(purchase => purchase.Items.Any(item => item.BudgetCategoryId == id));
         var incomes = db.Incomes.Where(income => income.CategoryId == id);
         if (await purchases.AnyAsync(purchase => purchase.Revision == long.MaxValue, token) ||
             await incomes.AnyAsync(income => income.CategoryRevision == long.MaxValue, token))
@@ -57,7 +56,6 @@ public static partial class CastarEndpoints
         var now = DateTime.UtcNow;
         // Find and revise purchases while their item links are still present.
         var changedPurchases = await purchases.ExecuteUpdateAsync(update => update
-            .SetProperty(purchase => purchase.CategoryId, purchase => purchase.CategoryId == id ? null : purchase.CategoryId)
             .SetProperty(purchase => purchase.Revision, purchase => purchase.Revision + 1)
             .SetProperty(purchase => purchase.ModifiedOn, now), token);
         await db.Items.Where(item => item.BudgetCategoryId == id).ExecuteUpdateAsync(update => update

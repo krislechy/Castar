@@ -34,37 +34,16 @@ public static partial class CastarEndpoints
             Add(true, income.CategoryId, income.Currency, income.Sum, income.RateDate ?? BudgetTime.BelgradeDate(income.AddedOn));
 
         var purchases = db.Purchases.AsNoTracking().Where(row => row.AddedOn >= first && row.AddedOn < endExclusive);
-        var totals = await (
-            from item in db.Items.AsNoTracking()
-            join purchase in purchases on item.PurchaseId equals purchase.Id
-            group item by new { item.PurchaseId, item.BudgetCategoryId } into category
-            select new { category.Key.PurchaseId, category.Key.BudgetCategoryId, Amount = category.Sum(item => item.Sum) }
-        ).ToArrayAsync(token);
-        var byPurchase = totals.ToLookup(row => row.PurchaseId);
-
-        await foreach (var purchase in purchases.Select(row => new
+        var totals = GetPurchaseBudgetLines(db, purchases)
+            .GroupBy(line => new { line.PurchaseId, line.CategoryId, line.Currency, line.AddedOn, line.RateDate, line.ReceiptDate })
+            .Select(group => new
             {
-                row.Id, row.Currency, row.TotalSum, row.AddedOn, row.RateDate, row.ReceiptDate
-            }).AsAsyncEnumerable().WithCancellation(token))
-        {
-            var date = purchase.RateDate ?? purchase.ReceiptDate ?? BudgetTime.BelgradeDate(purchase.AddedOn!.Value);
-            var uncategorized = purchase.TotalSum;
-            var categories = byPurchase[purchase.Id];
-            var hasUncategorizedItems = false;
-            foreach (var category in categories)
-            {
-                if (category.BudgetCategoryId is not { } categoryId)
-                {
-                    hasUncategorizedItems = true;
-                    continue;
-                }
-                Add(false, categoryId, purchase.Currency, category.Amount, date);
-                uncategorized -= category.Amount;
-            }
-            // Keep unlabelled items and any receipt adjustment in one share; the header is the amount actually paid.
-            if (uncategorized != 0 || hasUncategorizedItems || !categories.Any())
-                Add(false, null, purchase.Currency, uncategorized, date);
-        }
+                group.Key.CategoryId, group.Key.Currency, group.Key.AddedOn, group.Key.RateDate, group.Key.ReceiptDate,
+                Amount = group.Sum(line => line.Amount)
+            });
+        await foreach (var total in totals.AsAsyncEnumerable().WithCancellation(token))
+            Add(false, total.CategoryId, total.Currency, total.Amount,
+                total.RateDate ?? total.ReceiptDate ?? BudgetTime.BelgradeDate(total.AddedOn!.Value));
 
         return Results.Ok(counted.Select(row => new BudgetCategoryAmountDto(row.Key.IsIncome, row.Key.CategoryId,
             row.Key.Currency, row.Key.Amount, row.Key.RateDate, row.Value)).ToArray());

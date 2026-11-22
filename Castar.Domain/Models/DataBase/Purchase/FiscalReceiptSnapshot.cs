@@ -27,15 +27,17 @@ public sealed record FiscalReceiptSnapshot(string Name, string? RetailPlace, str
         }
     }
 
-    public bool HeaderChanged(Purchase purchase)
+    public bool HeaderChanged(Purchase purchase, (decimal Amount, string? Currency)? currentTotals = null)
     {
         if (!StoredInUtc && AddedOn is { } legacy && BudgetTime.Belgrade.IsInvalidTime(legacy.DateTime))
             return true;
         var originalDate = AddedOn is not { } saved ? (DateTime?)null
             : StoredInUtc ? saved.UtcDateTime : BudgetTime.FromLocal(saved.DateTime, BudgetTime.Belgrade);
         return Name != purchase.Name || RetailPlace != purchase.RetailPlace || RetailPlaceAddress != purchase.RetailPlaceAddress ||
-            originalDate != purchase.AddedOn || ReceiptDate != purchase.ReceiptDate || Currency != purchase.Currency ||
-            TotalSum != purchase.TotalSum || ((UserId ?? purchase.TelegramOriginUserId) is { } owner && owner != purchase.UserId);
+            originalDate != purchase.AddedOn || ReceiptDate != purchase.ReceiptDate ||
+            Currency != (currentTotals is { } totals ? totals.Currency : purchase.Currency) ||
+            TotalSum != (currentTotals?.Amount ?? purchase.TotalSum) ||
+            ((UserId ?? purchase.TelegramOriginUserId) is { } owner && owner != purchase.UserId);
     }
 }
 

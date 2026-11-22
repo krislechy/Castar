@@ -61,6 +61,7 @@ namespace Castar.DAL.Repositories.DataBase
             }
 
             var key = SHA256.HashData(Encoding.UTF8.GetBytes(string.Concat(provider, "\0", receiptId)));
+            purchase.PreserveImportedTotal();
             TrackNewPurchase(purchase);
             Context.Entry(purchase).Property<byte[]>(CastarDbContext.ReceiptKey).CurrentValue = key;
             PreserveOriginalReceipt(purchase);
@@ -74,6 +75,8 @@ namespace Castar.DAL.Repositories.DataBase
                 // A Telegram update may contain several receipts. Drop only the failed insert.
                 foreach (var item in purchase.Items.ToArray())
                     Context.Entry(item).State = EntityState.Detached;
+                if (purchase.Adjustment is { } adjustment)
+                    Context.Entry(adjustment).State = EntityState.Detached;
                 Context.Entry(purchase).State = EntityState.Detached;
                 return null;
             }
@@ -81,15 +84,17 @@ namespace Castar.DAL.Repositories.DataBase
 
         public override async Task Update(Purchase purchase, CancellationToken cancellationToken = default)
         {
-            var current = await Context.Purchases.Include(x => x.Items)
+            var current = await WithItems(Context.Purchases)
                 .SingleOrDefaultAsync(x => x.Id == purchase.Id, cancellationToken)
                 ?? throw new InvalidOperationException("Покупка больше не существует.");
 
             ThrowIfFiscal(Context, current);
             if (current.Revision != purchase.Revision)
                 throw new DbUpdateConcurrencyException("Покупка уже изменилась.");
+            if (current.HasMultipleCurrencies())
+                throw new InvalidOperationException("Эту покупку можно редактировать только в Castar.");
 
-            current.Currency = purchase.Currency ?? current.Currency;
+            var defaultCurrency = purchase.Currency ?? current.Currency;
             current.Name = purchase.Name;
             var merchantChanged = NormalizeCategoryKeyPart(current.RetailPlace) != NormalizeCategoryKeyPart(purchase.RetailPlace);
             current.RetailPlace = purchase.RetailPlace;
@@ -104,6 +109,7 @@ namespace Castar.DAL.Repositories.DataBase
                 {
                     item.PurchaseId = purchase.Id;
                     item.Purchase = current;
+                    item.Currency ??= ManualCurrencySettings.NormalizeCode(defaultCurrency);
                     Context.Items.Add(item);
                     Context.Entry(item).Property<int?>(CastarDbContext.LineNumber).CurrentValue = index;
                 }
@@ -114,6 +120,7 @@ namespace Castar.DAL.Repositories.DataBase
                     currentItem.Name = item.Name;
                     currentItem.Price = item.Price;
                     currentItem.Quantity = item.Quantity;
+                    currentItem.Currency = item.Currency ?? currentItem.Currency ?? ManualCurrencySettings.NormalizeCode(defaultCurrency);
                     Context.Entry(currentItem).Property<int?>(CastarDbContext.LineNumber).CurrentValue = index;
                 }
                 else
@@ -151,13 +158,17 @@ namespace Castar.DAL.Repositories.DataBase
             !string.IsNullOrWhiteSpace(purchase.ReceiptSource) || DecodeLegacySource(purchase.RawData) is not null;
 
         public async Task<PurchaseMutationResult> DeletePurchaseAsync(
-            Guid purchaseId, long expectedRevision, CancellationToken cancellationToken = default)
+            Guid purchaseId, long expectedRevision, CancellationToken cancellationToken = default,
+            bool supportsItemCurrency = true)
         {
-            var purchase = await Context.Purchases.SingleOrDefaultAsync(x => x.Id == purchaseId, cancellationToken);
+            var query = supportsItemCurrency ? Context.Purchases : WithItems(Context.Purchases);
+            var purchase = await query.SingleOrDefaultAsync(x => x.Id == purchaseId, cancellationToken);
             if (purchase is null)
                 return PurchaseMutationResult.NotFound;
             if (purchase.Revision != expectedRevision)
                 return PurchaseMutationResult.Conflict;
+            if (!supportsItemCurrency && purchase.HasMultipleCurrencies())
+                return PurchaseMutationResult.UnsupportedItemCurrency;
 
             // The database cascade removes the items in the same write as the purchase.
             Context.Purchases.Remove(purchase);
@@ -166,7 +177,8 @@ namespace Castar.DAL.Repositories.DataBase
         }
 
         public async Task<PurchaseMutationResult> DeletePurchaseItemAsync(
-            Guid purchaseId, Guid itemId, long expectedRevision, CancellationToken cancellationToken = default)
+            Guid purchaseId, Guid itemId, long expectedRevision, CancellationToken cancellationToken = default,
+            bool supportsItemCurrency = true)
         {
             var purchase = await WithItems(Context.Purchases)
                 .SingleOrDefaultAsync(x => x.Id == purchaseId, cancellationToken);
@@ -174,12 +186,14 @@ namespace Castar.DAL.Repositories.DataBase
                 return PurchaseMutationResult.NotFound;
             if (purchase.Revision != expectedRevision)
                 return PurchaseMutationResult.Conflict;
+            if (!supportsItemCurrency && purchase.HasMultipleCurrencies())
+                return PurchaseMutationResult.UnsupportedItemCurrency;
 
-            if (IsFiscal(Context, purchase))
+            var fiscal = IsFiscal(Context, purchase);
+            if (fiscal)
                 PreserveOriginalReceipt(purchase);
             purchase.Items.Remove(item);
             Context.Items.Remove(item);
-            purchase.TotalSum = purchase.Items.Sum(remaining => remaining.Sum);
             purchase.Revision = checked(purchase.Revision + 1);
             await Context.SaveChangesAsync(cancellationToken);
             return PurchaseMutationResult.Applied;
@@ -188,7 +202,8 @@ namespace Castar.DAL.Repositories.DataBase
         public async Task<PurchaseMutationResult> EditPurchaseAsync(
             Guid purchaseId, long expectedRevision, string name, string? retailPlace, string? retailPlaceAddress,
             DateTime addedOn, string? currency = null, ManualCurrencySettings? currencyPolicy = null,
-            CancellationToken cancellationToken = default, Guid? userId = null, DateTime? legacyDate = null)
+            CancellationToken cancellationToken = default, Guid? userId = null, DateTime? legacyDate = null,
+            bool supportsItemCurrency = true)
         {
             var purchase = await WithItems(Context.Purchases)
                 .SingleOrDefaultAsync(x => x.Id == purchaseId, cancellationToken);
@@ -196,6 +211,8 @@ namespace Castar.DAL.Repositories.DataBase
                 return PurchaseMutationResult.NotFound;
             if (purchase.Revision != expectedRevision)
                 return PurchaseMutationResult.Conflict;
+            if (!supportsItemCurrency && purchase.HasMultipleCurrencies())
+                return PurchaseMutationResult.UnsupportedItemCurrency;
             if (legacyDate is { } local && purchase.AddedOn is { } current &&
                 BudgetTime.InZone(current, BudgetTime.Belgrade) == local)
                 addedOn = current;
@@ -206,19 +223,18 @@ namespace Castar.DAL.Repositories.DataBase
                 !await Context.Users.AnyAsync(owner => owner.Id == ownerId, cancellationToken))
                 return PurchaseMutationResult.InvalidOwner;
 
-            var updatedCurrency = purchase.Currency;
             if (currency is not null)
             {
-                updatedCurrency = ManualCurrencySettings.NormalizeCode(currency);
-                if (updatedCurrency is null ||
-                    (!string.Equals(updatedCurrency, purchase.Currency, StringComparison.OrdinalIgnoreCase)
-                     && !(currencyPolicy ?? ManualCurrencySettings.Default).Allows(updatedCurrency)))
+                var suppliedCurrency = ManualCurrencySettings.NormalizeCode(currency);
+                if (suppliedCurrency is null)
                     return PurchaseMutationResult.InvalidCurrency;
+                if (suppliedCurrency != purchase.Currency)
+                    return IsFiscal(Context, purchase) ? PurchaseMutationResult.FiscalCurrency : PurchaseMutationResult.ItemCurrencyInUse;
             }
 
             var headerChanged = purchase.Name != name || purchase.RetailPlace != retailPlace ||
                 purchase.RetailPlaceAddress != retailPlaceAddress || purchase.AddedOn != addedOn ||
-                purchase.Currency != updatedCurrency || changingOwner;
+                changingOwner;
             if (!headerChanged)
                 return PurchaseMutationResult.Applied;
 
@@ -231,7 +247,6 @@ namespace Castar.DAL.Repositories.DataBase
             purchase.RetailPlace = retailPlace;
             purchase.RetailPlaceAddress = retailPlaceAddress;
             purchase.AddedOn = addedOn;
-            purchase.Currency = updatedCurrency;
             purchase.UserId = ownerId;
             purchase.Revision = checked(purchase.Revision + 1);
             try
@@ -248,7 +263,8 @@ namespace Castar.DAL.Repositories.DataBase
 
         public async Task<PurchaseMutationResult> EditPurchaseItemAsync(
             Guid purchaseId, Guid itemId, long expectedRevision, string name, double quantity, decimal price,
-            CancellationToken cancellationToken = default, Guid? categoryId = null, bool updateCategory = false)
+            CancellationToken cancellationToken = default, Guid? categoryId = null, bool updateCategory = false,
+            string? currency = null, ManualCurrencySettings? currencyPolicy = null, bool supportsItemCurrency = true)
         {
             await using var historyTransaction = updateCategory
                 ? await Context.Database.BeginTransactionAsync(cancellationToken) : null;
@@ -259,26 +275,32 @@ namespace Castar.DAL.Repositories.DataBase
             if (purchase.Revision != expectedRevision)
                 return PurchaseMutationResult.Conflict;
 
+            var fiscal = IsFiscal(Context, purchase);
+            var validation = ResolveItemCurrency(purchase, item, currency, currencyPolicy, supportsItemCurrency,
+                fiscal, out var storedCurrency);
+            if (validation != PurchaseMutationResult.Applied)
+                return validation;
             var (unitPrice, sum) = item.Quantity != quantity || item.Price != price
-                ? purchase.CalculateManualItemAmounts(quantity, price)
+                ? purchase.CalculateManualItemAmounts(quantity, price, storedCurrency)
                 : (item.Price, item.Sum);
             var amountChanged = item.Quantity != quantity || item.Price != unitPrice;
-            var fiscalLineChanged = item.Name != name || amountChanged;
-            if (!fiscalLineChanged && (!updateCategory ||
+            var currencyChanged = storedCurrency != item.Currency;
+            var lineChanged = item.Name != name || amountChanged || currencyChanged;
+            if (!lineChanged && (!updateCategory ||
                 categoryId.HasValue && item.CategoryState == ItemCategoryState.Confirmed && item.BudgetCategoryId == categoryId))
                 return PurchaseMutationResult.Unchanged;
 
-            if (fiscalLineChanged && IsFiscal(Context, purchase))
+            if (lineChanged && fiscal)
                 PreserveOriginalReceipt(purchase);
             if (!updateCategory && NormalizeCategoryKeyPart(item.Name) != NormalizeCategoryKeyPart(name))
                 ResetAutomaticCategory(item);
             item.Name = name;
-            if (amountChanged)
+            if (amountChanged || currencyChanged)
             {
                 item.Quantity = quantity;
                 item.Price = unitPrice;
                 item.Sum = sum;
-                purchase.TotalSum = purchase.Items.Sum(line => line.Sum);
+                item.Currency = storedCurrency;
             }
             if (updateCategory)
                 await ConfirmCategoryAsync(purchase, item, categoryId, cancellationToken);
@@ -300,7 +322,8 @@ namespace Castar.DAL.Repositories.DataBase
 
         public async Task<PurchaseMutationResult> AddPurchaseItemAsync(Guid purchaseId, long expectedRevision,
             string name, double quantity, decimal price, CancellationToken cancellationToken = default,
-            Guid? categoryId = null, bool updateCategory = false)
+            Guid? categoryId = null, bool updateCategory = false,
+            string? currency = null, ManualCurrencySettings? currencyPolicy = null, bool supportsItemCurrency = true)
         {
             await using var historyTransaction = updateCategory
                 ? await Context.Database.BeginTransactionAsync(cancellationToken) : null;
@@ -311,22 +334,30 @@ namespace Castar.DAL.Repositories.DataBase
             if (purchase.Revision != expectedRevision)
                 return PurchaseMutationResult.Conflict;
 
-            if (IsFiscal(Context, purchase))
+            var fiscal = IsFiscal(Context, purchase);
+            var validation = ResolveItemCurrency(purchase, null, currency, currencyPolicy, supportsItemCurrency,
+                fiscal, out var storedCurrency);
+            if (validation != PurchaseMutationResult.Applied)
+                return validation;
+            storedCurrency ??= ManualCurrencySettings.NormalizeCode(fiscal ? FiscalCurrency(purchase) : purchase.Currency);
+            if (storedCurrency is null && !fiscal && supportsItemCurrency)
+                storedCurrency = (currencyPolicy ?? ManualCurrencySettings.Default).DefaultCurrency;
+            if (fiscal)
                 PreserveOriginalReceipt(purchase);
-            var (unitPrice, sum) = purchase.CalculateManualItemAmounts(quantity, price);
+            var (unitPrice, sum) = purchase.CalculateManualItemAmounts(quantity, price, storedCurrency);
             var lineNumber = purchase.Items.Select(item =>
                 Context.Entry(item).Property<int?>(CastarDbContext.LineNumber).CurrentValue ?? -1)
                 .DefaultIfEmpty(-1).Max() + 1;
             var item = new Item
             {
-                PurchaseId = purchase.Id, Name = name, Quantity = quantity, Price = unitPrice, Sum = sum
+                PurchaseId = purchase.Id, Name = name, Quantity = quantity, Price = unitPrice, Sum = sum,
+                Currency = storedCurrency
             };
             purchase.Items.Add(item);
             Context.Entry(item).State = EntityState.Added;
             Context.Entry(item).Property<int?>(CastarDbContext.LineNumber).CurrentValue = lineNumber;
             if (updateCategory)
                 await ConfirmCategoryAsync(purchase, item, categoryId, cancellationToken);
-            purchase.TotalSum = purchase.Items.Sum(line => line.Sum);
             purchase.Revision = checked(purchase.Revision + 1);
             await Context.SaveChangesAsync(cancellationToken);
             if (historyTransaction is not null)
@@ -334,23 +365,56 @@ namespace Castar.DAL.Repositories.DataBase
             return PurchaseMutationResult.Applied;
         }
 
+        private static PurchaseMutationResult ResolveItemCurrency(Purchase purchase, Item? item, string? input,
+            ManualCurrencySettings? policy, bool supportsItemCurrency, bool fiscal, out string? storedCurrency)
+        {
+            storedCurrency = item?.Currency;
+            if (!supportsItemCurrency && (input is not null || purchase.HasMultipleCurrencies()))
+                return PurchaseMutationResult.UnsupportedItemCurrency;
+            if (input is null)
+                return PurchaseMutationResult.Applied;
+
+            var code = ManualCurrencySettings.NormalizeCode(input);
+            if (code is null)
+                return PurchaseMutationResult.InvalidCurrency;
+            if (fiscal)
+            {
+                if (code != FiscalCurrency(purchase))
+                    return PurchaseMutationResult.FiscalCurrency;
+                storedCurrency = item is null ? code : storedCurrency;
+                return PurchaseMutationResult.Applied;
+            }
+            if (code != (item is null ? purchase.Currency : item.Currency) && !(policy ?? ManualCurrencySettings.Default).Allows(code))
+                return PurchaseMutationResult.InvalidCurrency;
+            if (item is null || code != item.Currency)
+                storedCurrency = code;
+            return PurchaseMutationResult.Applied;
+        }
+
         private static IQueryable<Purchase> WithDetails(IQueryable<Purchase> purchases) =>
             WithItems(purchases.AsNoTrackingWithIdentityResolution().Include(x => x.User));
 
         private static IQueryable<Purchase> WithItems(IQueryable<Purchase> purchases) =>
-            purchases.Include(x => x.Items.OrderBy(i => EF.Property<int?>(i, CastarDbContext.LineNumber))
+            purchases.Include(x => x.Adjustment).Include(x => x.Items.OrderBy(i => EF.Property<int?>(i, CastarDbContext.LineNumber))
                 .ThenBy(i => i.CreatedOn).ThenBy(i => i.Id));
 
         private void TrackNewPurchase(Purchase purchase)
         {
             if (purchase.MessageId != 0)
                 purchase.TelegramOriginUserId ??= purchase.UserId;
+            var currency = ManualCurrencySettings.NormalizeCode(purchase.Currency);
             Context.Entry(purchase).State = EntityState.Added;
+            if (purchase.Adjustment is { } adjustment)
+            {
+                adjustment.PurchaseId = purchase.Id;
+                Context.Entry(adjustment).State = EntityState.Added;
+            }
             var index = 0;
             foreach (var item in purchase.Items)
             {
                 item.PurchaseId = purchase.Id;
                 item.Purchase = purchase;
+                item.Currency ??= currency;
                 Context.Entry(item).State = EntityState.Added;
                 Context.Entry(item).Property<int?>(CastarDbContext.LineNumber).CurrentValue = index++;
             }
@@ -364,6 +428,9 @@ namespace Castar.DAL.Repositories.DataBase
 
         private static bool IsFiscal(CastarDbContext db, Purchase purchase) =>
             purchase.RawData is not null || db.Entry(purchase).Property<byte[]>(CastarDbContext.ReceiptKey).CurrentValue is not null;
+
+        private static string? FiscalCurrency(Purchase purchase) =>
+            FiscalReceiptSnapshot.Read(purchase.OriginalReceiptSnapshot)?.Currency ?? purchase.Currency;
 
         private static void PreserveOriginalReceipt(Purchase purchase)
         {

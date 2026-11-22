@@ -15,7 +15,7 @@ partial class CastarDbContextModelSnapshot : ModelSnapshot
     // If you encounter a merge conflict in the line below, it means you need to
     // discard one of the migration branches and recreate its migrations on top of
     // the other branch. See https://aka.ms/efcore-docs-migrations-conflicts for more info.
-    public override string LastMigrationId => "20261122153253_RecurringPurchaseRetries";
+    public override string LastMigrationId => "20261122192025_RemoveLegacyPurchaseCategory";
 
     protected override void BuildModel(ModelBuilder modelBuilder)
     {
@@ -249,6 +249,10 @@ partial class CastarDbContextModelSnapshot : ModelSnapshot
                 b.Property<DateTime>("CreatedOn")
                     .HasColumnType("TEXT");
 
+                b.Property<string>("Currency")
+                    .HasMaxLength(3)
+                    .HasColumnType("TEXT");
+
                 b.Property<int?>("LineNumber")
                     .HasColumnType("INTEGER");
 
@@ -311,14 +315,7 @@ partial class CastarDbContextModelSnapshot : ModelSnapshot
                 b.Property<DateTime>("AddedOn")
                     .HasColumnType("TEXT");
 
-                b.Property<Guid?>("CategoryId")
-                    .HasColumnType("TEXT");
-
                 b.Property<DateTime>("CreatedOn")
-                    .HasColumnType("TEXT");
-
-                b.Property<string>("Currency")
-                    .HasMaxLength(3)
                     .HasColumnType("TEXT");
 
                 b.Property<DateTime?>("ModifiedOn")
@@ -365,10 +362,6 @@ partial class CastarDbContextModelSnapshot : ModelSnapshot
                 b.Property<Guid?>("TelegramOriginUserId")
                     .HasColumnType("TEXT");
 
-                b.Property<decimal>("TotalSum")
-                    .HasPrecision(24, 2)
-                    .HasColumnType("TEXT");
-
                 b.Property<Guid>("UserId")
                     .HasColumnType("TEXT");
 
@@ -379,8 +372,6 @@ partial class CastarDbContextModelSnapshot : ModelSnapshot
                 b.HasKey("Id");
 
                 b.HasIndex("AddedOn");
-
-                b.HasIndex("CategoryId");
 
                 b.HasIndex("ReceiptKey")
                     .IsUnique()
@@ -393,6 +384,24 @@ partial class CastarDbContextModelSnapshot : ModelSnapshot
                     .HasDatabaseName("IX_Purchases_TelegramOriginUserId_MessageId");
 
                 b.ToTable("Purchases");
+            });
+
+        modelBuilder.Entity("Castar.Domain.Models.DataBase.PurchaseAdjustment", b =>
+            {
+                b.Property<Guid>("PurchaseId")
+                    .HasColumnType("TEXT");
+
+                b.Property<decimal>("Amount")
+                    .HasPrecision(24, 2)
+                    .HasColumnType("TEXT");
+
+                b.Property<string>("Currency")
+                    .HasMaxLength(3)
+                    .HasColumnType("TEXT");
+
+                b.HasKey("PurchaseId");
+
+                b.ToTable("PurchaseAdjustments");
             });
 
         modelBuilder.Entity("Castar.Domain.Models.DataBase.RecurringPurchase", b =>
@@ -533,11 +542,6 @@ partial class CastarDbContextModelSnapshot : ModelSnapshot
 
         modelBuilder.Entity("Castar.Domain.Models.DataBase.Purchase", b =>
             {
-                b.HasOne("Castar.Domain.Models.DataBase.BudgetCategory", null)
-                    .WithMany()
-                    .HasForeignKey("CategoryId")
-                    .OnDelete(DeleteBehavior.Restrict);
-
                 b.HasOne("Castar.Domain.Models.DataBase.User", "User")
                     .WithMany()
                     .HasForeignKey("UserId")
@@ -546,6 +550,15 @@ partial class CastarDbContextModelSnapshot : ModelSnapshot
                     .HasConstraintName("FK_Purchases_Users");
 
                 b.Navigation("User");
+            });
+
+        modelBuilder.Entity("Castar.Domain.Models.DataBase.PurchaseAdjustment", b =>
+            {
+                b.HasOne("Castar.Domain.Models.DataBase.Purchase", null)
+                    .WithOne("Adjustment")
+                    .HasForeignKey("Castar.Domain.Models.DataBase.PurchaseAdjustment", "PurchaseId")
+                    .OnDelete(DeleteBehavior.Cascade)
+                    .IsRequired();
             });
 
         modelBuilder.Entity("Castar.Domain.Models.DataBase.RecurringPurchase", b =>
@@ -559,6 +572,8 @@ partial class CastarDbContextModelSnapshot : ModelSnapshot
 
         modelBuilder.Entity("Castar.Domain.Models.DataBase.Purchase", b =>
             {
+                b.Navigation("Adjustment");
+
                 b.Navigation("Items");
             });
 #pragma warning restore 612, 618

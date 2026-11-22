@@ -56,14 +56,6 @@
                 <Path Style="{StaticResource PurchaseFormFieldIcon}" Data="{StaticResource Lucide.clock}"/>
             </Grid>
         </Grid>
-        <StackPanel x:Name="CurrencyField" Visibility="Collapsed">
-            <TextBlock x:Name="CurrencyLabel" Text="Валюта покупки" Style="{StaticResource FormFieldLabel}"/>
-            <Grid>
-                <c:CastarComboBox x:Name="PurchaseCurrency" DisplayMemberPath="Label" Padding="34,7,8,7"
-                                  AutomationProperties.LabeledBy="{Binding ElementName=CurrencyLabel}"/>
-                <Path Style="{StaticResource PurchaseFormFieldIcon}" Data="{StaticResource Lucide.coins}"/>
-            </Grid>
-        </StackPanel>
       </StackPanel>
     </Grid>
 </UserControl>

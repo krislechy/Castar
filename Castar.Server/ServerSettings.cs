@@ -285,6 +285,7 @@ internal sealed class ServerSettings : IDisposable
         providers.Values.Select(provider => provider.Id).ToArray(), value.Revision)
     {
         NalogConfigured = EffectiveNalogCredentials(value) is not null,
+        SupportsItemCurrencies = true,
         ReceiptRetryMinutes = value.ReceiptRetryMinutes ?? ReceiptSettings.DefaultRetryMinutes,
         TelegramPreferences = EffectiveTelegramPreferences(value),
         ManualCurrency = value.ManualCurrency is { } currency

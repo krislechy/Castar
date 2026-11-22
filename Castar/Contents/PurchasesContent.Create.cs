@@ -30,6 +30,7 @@ public partial class PurchasesContent
             {
                 options.Title = "Добавить покупку";
                 options.EditorIcon = (Geometry)FindResource("Lucide.shopping-cart");
+                options.PreferredWidth = 714;
                 options.SuccessButton.SuccessConfirmButtonText = "Добавить";
                 options.AllowMissClick = false;
                 options.ConfirmAsync = () => SaveManualPurchaseAsync(editor, null, token);
@@ -83,7 +84,8 @@ public partial class PurchasesContent
             var categories = server.GetOperationCategoriesAsync(BudgetEvents.Purchase, token);
             await Task.WhenAll(configuration, users, categories);
             token.ThrowIfCancellationRequested();
-            if ((await configuration).ManualCurrency is not { } currencies)
+            var serverSettings = await configuration;
+            if (serverSettings.ManualCurrency is not { } currencies)
             {
                 error = "Обновите Castar Server для ручного добавления покупки.";
                 return;
@@ -101,7 +103,8 @@ public partial class PurchasesContent
                 return;
             }
             editor = new ManualPurchaseEditor(BudgetTime.InZone(DateTime.UtcNow, zone),
-                currencies, await users, await categories, recurring, zone, startRecurring);
+                currencies, await users, await categories, recurring, zone, startRecurring,
+                supportsItemCurrencies: serverSettings.SupportsItemCurrencies);
         });
         return (editor, error);
     }
@@ -125,7 +128,8 @@ public partial class PurchasesContent
         if (PurchasesList.SelectedItem is not PurchaseRow { Source.Revision: not null } row)
             return;
         var scope = PurchaseItemQueueScope;
-        await ShowPurchaseItemEditorAsync(new(Guid.Empty, "", null, 1, 0, 0), row.Source.Currency, "Добавить товар", "Добавить",
-            item => EnqueuePurchaseItem(scope, row.Id, row.Source.Currency, item), sender);
+        await ShowPurchaseItemEditorAsync(new(Guid.Empty, "", null, 1, 0, 0), row.ItemCurrencyFallback,
+            row.Source.SupportsItemCurrencyEdit, "Добавить товар", "Добавить",
+            item => EnqueuePurchaseItem(scope, row.Id, row.ItemCurrencyFallback, item), sender);
     }
 }

@@ -79,7 +79,8 @@ internal sealed class LegacyImportData
                 Name = Text(item.Name, "Товар", "item", item.Id),
                 Quantity = item.Quantity,
                 Price = item.Price,
-                Sum = item.Amount
+                Sum = item.Amount,
+                Currency = LegacyImport.Currency
             }))
         }).ToArray();
         var summary = new ArchiveSummary(archive.ArchiveSha256, telegramIds.Length,
@@ -173,7 +174,7 @@ internal sealed class LegacyImportData
         foreach (var batch in purchases.Chunk(200))
         {
             var ids = batch.Select(row => row.Id).ToArray();
-            var current = await db.Purchases.AsNoTracking().Include(row => row.Items)
+            var current = await db.Purchases.AsNoTracking().Include(row => row.Items).Include(row => row.Adjustment)
                 .Where(row => ids.Contains(row.Id)).ToDictionaryAsync(row => row.Id, token);
             foreach (var source in batch)
             {
@@ -187,6 +188,7 @@ internal sealed class LegacyImportData
                 var created = source.Clone<Purchase>();
                 created.UserId = ownerId;
                 created.Items = new(source.Items.Select(item => item.Clone<Item>()));
+                created.PreserveImportedTotal();
                 db.Purchases.Add(created);
                 var line = 0;
                 foreach (var item in created.Items)
@@ -212,7 +214,7 @@ internal sealed class LegacyImportData
         if (await oldIncomes.CountAsync(token) == incomes.Length && await oldPurchases.CountAsync(token) == purchases.Length)
         {
             var currentIncomes = await oldIncomes.AsNoTracking().ToDictionaryAsync(row => row.Id, token);
-            var currentPurchases = await oldPurchases.AsNoTracking().Include(row => row.Items)
+            var currentPurchases = await oldPurchases.AsNoTracking().Include(row => row.Items).Include(row => row.Adjustment)
                 .ToDictionaryAsync(row => row.Id, token);
             if (incomes.All(source => currentIncomes.TryGetValue(source.Id, out var entry) &&
                     entry.MessageId == 0 && SameIncome(source, entry, owners[source.UserId])) &&
@@ -239,8 +241,8 @@ internal sealed class LegacyImportData
         entry.RetailPlace is null && entry.RetailPlaceAddress is null &&
         entry.Items.OrderBy(item => item.Id).Select(ItemKey).SequenceEqual(source.Items.OrderBy(item => item.Id).Select(ItemKey));
 
-    private static (Guid Id, string Name, double Quantity, decimal Price, decimal Amount) ItemKey(Item item) =>
-        (item.Id, item.Name, item.Quantity, item.Price, item.Sum);
+    private static (Guid Id, string Name, double Quantity, decimal Price, decimal Amount, string? Currency) ItemKey(Item item) =>
+        (item.Id, item.Name, item.Quantity, item.Price, item.Sum, item.Currency);
 
     private static async Task<int> WriteMissingQuotesAsync(
         CastarDbContext db, string? target, CurrencyRateDto[] quotes, CancellationToken token)

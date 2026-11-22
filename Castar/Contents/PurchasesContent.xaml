@@ -40,8 +40,31 @@
      <Grid HorizontalAlignment="Left">
       <Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
       <Viewbox StretchDirection="DownOnly" HorizontalAlignment="Left" MaxHeight="44">
-       <TextBlock x:Name="ExpenseTotal" Text="—" FontSize="30" FontWeight="SemiBold" Foreground="{DynamicResource Foreground.White}" AutomationProperties.Name="Сумма расходов за период"/>
+       <Viewbox.Style>
+        <Style TargetType="Viewbox">
+         <Style.Triggers>
+          <DataTrigger Binding="{Binding HasItems, ElementName=ExpenseNativeTotals}" Value="True">
+           <Setter Property="Visibility" Value="Collapsed"/>
+          </DataTrigger>
+         </Style.Triggers>
+        </Style>
+       </Viewbox.Style>
+       <TextBlock x:Name="ExpenseTotal" Text="—" FontSize="30" FontWeight="SemiBold" Typography.NumeralAlignment="Tabular"
+                  Foreground="{DynamicResource Foreground.White}" AutomationProperties.Name="Сумма расходов за период"/>
       </Viewbox>
+      <ScrollViewer Style="{StaticResource LedgerScrollViewer}" MaxHeight="112" HorizontalScrollBarVisibility="Disabled"
+                    VerticalScrollBarVisibility="Auto" Visibility="{Binding HasItems, ElementName=ExpenseNativeTotals, Converter={StaticResource PurchaseActionVisibility}}">
+       <ItemsControl x:Name="ExpenseNativeTotals" AutomationProperties.Name="Суммы расходов по валютам">
+        <ItemsControl.ItemTemplate>
+         <DataTemplate>
+          <Viewbox StretchDirection="DownOnly" HorizontalAlignment="Left" MaxHeight="30" Margin="0,0,0,2">
+           <TextBlock Text="{Binding}" FontSize="22" FontWeight="SemiBold" Foreground="{DynamicResource Foreground.White}"
+                      Typography.NumeralAlignment="Tabular"/>
+          </Viewbox>
+         </DataTemplate>
+        </ItemsControl.ItemTemplate>
+       </ItemsControl>
+      </ScrollViewer>
       <ContentControl x:Name="ExpenseTotalWarning" Grid.Column="1" Style="{StaticResource ExpenseAmountWarning}"/>
      </Grid>
     </StackPanel>

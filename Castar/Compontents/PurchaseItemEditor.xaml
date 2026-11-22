@@ -11,6 +11,7 @@
             <ColumnDefinition Width="*"/>
             <ColumnDefinition Width="*"/>
             <ColumnDefinition Width="Auto"/>
+            <ColumnDefinition Width="Auto"/>
         </Grid.ColumnDefinitions>
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto"/>
@@ -70,6 +71,11 @@
                       Visibility="{Binding UsesPurchaseFormStyle, ElementName=Editor, Converter={StaticResource PurchaseFormVisibility}}"/>
             </Grid>
         </StackPanel>
-        <c:BudgetCategoryPicker x:Name="ItemCategory" Grid.Row="1" Grid.ColumnSpan="4"/>
+        <StackPanel x:Name="CurrencyField" Grid.Column="3" Margin="8,0,0,0" Width="72" Visibility="Collapsed">
+            <TextBlock x:Name="CurrencyLabel" Text="Валюта" Style="{StaticResource FormFieldLabel}"/>
+            <c:CastarComboBox x:Name="ItemCurrency" DisplayMemberPath="Label" Padding="8,7,4,7"
+                             AutomationProperties.Name="Валюта товара"/>
+        </StackPanel>
+        <c:BudgetCategoryPicker x:Name="ItemCategory" Grid.Row="1" Grid.ColumnSpan="5"/>
     </Grid>
 </UserControl>

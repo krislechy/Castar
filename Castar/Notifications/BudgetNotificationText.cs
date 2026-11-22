@@ -1,6 +1,7 @@
 using Castar.Api;
 using Castar.Currency;
 using System.Globalization;
+using System.Linq;
 
 namespace Castar.Notifications;
 
@@ -20,8 +21,13 @@ internal static class BudgetNotificationText
 
     internal static string Title(BudgetOperationPreviewDto preview) => Limit(preview.Title, 90);
 
-    internal static string Details(BudgetOperationPreviewDto preview) =>
-        $"{Limit(preview.Author, 56)} · {HistoricalExchangeRates.Format(preview.Amount, preview.Currency)}";
+    internal static string Details(BudgetOperationPreviewDto preview)
+    {
+        var amount = preview.AmountsByCurrency is { Count: > 0 } amounts
+            ? HistoricalExchangeRates.FormatTotals(amounts.Select(row => (row.Amount, row.Currency)))
+            : HistoricalExchangeRates.Format(preview.Amount, preview.Currency);
+        return $"{Limit(preview.Author, 56)} · {amount}";
+    }
 
     private static string Limit(string value, int maxLength)
     {

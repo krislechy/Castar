@@ -295,21 +295,24 @@ public static partial class CastarEndpoints
         await incomes.Delete(id) ? Results.NoContent() : Results.NotFound();
 
     private static async Task<IResult> GetPurchases(DateTime start, DateTime finish,
-        DateTimeOffset? startUtc, DateTimeOffset? finishUtc, IPurchasesService purchases, CastarDbContext db, CancellationToken token)
+        DateTimeOffset? startUtc, DateTimeOffset? finishUtc, IPurchasesService purchases, CastarDbContext db,
+        HttpRequest request, CancellationToken token)
     {
         if (!TryReadRange(start, finish, startUtc, finishUtc, out var first, out var last))
             return InvalidInput("Укажите допустимый период.");
 
         var entries = await purchases.GetEntitiesWithAllIncludes(first, last);
+        if (!SupportsItemCurrency(request) && entries.Any(purchase => purchase.HasMultipleCurrencies()))
+            return ItemCurrencyClientRequired();
         var categories = await ReadItemCategories(db, entries.SelectMany(entry => entry.Items), token);
         return Results.Ok(entries.Select(purchase => PurchaseDtoFrom(purchase,
             new PurchaseOwnerDto(purchase.User.Name, purchase.User.ImageRaw is { Length: > 0 }),
             purchase.Items, deferItems: false, categories)).ToArray());
     }
 
-    private static async Task<IResult> GetBudgetOperations(DateTime start, DateTime finish,
-        DateTimeOffset? startUtc, DateTimeOffset? finishUtc, CastarDbContext db, HttpResponse response,
-        CancellationToken token, bool includeOpening = false)
+    private static async Task<IResult> GetPurchaseSummaries(DateTime start, DateTime finish,
+        DateTimeOffset? startUtc, DateTimeOffset? finishUtc, CastarDbContext db, HttpRequest request,
+        CancellationToken token)
     {
         if (!TryReadRange(start, finish, startUtc, finishUtc, out var first, out var last))
             return InvalidInput("Укажите допустимый период.");
@@ -317,71 +320,19 @@ public static partial class CastarEndpoints
         await db.Database.OpenConnectionAsync(token);
         await using var snapshot = ((SqliteConnection)db.Database.GetDbConnection()).BeginTransaction(deferred: true);
         await using var transaction = await db.Database.UseTransactionAsync(snapshot, token);
-        var incomes = await db.Incomes.AsNoTracking().Where(row => row.AddedOn >= first && row.AddedOn <= last)
-            .Select(row => new { row.Currency, row.Sum, row.AddedOn, row.RateDate }).ToListAsync(token);
-        var purchases = await db.Purchases.AsNoTracking().Where(row => row.AddedOn >= first && row.AddedOn <= last)
-            .Select(row => new { row.Currency, row.TotalSum, row.AddedOn, row.RateDate, row.ReceiptDate }).ToListAsync(token);
-        var operations = incomes.Select(row => new BudgetOperationDto(true, row.Currency, row.Sum,
-                BudgetTime.AsUtc(row.AddedOn), row.RateDate ?? DateOnly.FromDateTime(BudgetTime.InZone(row.AddedOn, BudgetTime.Belgrade))))
-            .Concat(purchases.Select(row => new BudgetOperationDto(false, row.Currency, row.TotalSum,
-                row.AddedOn is { } date ? BudgetTime.AsUtc(date) : null,
-                row.RateDate ?? row.ReceiptDate ?? (row.AddedOn is { } instant
-                    ? DateOnly.FromDateTime(BudgetTime.InZone(instant, BudgetTime.Belgrade)) : null),
-                row.ReceiptDate)));
-        if (includeOpening)
-        {
-            operations = operations.Concat(await GetBudgetOpeningOperations(db, first, token));
-            response.Headers["X-Castar-Budget-Opening"] = "1";
-        }
-        return Results.Ok(operations.ToArray());
-    }
-
-    private static async Task<IEnumerable<BudgetOperationDto>> GetBudgetOpeningOperations(
-        CastarDbContext db, DateTime first, CancellationToken token)
-    {
-        // Keep equal native amounts together so historical FX still rounds each operation before counting it.
-        var incomes = await db.Incomes.AsNoTracking().Where(row => row.AddedOn < first && row.RateDate != null)
-            .GroupBy(row => new { row.Currency, row.RateDate, row.Sum })
-            .Select(group => new BudgetOperationDto(true, group.Key.Currency, group.Key.Sum, null, group.Key.RateDate)
-            {
-                IsOpening = true,
-                OpeningCount = group.LongCount()
-            }).ToListAsync(token);
-        var purchases = await db.Purchases.AsNoTracking()
-            .Where(row => row.AddedOn < first && (row.RateDate != null || row.ReceiptDate != null))
-            .GroupBy(row => new { row.Currency, Date = row.RateDate ?? row.ReceiptDate, row.TotalSum })
-            .Select(group => new BudgetOperationDto(false, group.Key.Currency, group.Key.TotalSum, null, group.Key.Date)
-            {
-                IsOpening = true,
-                OpeningCount = group.LongCount()
-            }).ToListAsync(token);
-
-        // Legacy rows need the Belgrade calendar day, including its historical UTC offset.
-        var legacyIncomes = await db.Incomes.AsNoTracking().Where(row => row.AddedOn < first && row.RateDate == null)
-            .Select(row => new { row.Currency, row.Sum, row.AddedOn }).ToListAsync(token);
-        var legacyPurchases = await db.Purchases.AsNoTracking()
-            .Where(row => row.AddedOn < first && row.RateDate == null && row.ReceiptDate == null)
-            .Select(row => new { row.Currency, row.TotalSum, row.AddedOn }).ToListAsync(token);
-        var legacy = legacyIncomes.Select(row => new BudgetOperationDto(true, row.Currency, row.Sum, null,
-                BudgetTime.BelgradeDate(row.AddedOn)))
-            .Concat(legacyPurchases.Select(row => new BudgetOperationDto(false, row.Currency, row.TotalSum, null,
-                BudgetTime.BelgradeDate(row.AddedOn!.Value))))
-            .GroupBy(row => new { row.IsIncome, row.Currency, row.RateDate, row.Amount })
-            .Select(group => group.First() with { IsOpening = true, OpeningCount = group.LongCount() });
-        return incomes.Concat(purchases).Concat(legacy);
-    }
-
-    private static async Task<IResult> GetPurchaseSummaries(DateTime start, DateTime finish,
-        DateTimeOffset? startUtc, DateTimeOffset? finishUtc, CastarDbContext db, CancellationToken token)
-    {
-        if (!TryReadRange(start, finish, startUtc, finishUtc, out var first, out var last))
-            return InvalidInput("Укажите допустимый период.");
-
-        var rows = await db.Purchases.AsNoTracking().Where(row => row.AddedOn >= first && row.AddedOn <= last)
+        var purchaseQuery = db.Purchases.AsNoTracking().Where(row => row.AddedOn >= first && row.AddedOn <= last);
+        var rows = await purchaseQuery
             .Select(row => new { Purchase = row, HasUncategorizedItems = row.Items.Any(item => item.BudgetCategoryId == null) })
             .ToListAsync(token);
         if (rows.Count == 0)
             return Results.Ok(Array.Empty<PurchaseDto>());
+        var totals = await GetPurchaseBudgetLines(db, purchaseQuery)
+            .GroupBy(line => new { line.PurchaseId, line.Currency })
+            .Select(group => new { group.Key.PurchaseId, group.Key.Currency, Amount = group.Sum(line => line.Amount) })
+            .ToArrayAsync(token);
+        var totalsByPurchase = totals.ToLookup(total => total.PurchaseId);
+        if (!SupportsItemCurrency(request) && totalsByPurchase.Any(group => group.Count() > 1))
+            return ItemCurrencyClientRequired();
 
         var ownerIds = rows.Select(row => row.Purchase.UserId).Distinct().ToArray();
         var owners = await db.Users.AsNoTracking().Where(user => ownerIds.Contains(user.Id))
@@ -397,16 +348,20 @@ public static partial class CastarEndpoints
             .Where(item => editedIds.Contains(item.PurchaseId)).ToListAsync(token);
         var lines = changedLines.ToLookup(item => item.PurchaseId);
         var result = rows.Select(row => PurchaseDtoFrom(row.Purchase, owners.GetValueOrDefault(row.Purchase.UserId),
-            lines[row.Purchase.Id], deferItems: true) with { HasUncategorizedItems = row.HasUncategorizedItems }).ToArray();
+            lines[row.Purchase.Id], deferItems: true,
+            amounts: totalsByPurchase[row.Purchase.Id].Select(total => (total.Amount, total.Currency)).ToArray())
+            with { HasUncategorizedItems = row.HasUncategorizedItems }).ToArray();
         return Results.Json(result, SummaryJson);
     }
 
     private static async Task<IResult> GetPurchaseDetails(Guid purchaseId, IPurchasesRepository purchases,
-        CastarDbContext db, CancellationToken token)
+        CastarDbContext db, HttpRequest request, CancellationToken token)
     {
         var purchase = await purchases.FindWithItemsAsync(purchaseId, token);
         if (purchase is null)
             return Results.NotFound();
+        if (!SupportsItemCurrency(request) && purchase.HasMultipleCurrencies())
+            return ItemCurrencyClientRequired();
         var owner = await db.Users.AsNoTracking().Where(user => user.Id == purchase.UserId)
             .Select(user => new PurchaseOwnerDto(user.Name, user.ImageRaw != null && user.ImageRaw.Length > 0))
             .SingleAsync(token);
@@ -422,17 +377,17 @@ public static partial class CastarEndpoints
     }
 
     private static async Task<IResult> DeletePurchase(Guid purchaseId, long revision, IPurchasesRepository purchases,
-        CancellationToken token) => revision < 0
+        HttpRequest request, CancellationToken token) => revision < 0
         ? InvalidInput("Укажите версию покупки.")
-        : PurchaseMutation(await purchases.DeletePurchaseAsync(purchaseId, revision, token));
+        : PurchaseMutation(await purchases.DeletePurchaseAsync(purchaseId, revision, token, SupportsItemCurrency(request)));
 
     private static async Task<IResult> DeletePurchaseItem(Guid purchaseId, Guid itemId, long revision,
-        IPurchasesRepository purchases, CancellationToken token) => revision < 0
+        IPurchasesRepository purchases, HttpRequest request, CancellationToken token) => revision < 0
         ? InvalidInput("Укажите версию покупки.")
-        : PurchaseMutation(await purchases.DeletePurchaseItemAsync(purchaseId, itemId, revision, token));
+        : PurchaseMutation(await purchases.DeletePurchaseItemAsync(purchaseId, itemId, revision, token, SupportsItemCurrency(request)));
 
     private static async Task<IResult> EditPurchase(Guid purchaseId, long revision, PurchaseWriteDto input,
-        IPurchasesRepository purchases, SettingsModel settings, CancellationToken token)
+        IPurchasesRepository purchases, SettingsModel settings, HttpRequest request, CancellationToken token)
     {
         if (revision < 0)
             return InvalidInput("Укажите версию покупки.");
@@ -443,7 +398,7 @@ public static partial class CastarEndpoints
         var policy = settings.ManualCurrencies;
         var result = await purchases.EditPurchaseAsync(purchaseId, revision, input.Name, input.RetailPlace,
             input.RetailPlaceAddress, date, input.Currency, policy, token, input.UserId,
-            legacyDate: input.AddedOnUtc is null ? input.AddedOn : null);
+            legacyDate: input.AddedOnUtc is null ? input.AddedOn : null, supportsItemCurrency: SupportsItemCurrency(request));
         if (result == PurchaseMutationResult.InvalidOwner)
             return InvalidInput("Выберите существующего пользователя.");
         return result == PurchaseMutationResult.InvalidCurrency ? InvalidManualCurrency(policy) : PurchaseMutation(result);
@@ -451,7 +406,7 @@ public static partial class CastarEndpoints
 
     private static async Task<IResult> EditPurchaseItem(Guid purchaseId, Guid itemId, long revision,
         PurchaseItemWriteDto input, IPurchasesRepository purchases, CastarDbContext db,
-        BudgetEventPublisher events, CancellationToken token)
+        BudgetEventPublisher events, SettingsModel settings, HttpRequest request, CancellationToken token)
     {
         if (revision < 0)
             return InvalidInput("Укажите версию покупки.");
@@ -460,24 +415,34 @@ public static partial class CastarEndpoints
         if (!await IsValidCategoryAsync(input.Category, BudgetEvents.Purchase, db, token))
             return InvalidInput("Выберите существующую категорию расходов.");
 
+        var policy = settings.ManualCurrencies;
         var result = await purchases.EditPurchaseItemAsync(purchaseId, itemId, revision, input.Name,
-            input.Quantity, input.Price, token, input.Category?.Id, input.Category is not null);
+            input.Quantity, input.Price, token, input.Category?.Id, input.Category is not null,
+            input.Currency, policy, SupportsItemCurrency(request));
+        if (result == PurchaseMutationResult.InvalidCurrency)
+            return InvalidManualCurrency(policy);
         return CompleteManualCategoryWrite(result, input.Category, events);
     }
 
     private static async Task<IResult> CreatePurchase(PurchaseCreateDto input, IPurchasesRepository purchases,
-        IUsersRepository users, SettingsModel settings, CastarDbContext db, BudgetEventPublisher events, CancellationToken token)
+        IUsersRepository users, SettingsModel settings, CastarDbContext db, BudgetEventPublisher events,
+        HttpRequest request, CancellationToken token)
     {
         if (input.Id == Guid.Empty || input.Purchase is null || input.Items is not { Length: > 0 and <= 250 })
             return InvalidInput("Добавьте от 1 до 250 товаров.");
+        var hasItemCurrencies = input.Items.Any(item => item?.Currency is not null);
+        if (!SupportsItemCurrency(request) && hasItemCurrencies)
+            return ItemCurrencyClientRequired();
         var header = input.Purchase;
         if (ValidatePurchase(header) is { } invalid)
             return invalid;
         if (!TryReadTime(header.AddedOn, header.AddedOnUtc, out var date))
             return InvalidInput("Укажите дату покупки.");
         var policy = settings.ManualCurrencies;
-        var currency = header.Currency is null ? policy.DefaultCurrency : ManualCurrencySettings.NormalizeCode(header.Currency);
-        if (!policy.Allows(currency))
+        var itemsOnly = header.Currency is null && hasItemCurrencies;
+        var currency = itemsOnly ? null :
+            header.Currency is null ? policy.DefaultCurrency : ManualCurrencySettings.NormalizeCode(header.Currency);
+        if (!itemsOnly && !policy.Allows(currency))
             return InvalidManualCurrency(policy);
         if (header.UserId is not { } ownerId || await users.Find(ownerId, token) is null)
             return InvalidInput("Выберите существующего пользователя.");
@@ -492,9 +457,13 @@ public static partial class CastarEndpoints
                 return InvalidInput("Заполните данные товара.");
             if (ValidatePurchaseItem(item) is { } invalidItem)
                 return invalidItem;
+            var itemCurrency = ManualCurrencySettings.NormalizeCode(item.Currency);
+            if (item.Currency is not null && !policy.Allows(itemCurrency))
+                return InvalidManualCurrency(policy);
             purchase.Items.Add(new Item
             {
                 Name = item.Name, Quantity = item.Quantity, Price = item.Price,
+                Currency = itemCurrency ?? currency ?? policy.DefaultCurrency,
                 BudgetCategoryId = item.Category?.Id,
                 CategoryState = item.Category is null ? ItemCategoryState.Pending : ItemCategoryState.Confirmed
             });
@@ -522,12 +491,13 @@ public static partial class CastarEndpoints
     {
         if (existing is { MessageId: 0, RawData: null, OriginalReceiptSnapshot: null } &&
             existing.UserId == requested.UserId && existing.AddedOn == requested.AddedOn &&
-            existing.Name == requested.Name && existing.Currency == requested.Currency &&
+            existing.Name == requested.Name &&
             existing.RetailPlace == requested.RetailPlace && existing.RetailPlaceAddress == requested.RetailPlaceAddress &&
             existing.Items.Count == requested.Items.Count &&
             existing.Items.Zip(requested.Items).All(pair =>
                 pair.First.Name == pair.Second.Name && pair.First.Quantity == pair.Second.Quantity &&
                 pair.First.Price == pair.Second.Price &&
+                pair.First.Currency == pair.Second.Currency &&
                 (pair.Second.CategoryState != ItemCategoryState.Confirmed || pair.Second.BudgetCategoryId is null ||
                     pair.First.CategoryState == ItemCategoryState.Confirmed &&
                     pair.First.BudgetCategoryId == pair.Second.BudgetCategoryId)))
@@ -537,7 +507,8 @@ public static partial class CastarEndpoints
     }
 
     private static async Task<IResult> AddPurchaseItem(Guid purchaseId, long revision, PurchaseItemWriteDto input,
-        IPurchasesRepository purchases, CastarDbContext db, BudgetEventPublisher events, CancellationToken token)
+        IPurchasesRepository purchases, CastarDbContext db, BudgetEventPublisher events, SettingsModel settings,
+        HttpRequest request, CancellationToken token)
     {
         if (revision < 0)
             return InvalidInput("Укажите версию покупки.");
@@ -546,8 +517,12 @@ public static partial class CastarEndpoints
         if (!await IsValidCategoryAsync(input.Category, BudgetEvents.Purchase, db, token))
             return InvalidInput("Выберите существующую категорию расходов.");
 
+        var policy = settings.ManualCurrencies;
         var result = await purchases.AddPurchaseItemAsync(purchaseId, revision, input.Name,
-            input.Quantity, input.Price, token, input.Category?.Id, input.Category is not null);
+            input.Quantity, input.Price, token, input.Category?.Id, input.Category is not null,
+            input.Currency, policy, SupportsItemCurrency(request));
+        if (result == PurchaseMutationResult.InvalidCurrency)
+            return InvalidManualCurrency(policy);
         return CompleteManualCategoryWrite(result, input.Category, events);
     }
 
@@ -577,10 +552,18 @@ public static partial class CastarEndpoints
     {
         PurchaseMutationResult.Applied or PurchaseMutationResult.Unchanged => Results.NoContent(),
         PurchaseMutationResult.NotFound => Results.NotFound(),
+        PurchaseMutationResult.UnsupportedItemCurrency => ItemCurrencyClientRequired(),
+        PurchaseMutationResult.ItemCurrencyInUse => InvalidInput("Для этой покупки валюту можно изменить в товарах."),
+        PurchaseMutationResult.FiscalCurrency => InvalidInput("Валюту фискального чека определяет поставщик чека."),
         PurchaseMutationResult.Conflict => Results.Problem(statusCode: StatusCodes.Status409Conflict,
             title: "Покупка уже изменилась", detail: "Обновите данные и повторите действие."),
         _ => throw new ArgumentOutOfRangeException(nameof(result))
     };
+
+    private static bool SupportsItemCurrency(HttpRequest request) => request.Headers["X-Castar-Item-Currency"] == "1";
+
+    private static IResult ItemCurrencyClientRequired() => Results.Problem(statusCode: StatusCodes.Status409Conflict,
+        title: "Требуется обновление клиента", detail: "Обновите Castar для работы с валютами товаров.");
 
     private static IResult? Validate(UserWriteDto input)
     {
@@ -686,7 +669,8 @@ public static partial class CastarEndpoints
         };
 
     private static PurchaseDto PurchaseDtoFrom(Purchase purchase, PurchaseOwnerDto? owner,
-        IEnumerable<Item> lines, bool deferItems, IReadOnlyDictionary<Guid, BudgetCategoryDto>? itemCategories = null)
+        IEnumerable<Item> lines, bool deferItems, IReadOnlyDictionary<Guid, BudgetCategoryDto>? itemCategories = null,
+        (decimal Amount, string? Currency)[]? amounts = null)
     {
         var snapshot = deferItems && purchase.Revision == 0 ? null : FiscalReceiptSnapshot.Read(purchase.OriginalReceiptSnapshot);
         var originalLines = snapshot?.Items.ToHashSet();
@@ -697,13 +681,17 @@ public static partial class CastarEndpoints
             return new PurchaseItemDto(item.Id, item.Name, null, item.Quantity, item.Price, item.Sum)
             {
                 BudgetCategoryId = item.BudgetCategoryId,
+                Currency = item.Currency,
                 BudgetCategoryName = category?.Name,
                 BudgetCategoryIconKey = BudgetCategoryIconKeys.Canonicalize(BudgetEvents.Purchase, category?.IconKey),
                 CategoryConfirmed = item.CategoryState == ItemCategoryState.Confirmed,
                 IsEdited = LineChanged(item)
             };
         }).ToArray();
-        return new(purchase.Id, purchase.UserId, purchase.Name, purchase.TotalSum, purchase.Currency, purchase.MessageId,
+        amounts ??= purchase.GetAmountsByCurrency();
+        var scalar = amounts.Length == 1 ? amounts[0] : (Amount: 0m, Currency: (string?)null);
+        var isFiscal = purchase.RawData is not null || purchase.OriginalReceiptSnapshot is not null;
+        return new(purchase.Id, purchase.UserId, purchase.Name, scalar.Amount, scalar.Currency, purchase.MessageId,
             purchase.AddedOn is { } date ? BudgetTime.InZone(date, BudgetTime.Belgrade) : null,
             purchase.RetailPlace, purchase.RetailPlaceAddress, items)
         {
@@ -712,11 +700,15 @@ public static partial class CastarEndpoints
             RateDate = purchase.RateDate,
             Revision = purchase.Revision,
             HasReceiptSource = PurchasesRepository.HasReceiptSource(purchase),
-            SupportsCurrencyEdit = true,
+            SupportsCurrencyEdit = false,
+            SupportsItemCurrencyEdit = !isFiscal,
+            AmountsByCurrency = amounts.Length > 1
+                ? amounts.Select(amount => new PurchaseAmountDto(amount.Amount, amount.Currency)).ToArray() : null,
             Owner = owner,
             ItemsDeferred = deferItems,
             IsEdited = snapshot is not null &&
-                (snapshot.HeaderChanged(purchase) || snapshot.Items.Length != lines.Count() || lines.Any(LineChanged))
+                (snapshot.HeaderChanged(purchase, scalar) || snapshot.Items.Length != lines.Count() || lines.Any(LineChanged))
         };
     }
+
 }

@@ -19,12 +19,15 @@ public partial class ManualPurchaseEditor : UserControl
 
     private readonly PurchaseEditor header;
     private readonly string defaultCurrency;
+    private readonly IReadOnlyList<string>? allowedCurrencies;
+    private string lastItemCurrency;
     private readonly IReadOnlyList<BudgetCategoryDto>? categories;
     private readonly Guid purchaseId;
     private readonly PurchaseWriteDto? originalHeader;
     private readonly RecurringPurchaseFrequency? originalFrequency;
     private readonly TimeZoneInfo initialScheduleZone;
     private readonly string? legacyZoneId;
+    private readonly int? defaultRuleId;
     private readonly bool hasDefaultFixedOffset;
     private readonly int? savedFixedOffset;
     private bool updatingOffset;
@@ -32,9 +35,11 @@ public partial class ManualPurchaseEditor : UserControl
 
     internal ManualPurchaseEditor(DateTime localDate, ManualCurrencySettingsDto currencies, IReadOnlyList<User> owners,
         IReadOnlyList<BudgetCategoryDto>? categories = null, RecurringPurchaseDto? recurring = null,
-        TimeZoneInfo? scheduleZone = null, bool startRecurring = false)
+        TimeZoneInfo? scheduleZone = null, bool startRecurring = false, bool supportsItemCurrencies = true)
     {
         defaultCurrency = currencies.DefaultCurrency;
+        allowedCurrencies = supportsItemCurrencies ? currencies.Currencies : null;
+        lastItemCurrency = defaultCurrency;
         this.categories = categories;
         var template = recurring?.Schedule.Template;
         purchaseId = recurring?.Id ?? Guid.NewGuid();
@@ -44,10 +49,12 @@ public partial class ManualPurchaseEditor : UserControl
             RecurringPurchaseTime.TryResolve(recurring.Schedule, out var resolved)
                 ? resolved : TimeZoneInfo.Local);
         legacyZoneId = recurring?.Schedule is { UtcOffsetMinutes: null, ZoneRuleId: null } legacy ? legacy.TimeZoneId : null;
-        var ruleId = recurring is null ? MatchZoneRule(initialScheduleZone.Id) : recurring.Schedule.ZoneRuleId;
+        defaultRuleId = recurring is null ? MatchZoneRule(initialScheduleZone.Id) : null;
+        var ruleId = recurring is null ? defaultRuleId : recurring.Schedule.ZoneRuleId;
         hasDefaultFixedOffset = recurring is null && ruleId is null;
         savedFixedOffset = recurring?.Schedule is { ZoneRuleId: null } fixedSchedule ? fixedSchedule.UtcOffsetMinutes : null;
         InitializeComponent();
+        DisplayZoneHint.ToolTip = initialScheduleZone.DisplayName;
         FrequencyPicker.ItemsSource = new FrequencyOption[]
         {
             new(RecurringPurchaseFrequency.Weekly, "Каждую неделю"),
@@ -66,12 +73,12 @@ public partial class ManualPurchaseEditor : UserControl
             new(purchaseId, originalHeader?.UserId ?? Guid.Empty, originalHeader?.Name ?? "", 0,
                 originalHeader?.Currency ?? defaultCurrency, 0, originalHeader?.AddedOn ?? localDate,
                 originalHeader?.RetailPlace, originalHeader?.RetailPlaceAddress, []),
-            currencies.Currencies, owners, manualEntry: true);
+            owners, manualEntry: true);
         HeaderFields.Content = header;
         ScheduleZonePicker.SelectionChanged += (_, _) =>
         {
             if (!updatingOffset)
-                UpdateSeasonalAvailability();
+                UpdateZonePresentation();
         };
         header.OperationDate.SelectedDateChanged += (_, _) => RefreshOffsetOptions();
         header.OperationTime.TextChanged += (_, _) => RefreshOffsetOptions();
@@ -129,7 +136,7 @@ public partial class ManualPurchaseEditor : UserControl
         }
         Result = new(purchaseId, draft with
         {
-            Currency = draft.Currency ?? originalHeader?.Currency ?? defaultCurrency,
+            Currency = originalHeader is null && allowedCurrencies is null ? defaultCurrency : originalHeader?.Currency,
             UserId = draft.UserId ?? originalHeader?.UserId
         }, items.ToArray());
         return new(true, null);
@@ -153,7 +160,8 @@ public partial class ManualPurchaseEditor : UserControl
         var zoneOptions = ZoneRules.Select(option =>
         {
             var minutes = (int)option.Zone.GetUtcOffset(wallTime).TotalMinutes;
-            var cities = ZoneCities(option.Zone.DisplayName, option.Rule.IanaId);
+            var name = option.Rule.Id == defaultRuleId ? initialScheduleZone.DisplayName : option.Zone.DisplayName;
+            var cities = ZoneCities(name, option.Rule.IanaId);
             return new OffsetOption(new(null, option.Rule.Id), minutes,
                 $"{RecurringPurchaseTime.FormatOffset(minutes)} · {cities}", option.Zone);
         });
@@ -177,14 +185,19 @@ public partial class ManualPurchaseEditor : UserControl
         ScheduleZonePicker.ItemsSource = offsetOptions;
         ScheduleZonePicker.SelectedItem = offsetOptions.FirstOrDefault(option => option.Key == selection);
         updatingOffset = false;
-        UpdateSeasonalAvailability();
+        UpdateZonePresentation();
     }
 
-    private void UpdateSeasonalAvailability()
+    private void UpdateZonePresentation()
     {
-        UseSeasonalTime.IsEnabled = SelectedOffset?.Zone is not null;
+        var selected = SelectedOffset;
+        UseSeasonalTime.IsEnabled = selected?.Zone is not null;
         if (!UseSeasonalTime.IsEnabled)
             UseSeasonalTime.IsChecked = false;
+
+        var usesConfiguredZone = selected is not null && (defaultRuleId.HasValue
+            ? selected.Key.RuleId == defaultRuleId : hasDefaultFixedOffset && selected.Key.FixedMinutes.HasValue);
+        DisplayZoneHint.Visibility = usesConfiguredZone ? Visibility.Visible : Visibility.Collapsed;
     }
 
     private static string ZoneCities(string displayName, string ianaId)
@@ -192,15 +205,14 @@ public partial class ManualPurchaseEditor : UserControl
         var suffix = displayName.IndexOf(") ", StringComparison.Ordinal);
         if (suffix < 0)
             return ianaId[(ianaId.LastIndexOf('/') + 1)..].Replace('_', ' ');
-        return string.Join(", ", displayName[(suffix + 2)..]
-            .Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries).Take(3));
+        return displayName[(suffix + 2)..];
     }
 
     private static int? MatchZoneRule(string zoneId)
     {
         var windowsId = TimeZoneInfo.TryConvertIanaIdToWindowsId(zoneId, out var mapped) ? mapped : zoneId;
-        return ZoneRules.Select(pair => pair.Rule).FirstOrDefault(rule => rule.IanaId == zoneId)?.Id
-            ?? ZoneRules.Select(pair => pair.Rule).FirstOrDefault(rule => rule.WindowsId == windowsId)?.Id;
+        return ZoneRules.Select(pair => pair.Rule).FirstOrDefault(rule => rule.IanaId.Equals(zoneId, StringComparison.OrdinalIgnoreCase))?.Id
+            ?? ZoneRules.Select(pair => pair.Rule).FirstOrDefault(rule => rule.WindowsId.Equals(windowsId, StringComparison.OrdinalIgnoreCase))?.Id;
     }
 
     private int DefaultOffset(DateTime localDateTime) => (int)initialScheduleZone
@@ -220,9 +232,15 @@ public partial class ManualPurchaseEditor : UserControl
         var item = new PurchaseItemDto(Guid.Empty, originalItem?.Name ?? "", null, originalItem?.Quantity ?? 1,
             originalItem?.Price ?? 0, 0)
         {
-            BudgetCategoryId = originalItem?.Category?.Id
+            BudgetCategoryId = originalItem?.Category?.Id,
+            Currency = originalItem?.Currency
         };
-        var editor = new PurchaseItemEditor(item, null, manualEntry: true, categories: categories);
+        var inheritsFrom = originalHeader is null ? defaultCurrency : originalHeader.Currency;
+        var editor = new PurchaseItemEditor(item, inheritsFrom, manualEntry: true, categories: categories,
+            allowedCurrencies: allowedCurrencies, defaultCurrency: lastItemCurrency,
+            preserveInheritedCurrency: originalItem is not null);
+        lastItemCurrency = editor.SelectedCurrency ?? lastItemCurrency;
+        editor.CurrencyChanged += currency => lastItemCurrency = currency ?? lastItemCurrency;
         editor.ShowHeadings(ItemFields.Children.Count == 0);
         var icon = new Path
         {

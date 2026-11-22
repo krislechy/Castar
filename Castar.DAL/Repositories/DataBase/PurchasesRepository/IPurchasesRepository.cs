@@ -13,19 +13,24 @@ namespace Castar.DAL.Repositories.DataBase
         Task<(bool Found, string? ReceiptSource, bool IsLegacy)> GetReceiptSourceAsync(
             Guid purchaseId, CancellationToken cancellationToken = default);
         Task<PurchaseMutationResult> DeletePurchaseAsync(
-            Guid purchaseId, long expectedRevision, CancellationToken cancellationToken = default);
+            Guid purchaseId, long expectedRevision, CancellationToken cancellationToken = default,
+            bool supportsItemCurrency = true);
         Task<PurchaseMutationResult> DeletePurchaseItemAsync(
-            Guid purchaseId, Guid itemId, long expectedRevision, CancellationToken cancellationToken = default);
+            Guid purchaseId, Guid itemId, long expectedRevision, CancellationToken cancellationToken = default,
+            bool supportsItemCurrency = true);
         Task<PurchaseMutationResult> EditPurchaseAsync(
             Guid purchaseId, long expectedRevision, string name, string? retailPlace, string? retailPlaceAddress,
             DateTime addedOn, string? currency = null, ManualCurrencySettings? currencyPolicy = null,
-            CancellationToken cancellationToken = default, Guid? userId = null, DateTime? legacyDate = null);
+            CancellationToken cancellationToken = default, Guid? userId = null, DateTime? legacyDate = null,
+            bool supportsItemCurrency = true);
         Task<PurchaseMutationResult> EditPurchaseItemAsync(
             Guid purchaseId, Guid itemId, long expectedRevision, string name, double quantity, decimal price,
-            CancellationToken cancellationToken = default, Guid? categoryId = null, bool updateCategory = false);
+            CancellationToken cancellationToken = default, Guid? categoryId = null, bool updateCategory = false,
+            string? currency = null, ManualCurrencySettings? currencyPolicy = null, bool supportsItemCurrency = true);
         Task<PurchaseMutationResult> AddPurchaseItemAsync(
             Guid purchaseId, long expectedRevision, string name, double quantity, decimal price,
-            CancellationToken cancellationToken = default, Guid? categoryId = null, bool updateCategory = false);
+            CancellationToken cancellationToken = default, Guid? categoryId = null, bool updateCategory = false,
+            string? currency = null, ManualCurrencySettings? currencyPolicy = null, bool supportsItemCurrency = true);
         Task<IReadOnlyList<PendingPurchaseClassification>> GetPendingClassificationAsync(
             int limit, CancellationToken cancellationToken, DateTime? first = null, DateTime? endExclusive = null);
         Task<(int QueuedCount, int PendingCount)> QueueUncategorizedItemsAsync(CancellationToken cancellationToken,
@@ -42,6 +47,9 @@ namespace Castar.DAL.Repositories.DataBase
         NotFound,
         Conflict,
         InvalidCurrency,
+        FiscalCurrency,
+        ItemCurrencyInUse,
+        UnsupportedItemCurrency,
         InvalidOwner,
         Unchanged
     }

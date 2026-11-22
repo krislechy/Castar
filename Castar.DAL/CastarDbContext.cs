@@ -13,6 +13,7 @@ namespace Castar.DAL
 
         public DbSet<User> Users => Set<User>();
         public DbSet<Purchase> Purchases => Set<Purchase>();
+        public DbSet<PurchaseAdjustment> PurchaseAdjustments => Set<PurchaseAdjustment>();
         public DbSet<RecurringPurchase> RecurringPurchases => Set<RecurringPurchase>();
         public DbSet<Item> Items => Set<Item>();
         public DbSet<ItemCategoryHistory> ItemCategoryHistory => Set<ItemCategoryHistory>();
@@ -49,20 +50,26 @@ namespace Castar.DAL
             purchases.HasIndex(nameof(Purchase.TelegramOriginUserId), MessageIdField)
                 .HasDatabaseName("IX_Purchases_TelegramOriginUserId_MessageId");
             purchases.Property(x => x.Name).HasMaxLength(400);
-            purchases.Property(x => x.TotalSum).HasPrecision(24, 2);
+            purchases.Ignore(x => x.TotalSum);
             purchases.Property(x => x.Revision).HasDefaultValue(0L).IsConcurrencyToken();
             purchases.Property(x => x.AddedOn).IsRequired();
             purchases.HasIndex(x => x.AddedOn);
             purchases.Property(x => x.RetailPlace).HasMaxLength(400);
             purchases.Property(x => x.RetailPlaceAddress).HasMaxLength(400);
-            purchases.Property(x => x.Currency).HasMaxLength(3);
+            purchases.Ignore(x => x.Currency);
             purchases.Property<byte[]?>(ReceiptKey).HasMaxLength(32);
             purchases.HasIndex(ReceiptKey).IsUnique().HasDatabaseName(ReceiptIndex)
                 .HasFilter("[ReceiptKey] IS NOT NULL");
             purchases.HasOne(x => x.User).WithMany().HasForeignKey(x => x.UserId)
                 .OnDelete(DeleteBehavior.NoAction).HasConstraintName("FK_Purchases_Users");
-            purchases.HasOne<BudgetCategory>().WithMany().HasForeignKey(x => x.CategoryId)
-                .OnDelete(DeleteBehavior.Restrict);
+            var purchaseAdjustments = modelBuilder.Entity<PurchaseAdjustment>();
+            purchaseAdjustments.ToTable("PurchaseAdjustments");
+            purchaseAdjustments.HasKey(adjustment => adjustment.PurchaseId);
+            purchaseAdjustments.Property(adjustment => adjustment.Currency).HasMaxLength(3);
+            purchaseAdjustments.Property(adjustment => adjustment.Amount).HasPrecision(24, 2);
+            purchases.HasOne(purchase => purchase.Adjustment).WithOne()
+                .HasForeignKey<PurchaseAdjustment>(adjustment => adjustment.PurchaseId)
+                .OnDelete(DeleteBehavior.Cascade);
 
             var recurringPurchases = modelBuilder.Entity<RecurringPurchase>();
             recurringPurchases.ToTable("RecurringPurchases");
@@ -77,6 +84,7 @@ namespace Castar.DAL
             items.Property(x => x.Name).HasMaxLength(400);
             items.Property(x => x.Price).HasPrecision(24, 2);
             items.Property(x => x.Sum).HasPrecision(24, 2);
+            items.Property(x => x.Currency).HasMaxLength(3);
             items.Property<int?>(LineNumber);
             items.Ignore(x => x.Users);
             items.HasOne(x => x.Purchase).WithMany(x => x.Items).HasForeignKey(x => x.PurchaseId)

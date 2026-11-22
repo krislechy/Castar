@@ -41,6 +41,7 @@ public partial class PopupDialog : UserControl
             (SolidColorBrush)Application.Current.FindResource("Main.Background.lvl3");
         public string? Title { get; set; }
         public Geometry? EditorIcon { get; set; }
+        internal double? PreferredWidth { get; set; }
         internal Func<Task<ValidatePopupDialog>>? ConfirmAsync { get; set; }
 
         public sealed class DefaultButtonClass
@@ -166,6 +167,7 @@ public partial class PopupDialog : UserControl
     {
         SetValue(ActiveDialogPropertyKey, request);
         Visibility = Visibility.Visible;
+        UpdateDialogWidth();
 
         _ = Dispatcher.InvokeAsync(() =>
         {
@@ -178,6 +180,26 @@ public partial class PopupDialog : UserControl
                 return;
             (request.Type == TypeDialogEnum.Default ? DefaultButton : CancelButton).Focus();
         }, DispatcherPriority.Input);
+    }
+
+    private void PresentationLayer_SizeChanged(object sender, SizeChangedEventArgs e)
+    {
+        if (e.WidthChanged && ActiveDialog?.PreferredWidth is not null)
+            UpdateDialogWidth();
+    }
+
+    private void UpdateDialogWidth()
+    {
+        if (ActiveDialog?.PreferredWidth is not { } preferredWidth)
+        {
+            border.ClearValue(MaxWidthProperty);
+            border.ClearValue(WidthProperty);
+            return;
+        }
+
+        var availableWidth = PresentationLayer.ActualWidth;
+        border.MaxWidth = preferredWidth;
+        border.Width = availableWidth > 0 ? Math.Min(preferredWidth, availableWidth) : preferredWidth;
     }
 
     private void KeepDialogFocus(object sender, KeyboardFocusChangedEventArgs e)
@@ -339,6 +361,7 @@ public partial class PopupDialog : UserControl
             Type = type;
             Title = options.Title;
             EditorIcon = options.EditorIcon;
+            PreferredWidth = options.PreferredWidth;
             Background = options.Background;
             DefaultButton = new(options.DefaultButton.DefaultButtonText, options.DefaultButton.DefaultButtonForeground);
             ConfirmButton = new(options.SuccessButton.SuccessConfirmButtonText, options.SuccessButton.SuccessConfirmButtonForeground);
@@ -361,6 +384,7 @@ public partial class PopupDialog : UserControl
         public string? Warning { get => warning; internal set => SetField(ref warning, value); }
         public bool IsConfirming { get => isConfirming; internal set => SetField(ref isConfirming, value); }
         internal bool AllowMissClick { get; }
+        internal double? PreferredWidth { get; }
         internal bool EscapeReturnsNull { get; }
         internal Func<ValidatePopupDialog>? Validation { get; }
         internal Func<Task<ValidatePopupDialog>>? ConfirmAsync { get; }

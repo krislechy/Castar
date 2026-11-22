@@ -43,8 +43,6 @@ public sealed class ExpenseCategorizationService(
     public event Action<ExpenseHistoryProgress>? HistoryProgressChanged;
     public ExpenseHistoryProgress HistoryProgress => Volatile.Read(ref historyProgress);
 
-    public Task CategorizeHistoryAsync(CancellationToken token = default) => StartRun(null, null, null, token);
-
     internal async Task<bool> ReclassifyPurchaseAsync(PurchaseDto purchase, CancellationToken token = default,
         IProgress<int>? progress = null)
     {
@@ -95,7 +93,7 @@ public sealed class ExpenseCategorizationService(
         return StartRun(kind, startUtc, endUtc, token);
     }
 
-    private Task StartRun(string? kind, DateTime? startUtc, DateTime? endUtc, CancellationToken token)
+    private Task StartRun(string kind, DateTime startUtc, DateTime endUtc, CancellationToken token)
     {
         token.ThrowIfCancellationRequested();
         Task completion;
@@ -108,10 +106,9 @@ public sealed class ExpenseCategorizationService(
                 throw new InvalidOperationException("Дождитесь завершения текущей категоризации.");
             }
             if (disposed || !started)
-                throw new InvalidOperationException("История доступна в активном клиенте категоризации.");
-            if ((kind is null && !settings.AutomaticCategorizationEnabled)
-                || settings.LocalAi.Model.Length == 0 || settings.ApiKey.Length == 0)
-                throw new InvalidOperationException("Подключите сервер и примените настройки модели.");
+                throw new InvalidOperationException("Категоризация доступна после запуска клиента.");
+            if (settings.LocalAi.Model.Length == 0 || settings.ApiKey.Length == 0)
+                throw new InvalidOperationException("Подключите сервер и сохраните настройки модели.");
 
             historyRequest = new(kind, startUtc, endUtc);
             completion = historyRequest.Completion.Task;
@@ -211,11 +208,11 @@ public sealed class ExpenseCategorizationService(
             {
                 if (stopModel)
                     await localAi.StopAsync(request.Token).ConfigureAwait(false);
-                if ((enabled || history?.Kind is not null) && settings.ApiKey.Length > 0)
+                if ((enabled || history is not null) && settings.ApiKey.Length > 0)
                 {
                     if (history is not null)
                     {
-                        var kind = history.Kind ?? BudgetEvents.Purchase;
+                        var kind = history.Kind;
                         var queued = await server.QueueClassificationAsync(kind, request.Token,
                             history.StartUtc, history.EndUtc).ConfigureAwait(false);
                         var tally = new HistoryTally(queued.PendingCount, progress => ReportHistory(history.Scope(progress)));
@@ -245,7 +242,7 @@ public sealed class ExpenseCategorizationService(
             }
             catch (HttpRequestException error) when (error.StatusCode == HttpStatusCode.NotFound)
             {
-                message = "Обновите Castar Server для обработки истории.";
+                message = "Обновите Castar Server для категоризации за период.";
             }
             catch (Exception error) when (IsRecoverable(error))
             {
@@ -430,7 +427,7 @@ public sealed class ExpenseCategorizationService(
         HistoryProgressChanged?.Invoke(progress);
     }
 
-    private sealed record ExplicitRun(string? Kind, DateTime? StartUtc, DateTime? EndUtc)
+    private sealed record ExplicitRun(string Kind, DateTime StartUtc, DateTime EndUtc)
     {
         public TaskCompletionSource Completion { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
 

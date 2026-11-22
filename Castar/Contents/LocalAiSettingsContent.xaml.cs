@@ -1,6 +1,5 @@
 using Castar.Compontents;
 using Castar.LocalAi;
-using Castar.ServerConnection;
 using Castar.Settings;
 using Microsoft.Win32;
 using System;
@@ -22,25 +21,19 @@ public partial class LocalAiSettingsContent : UserControl
     private const string LlamaDefaultEndpoint = "http://127.0.0.1:8080/";
     private readonly ClientSettings settings;
     private readonly LocalAiService service;
-    private readonly ExpenseCategorizationService? categorization;
     private CancellationTokenSource? discovery;
     private LocalAiOptions saved = LocalAiOptions.Default;
     private bool savedEnabled;
     private bool editingDraft;
     private bool changingControls = true;
-    private bool startingHistory;
-    private ExpenseHistoryProgress? historyBeforeStart;
-    private string? historyError;
     private LocalAiProvider lastProvider;
     private (LocalAiProvider Provider, LocalAiMode Mode, string? Endpoint, string? Executable, string? Directory) currentTarget;
 
-    internal LocalAiSettingsContent(ClientSettings settings, LocalAiService service, ExpenseCategorizationService? categorization = null)
+    internal LocalAiSettingsContent(ClientSettings settings, LocalAiService service)
     {
         this.settings = settings;
         this.service = service;
-        this.categorization = categorization;
         InitializeComponent();
-        HistoryPanel.Visibility = categorization is null ? Visibility.Collapsed : Visibility.Visible;
         ProviderPicker.ItemsSource = new Choice<LocalAiProvider>[]
         {
             new(LocalAiProvider.Ollama, "Ollama"),
@@ -64,8 +57,6 @@ public partial class LocalAiSettingsContent : UserControl
     private void LocalAiSettings_Loaded(object sender, RoutedEventArgs e)
     {
         service.ProcessStateChanged += Service_ProcessStateChanged;
-        if (categorization is not null)
-            categorization.HistoryProgressChanged += Categorization_HistoryProgressChanged;
         if (IsVisible)
             BeginEditing();
     }
@@ -73,8 +64,6 @@ public partial class LocalAiSettingsContent : UserControl
     private void LocalAiSettings_Unloaded(object sender, RoutedEventArgs e)
     {
         service.ProcessStateChanged -= Service_ProcessStateChanged;
-        if (categorization is not null)
-            categorization.HistoryProgressChanged -= Categorization_HistoryProgressChanged;
         EndEditing();
     }
 
@@ -293,80 +282,6 @@ public partial class LocalAiSettingsContent : UserControl
         UpdateActions();
     }
 
-    private async void ProcessHistory_Click(object sender, RoutedEventArgs e)
-    {
-        if (categorization is null || !CanProcessHistory(categorization.HistoryProgress))
-            return;
-
-        startingHistory = true;
-        historyBeforeStart = categorization.HistoryProgress;
-        historyError = null;
-        UpdateHistoryProgress();
-        try
-        {
-            await categorization.CategorizeHistoryAsync();
-        }
-        catch (Exception error) when (IsLocalServiceError(error))
-        {
-            historyError = DescribeError(error, "Не удалось обработать историю.");
-        }
-        finally
-        {
-            startingHistory = false;
-            historyBeforeStart = null;
-            UpdateHistoryProgress();
-        }
-    }
-
-    private void Categorization_HistoryProgressChanged(ExpenseHistoryProgress progress)
-    {
-        if (Dispatcher.CheckAccess())
-            UpdateVisibleHistoryProgress();
-        else if (!Dispatcher.HasShutdownStarted)
-            _ = Dispatcher.InvokeAsync(UpdateVisibleHistoryProgress);
-    }
-
-    private void UpdateVisibleHistoryProgress()
-    {
-        if (IsLoaded && IsVisible)
-            UpdateHistoryProgress();
-    }
-
-    private void UpdateHistoryProgress()
-    {
-        if (categorization is null)
-            return;
-
-        var activeProgress = categorization.HistoryProgress;
-        var progress = activeProgress.Kind is null ? activeProgress : new ExpenseHistoryProgress(0, 0, null, false, null);
-        var running = startingHistory || progress.Running;
-        var awaitingProgress = startingHistory && Equals(progress, historyBeforeStart);
-        var hasTotal = !awaitingProgress && progress.Total > 0;
-        ProcessHistoryButton.IsEnabled = CanProcessHistory(activeProgress);
-        HistoryProgressBody.Visibility = running || hasTotal ? Visibility.Visible : Visibility.Collapsed;
-        HistoryProgressLabels.Visibility = hasTotal ? Visibility.Visible : Visibility.Collapsed;
-        HistoryCountText.Text = hasTotal ? $"Обработано {progress.Completed:N0} из {progress.Total:N0}" : "";
-        HistoryRemainingText.Text = progress.Running && progress.Remaining is { } remaining
-            ? $"Осталось ~{FormatRemaining(remaining)}" : "";
-        HistoryProgressBar.IsIndeterminate = running && !hasTotal;
-        HistoryProgressBar.Maximum = hasTotal ? progress.Total : 1;
-        HistoryProgressBar.Value = hasTotal ? Math.Clamp(progress.Completed, 0, progress.Total) : 0;
-        HistoryStatus.Text = historyError ?? (awaitingProgress ? null : progress.Message)
-            ?? (running && !hasTotal ? "Подготовка истории…" : "");
-    }
-
-    private bool CanProcessHistory(ExpenseHistoryProgress progress) => !startingHistory && !progress.Running
-        && settings.AutomaticCategorizationEnabled && !string.IsNullOrWhiteSpace(settings.LocalAi.Model);
-
-    private static string FormatRemaining(TimeSpan remaining)
-    {
-        if (remaining < TimeSpan.FromMinutes(1))
-            return $"{Math.Max(1, Math.Ceiling(remaining.TotalSeconds)):N0} с";
-        if (remaining < TimeSpan.FromHours(1))
-            return $"{Math.Ceiling(remaining.TotalMinutes):N0} мин";
-        return $"{Math.Ceiling(remaining.TotalHours):N0} ч";
-    }
-
     private void TargetSelection_Changed(object sender, SelectionChangedEventArgs e) => UpdateTarget();
 
     private void TargetText_Changed(object sender, TextChangedEventArgs e) => UpdateTarget();
@@ -421,7 +336,6 @@ public partial class LocalAiSettingsContent : UserControl
     {
         ApplyButton.IsEnabled = ReadDraft() != saved || (EnabledSwitch.IsChecked == true) != savedEnabled;
         UpdateProcessState();
-        UpdateHistoryProgress();
     }
 
     private void RestoreModel(string model)

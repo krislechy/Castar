@@ -125,23 +125,7 @@
             </StackPanel>
         </Border>
         <TextBlock x:Name="ApplyStatus" Style="{StaticResource LocalAiStatus}"/>
-        <Button x:Name="ApplyButton" Content="Применить" HorizontalAlignment="Left" Margin="0,12,0,0"
+        <Button x:Name="ApplyButton" Content="Сохранить изменения" HorizontalAlignment="Right" Margin="0,12,0,0"
                 Style="{StaticResource FormPrimaryAction}" Click="Apply_Click"/>
-        <Border x:Name="HistoryPanel" Style="{StaticResource SettingsGroup}" Margin="0,12,0,0" Visibility="Collapsed">
-            <StackPanel>
-                <Button x:Name="ProcessHistoryButton" Content="Обработать историю" HorizontalAlignment="Left"
-                        Style="{StaticResource Castar.SecondaryButton}" Click="ProcessHistory_Click"/>
-                <StackPanel x:Name="HistoryProgressBody" Visibility="Collapsed" Margin="0,10,0,0">
-                    <DockPanel x:Name="HistoryProgressLabels" Margin="0,0,0,5">
-                        <TextBlock x:Name="HistoryRemainingText" DockPanel.Dock="Right" Margin="8,0,0,0"
-                                   Foreground="{DynamicResource Foreground.Gray}" TextWrapping="Wrap"/>
-                        <TextBlock x:Name="HistoryCountText" Foreground="{DynamicResource Foreground.White}"
-                                   TextWrapping="Wrap" AutomationProperties.LiveSetting="Polite"/>
-                    </DockPanel>
-                    <ProgressBar x:Name="HistoryProgressBar" Height="5" AutomationProperties.Name="Обработка истории"/>
-                </StackPanel>
-                <TextBlock x:Name="HistoryStatus" Style="{StaticResource LocalAiStatus}"/>
-            </StackPanel>
-        </Border>
     </StackPanel>
 </UserControl>

@@ -10,7 +10,7 @@ namespace Castar.Services.TelegramBot.Commands;
 
 public sealed partial class CommandHandler
 {
-    private const string PurchaseFormat = "Формат покупки: [наименование товара] [сумма] [валюта по желанию].";
+    private const string PurchaseFormat = "Один товар на строку: [название] [сумма] [валюта по желанию].";
 
     private async Task<string?> SaveManualPurchaseAsync(
         ITelegramBotClient bot, Message message, BudgetUser user, string[] lines, bool edited,
@@ -22,16 +22,14 @@ public sealed partial class CommandHandler
         var existing = await purchasesService.GetManualPurchaseByMessageId(user.TelegramId, message.MessageId, cancellationToken);
         if (existing is not null && !edited)
             return null;
-        if (existing?.HasMultipleCurrencies() == true)
-            throw new FormatException("Эта покупка содержит товары в разных валютах. Измените её в Castar.");
-
         var policy = settings.ManualCurrencies;
-        var inputs = lines.Select(line => ParseItem(line, policy)).ToArray();
-        var currencies = inputs.Select(item => item.Currency).OfType<string>().Distinct().Take(2).ToArray();
-        if (currencies.Length > 1)
-            throw new FormatException("Для позиций одной покупки укажите одну валюту.");
-
-        var currency = currencies.FirstOrDefault() ?? (existing is null ? policy.DefaultCurrency : existing.Currency);
+        var originalItems = existing?.Items.ToArray() ?? [];
+        var inputs = lines.Select((line, index) =>
+        {
+            var (name, sum, currency) = ParseItem(line, policy);
+            return (Name: name, Sum: sum, Currency: currency ??
+                (index < originalItems.Length ? originalItems[index].Currency : policy.DefaultCurrency));
+        }).ToArray();
         if (existing is null)
         {
             if (edited && inputs.Any(item => item.Sum < 0))
@@ -43,7 +41,7 @@ public sealed partial class CommandHandler
                 Name = inputs.Length == 1 ? inputs[0].Name : $"№{message.MessageId}"
             };
             var created = new StringBuilder();
-            foreach (var (name, sum, _) in inputs)
+            foreach (var (name, sum, currency) in inputs)
             {
                 purchase.Items.Add(NewManualItem(name, sum, currency));
                 created.AppendLine($"{settings.TelegramBot.PurchaseCreateEmoji} {user.Name} добавил(а) товар [{name}] — {FormatManualAmount(sum, currency)}");
@@ -52,10 +50,6 @@ public sealed partial class CommandHandler
             await purchasesService.Add(purchase, user.TelegramId, cancellationToken);
             return created.ToString();
         }
-
-        if (currency == existing.Currency && inputs.Select(item => (item.Name, item.Sum))
-                .SequenceEqual(existing.Items.Select(item => (item.Name, item.Price))))
-            return null;
 
         if (existing.Items.Count == inputs.Length && inputs.Any(item => item.Sum < 0))
         {
@@ -68,14 +62,20 @@ public sealed partial class CommandHandler
                 return null;
             }
 
-            return $"{settings.TelegramBot.PurchaseDeleteEmoji} {user.Name} удалил(а) покупку [{existing.Name}] — {FormatManualAmount(existing.TotalSum, existing.Currency)}";
+            var totals = string.Join(" · ", existing.GetAmountsByCurrency()
+                .Select(total => FormatManualAmount(total.Amount, total.Currency)));
+            return $"{settings.TelegramBot.PurchaseDeleteEmoji} {user.Name} удалил(а) покупку [{existing.Name}] — {totals}";
         }
 
-        var originalItems = existing.Items.ToArray();
+        var prices = inputs.Select(item => (item.Name,
+            existing.CalculateManualItemAmounts(1, item.Sum, item.Currency).Price, item.Currency));
+        if (prices.SequenceEqual(originalItems.Select(item => (item.Name, item.Price, item.Currency))))
+            return null;
+
         var result = new StringBuilder();
         for (var index = 0; index < inputs.Length; index++)
         {
-            var (name, sum, _) = inputs[index];
+            var (name, sum, currency) = inputs[index];
             if (index < originalItems.Length)
             {
                 var item = originalItems[index];
@@ -101,7 +101,7 @@ public sealed partial class CommandHandler
         return result.ToString();
     }
 
-    private static Item NewManualItem(string name, decimal sum, string? currency = null) =>
+    private static Item NewManualItem(string name, decimal sum, string? currency) =>
         new() { Name = name, Price = sum, Sum = sum, Quantity = 1, Currency = currency };
 
     private static (string Name, decimal Sum, string? Currency) ParseItem(string line, ManualCurrencySettings policy) =>

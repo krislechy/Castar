@@ -79,7 +79,7 @@ public sealed partial class CommandHandler
             if (draft is not null)
                 await CompleteEntryWizardAsync(bot, sessions, conversation, draft, CancelledText(draft), token);
             draft = sessions.Start(conversation, entryKind);
-            await AskAsync(bot, message, draft, entryKind == EntryKind.Income ? "Источник дохода" : "Название покупки", token);
+            await AskAsync(bot, message, draft, entryKind == EntryKind.Income ? "Источник дохода" : "Название товара", token);
             return true;
         }
 
@@ -92,7 +92,7 @@ public sealed partial class CommandHandler
                 await AskAsync(bot, message, draft, "Введите название длиной до 400 символов.", token);
                 return true;
             }
-            await AskAsync(bot, message, draft, draft.Kind == EntryKind.Income ? "Сумма дохода" : "Сумма покупки", token);
+            await AskAsync(bot, message, draft, draft.Kind == EntryKind.Income ? "Сумма дохода" : "Сумма товара", token);
             draft.Name = text;
             return true;
         }
@@ -105,7 +105,7 @@ public sealed partial class CommandHandler
 
         var currencyButtons = settings.ManualCurrencies.Currencies
             .Select(code => Button(code, draft, code)).Chunk(4).Append([Button("Отмена", draft, "cancel")]);
-        var currencyPrompt = await bot.SendMessage(message.Chat.Id, draft.Kind == EntryKind.Income ? "Валюта дохода" : "Валюта покупки",
+        var currencyPrompt = await bot.SendMessage(message.Chat.Id, draft.Kind == EntryKind.Income ? "Валюта дохода" : "Валюта товара",
             replyMarkup: new InlineKeyboardMarkup(currencyButtons), messageThreadId: message.MessageThreadId,
             cancellationToken: token);
         draft.PromptId = currencyPrompt.MessageId;
@@ -161,8 +161,8 @@ public sealed partial class CommandHandler
                 if (created)
                     await purchasesService.Add(new Purchase
                     {
-                        Id = draft.Id, Name = name, Currency = code,
-                        Items = new() { NewManualItem(name, amount) }
+                        Id = draft.Id, Name = name,
+                        Items = new() { NewManualItem(name, amount, code) }
                     }, conversation.UserId, token);
             }
             var outcome = await CompleteEntryWizardAsync(bot, sessions, conversation, draft,

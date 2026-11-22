@@ -91,10 +91,6 @@ namespace Castar.DAL.Repositories.DataBase
             ThrowIfFiscal(Context, current);
             if (current.Revision != purchase.Revision)
                 throw new DbUpdateConcurrencyException("Покупка уже изменилась.");
-            if (current.HasMultipleCurrencies())
-                throw new InvalidOperationException("Эту покупку можно редактировать только в Castar.");
-
-            var defaultCurrency = purchase.Currency ?? current.Currency;
             current.Name = purchase.Name;
             var merchantChanged = NormalizeCategoryKeyPart(current.RetailPlace) != NormalizeCategoryKeyPart(purchase.RetailPlace);
             current.RetailPlace = purchase.RetailPlace;
@@ -109,7 +105,6 @@ namespace Castar.DAL.Repositories.DataBase
                 {
                     item.PurchaseId = purchase.Id;
                     item.Purchase = current;
-                    item.Currency ??= ManualCurrencySettings.NormalizeCode(defaultCurrency);
                     Context.Items.Add(item);
                     Context.Entry(item).Property<int?>(CastarDbContext.LineNumber).CurrentValue = index;
                 }
@@ -120,7 +115,7 @@ namespace Castar.DAL.Repositories.DataBase
                     currentItem.Name = item.Name;
                     currentItem.Price = item.Price;
                     currentItem.Quantity = item.Quantity;
-                    currentItem.Currency = item.Currency ?? currentItem.Currency ?? ManualCurrencySettings.NormalizeCode(defaultCurrency);
+                    currentItem.Currency = item.Currency;
                     Context.Entry(currentItem).Property<int?>(CastarDbContext.LineNumber).CurrentValue = index;
                 }
                 else

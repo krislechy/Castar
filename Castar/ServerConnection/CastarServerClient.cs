@@ -413,14 +413,9 @@ public sealed class CastarServerClient(ClientSettings settings) : IDisposable
     }
 
     internal Task<PurchaseClassificationQueueDto> QueueClassificationAsync(string kind, CancellationToken token,
-        DateTime? startUtc = null, DateTime? endUtc = null)
-    {
-        var path = $"{ClassificationPath(kind)}/queue";
-        if (startUtc is { } first && endUtc is { } last)
-            path += "?" + ExclusiveUtcRange(first, last);
-        return SendAsync<PurchaseClassificationQueueDto>(HttpMethod.Post, path,
-            cancellationToken: token, readProblemDetails: true);
-    }
+        DateTime startUtc, DateTime endUtc) => SendAsync<PurchaseClassificationQueueDto>(HttpMethod.Post,
+        $"{ClassificationPath(kind)}/queue?{ExclusiveUtcRange(startUtc, endUtc)}",
+        cancellationToken: token, readProblemDetails: true);
 
     public async Task<int> GetClassificationCountAsync(string kind, DateTime startUtc, DateTime endUtc,
         CancellationToken token) => (await SendAsync<ClassificationCountDto>(HttpMethod.Get,

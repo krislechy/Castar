@@ -40,8 +40,7 @@ public partial class SettingsContent : UserControl
     private PasswordBox? telegramTokenInput;
 
     public SettingsContent(ClientSettings settings, CastarServerClient server, GitHubUpdateService updateService,
-        HistoricalExchangeRates exchangeRates, BudgetEventConnection? events = null, LocalAiService? localAi = null,
-        ExpenseCategorizationService? categorization = null)
+        HistoricalExchangeRates exchangeRates, BudgetEventConnection? events = null, LocalAiService? localAi = null)
     {
         this.settings = settings;
         this.server = server;
@@ -79,7 +78,7 @@ public partial class SettingsContent : UserControl
         if (localAi is null)
             LocalAiSectionButton.Visibility = Visibility.Collapsed;
         else
-            LocalAiSettingsHost.Content = new LocalAiSettingsContent(settings, localAi, categorization);
+            LocalAiSettingsHost.Content = new LocalAiSettingsContent(settings, localAi);
     }
 
     internal Task PreloadAsync()

@@ -36,6 +36,8 @@ public sealed record PurchaseDto(Guid Id, Guid UserId, string Name, decimal Tota
     public DateOnly? RateDate { get; init; }
     public long? Revision { get; init; }
     public bool HasReceiptSource { get; init; }
+    [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingDefault)]
+    public bool IsFiscalReceipt { get; init; }
     public bool SupportsCurrencyEdit { get; init; }
     public bool SupportsItemCurrencyEdit { get; init; }
     public PurchaseOwnerDto? Owner { get; init; }

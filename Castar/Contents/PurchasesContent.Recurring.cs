@@ -1,7 +1,11 @@
 using Castar.Api;
 using Castar.Compontents;
+using Castar.Currency;
+using Castar.Domain.Models.DataBase;
 using Castar.ServerConnection;
 using System;
+using System.Collections.Generic;
+using System.Linq;
 using System.Net;
 using System.Net.Http;
 using System.Threading;
@@ -45,9 +49,7 @@ public partial class PurchasesContent
                     while (refreshNeeded && !request.IsCancellationRequested)
                     {
                         refreshNeeded = false;
-                        var result = await server.GetRecurringPurchasesAsync(request);
-                        if (!request.IsCancellationRequested)
-                            panel.SetRows(result);
+                        await LoadRecurringRowsAsync(panel, request);
                     }
                 }
                 catch (Exception error) when (CastarServerClient.IsConnectionError(error))
@@ -103,8 +105,7 @@ public partial class PurchasesContent
             {
                 try
                 {
-                    await ButtonLoading.RunAsync(sender, async () =>
-                        panel.SetRows(await server.GetRecurringPurchasesAsync(request)));
+                    await ButtonLoading.RunAsync(sender, () => LoadRecurringRowsAsync(panel, request));
                 }
                 catch (HttpRequestException error) when (error.StatusCode is HttpStatusCode.NotFound
                     or HttpStatusCode.MethodNotAllowed)
@@ -135,6 +136,42 @@ public partial class PurchasesContent
                 await session.CancelAsync();
             }
         });
+    }
+
+    private async Task LoadRecurringRowsAsync(RecurringPurchasesPanel panel, CancellationToken token)
+    {
+        var subscriptions = await server.GetRecurringPurchasesAsync(token);
+        var target = settings.DisplayCurrency;
+        var quotes = new Dictionary<string, CurrencyRateDto>(StringComparer.Ordinal);
+        if (HistoricalExchangeRates.IsCurrencyCode(target))
+        {
+            var date = BudgetTime.BelgradeDate(DateTime.UtcNow);
+            var sources = subscriptions.SelectMany(subscription =>
+            {
+                var template = subscription.Schedule.Template;
+                return template.Items.Select(item => item.Currency ?? template.Purchase.Currency);
+            }).OfType<string>().Where(code => code != target && HistoricalExchangeRates.IsCurrencyCode(code))
+                .ToHashSet(StringComparer.Ordinal);
+            try
+            {
+                foreach (var batch in sources.Chunk(512))
+                {
+                    var rates = await server.GetExchangeRatesAsync(target,
+                        batch.Select(code => new CurrencyRateKeyDto(code, date)).ToArray(), token);
+                    foreach (var quote in rates)
+                        if (quote is { Rate: > 0 } && quote.Date == date && sources.Contains(quote.Currency)
+                            && date.DayNumber - quote.QuotedOn.DayNumber is >= 0 and <= 7)
+                            quotes[quote.Currency] = quote;
+                }
+            }
+            catch (Exception error) when (!token.IsCancellationRequested && CastarServerClient.IsConnectionError(error))
+            {
+                // The panel still shows native prices and identifies amounts without a quote.
+            }
+        }
+
+        token.ThrowIfCancellationRequested();
+        panel.SetRows(subscriptions, target, quotes);
     }
 
     private async Task<bool> ApplyRecurringPurchaseActionAsync(RecurringPurchasesPanel panel,

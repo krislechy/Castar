@@ -125,7 +125,7 @@ public partial class PurchasesContent
 
     private async void AddPurchaseItem_Click(object sender, RoutedEventArgs e)
     {
-        if (PurchasesList.SelectedItem is not PurchaseRow { Source.Revision: not null } row)
+        if (PurchasesList.SelectedItem is not PurchaseRow { CanAddItems: true } row)
             return;
         var scope = PurchaseItemQueueScope;
         await ShowPurchaseItemEditorAsync(new(Guid.Empty, "", null, 1, 0, 0), row.ItemCurrencyFallback,

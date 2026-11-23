@@ -25,7 +25,13 @@
    <MenuItem Header="Показать исходные данные" Style="{StaticResource LedgerMenuItem}" Icon="{StaticResource Ledger.SourceIcon}" Click="ShowReceiptSource_Click" Visibility="{Binding HasReceiptSource, Converter={StaticResource PurchaseActionVisibility}}"/>
    <MenuItem Header="Удалить покупку" Style="{StaticResource LedgerMenuItem}" Icon="{StaticResource Ledger.DeleteIcon}" Click="DeletePurchase_Click" Visibility="{Binding CanDelete, Converter={StaticResource PurchaseActionVisibility}}"/>
   </ContextMenu>
-  <ContextMenu x:Key="PurchaseItemRowMenu" Style="{StaticResource LedgerContextMenu}"><MenuItem Header="Редактировать" Style="{StaticResource LedgerMenuItem}" Icon="{StaticResource Ledger.EditIcon}" Click="EditPurchaseItemMenu_Click"/><MenuItem Header="Удалить товар" Style="{StaticResource LedgerMenuItem}" Icon="{StaticResource Ledger.DeleteIcon}" Click="DeletePurchaseItem_Click"/></ContextMenu>
+  <ContextMenu x:Key="PurchaseItemRowMenu" Style="{StaticResource LedgerContextMenu}">
+   <MenuItem Header="Редактировать" Style="{StaticResource LedgerMenuItem}" Icon="{StaticResource Ledger.EditIcon}" Click="EditPurchaseItemMenu_Click"/>
+   <MenuItem Header="Удалить товар" Style="{StaticResource LedgerMenuItem}" Icon="{StaticResource Ledger.DeleteIcon}"
+             Click="DeletePurchaseItem_Click" IsEnabled="{Binding CanDelete, FallbackValue=False}"
+             ToolTip="{Binding DeleteItemRestriction}" ToolTipService.ShowOnDisabled="True"
+             AutomationProperties.HelpText="{Binding DeleteItemRestriction}"/>
+  </ContextMenu>
  </ResourceDictionary></UserControl.Resources>
  <Grid Background="{StaticResource LedgerCanvas}">
   <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition/></Grid.RowDefinitions>
@@ -192,8 +198,39 @@
                   AutomationProperties.Name="{Binding Text, RelativeSource={RelativeSource Self}, StringFormat='Товаров в очереди: {0}'}"
                   AutomationProperties.LiveSetting="Polite"/>
       </Grid>
-      <Button x:Name="AddPurchaseItemButton" Grid.Column="4" Style="{StaticResource LedgerActionButton}" Content="Добавить товар"
-              Click="AddPurchaseItem_Click" AutomationProperties.Name="Добавить товар" IsEnabled="{Binding CanDelete, FallbackValue=False}"/>
+      <Button x:Name="AddPurchaseItemButton" Grid.Column="4"
+              Click="AddPurchaseItem_Click" AutomationProperties.Name="Добавить товар"
+              IsEnabled="{Binding CanAddItems, FallbackValue=False}"
+              ToolTip="{Binding AddItemRestriction}" ToolTipService.ShowOnDisabled="True"
+              AutomationProperties.HelpText="{Binding AddItemRestriction}">
+       <Button.Style>
+        <Style TargetType="Button" BasedOn="{StaticResource LedgerActionButton}">
+         <Style.Triggers>
+          <MultiDataTrigger>
+           <MultiDataTrigger.Conditions>
+            <Condition Binding="{Binding CanAddItems, FallbackValue=False}" Value="False"/>
+            <Condition Binding="{Binding AddItemRestriction, FallbackValue={x:Null}}" Value="{x:Null}"/>
+           </MultiDataTrigger.Conditions>
+           <Setter Property="Visibility" Value="Collapsed"/>
+          </MultiDataTrigger>
+         </Style.Triggers>
+        </Style>
+       </Button.Style>
+       <StackPanel Orientation="Horizontal">
+        <ContentPresenter Content="{DynamicResource Svg.Warning}" VerticalAlignment="Center" Margin="0,0,8,0">
+         <ContentPresenter.Style>
+          <Style TargetType="ContentPresenter">
+           <Style.Triggers>
+            <DataTrigger Binding="{Binding ToolTip, RelativeSource={RelativeSource AncestorType=Button}, FallbackValue={x:Null}}" Value="{x:Null}">
+             <Setter Property="Visibility" Value="Collapsed"/>
+            </DataTrigger>
+           </Style.Triggers>
+          </Style>
+         </ContentPresenter.Style>
+        </ContentPresenter>
+        <TextBlock Text="Добавить товар" VerticalAlignment="Center"/>
+       </StackPanel>
+      </Button>
      </Grid>
      <StackPanel Grid.Row="1" Margin="0,0,0,12"><TextBlock Text="{Binding RetailPlace, TargetNullValue=''}" Style="{StaticResource BudgetOptionalText}" Foreground="{DynamicResource Foreground.White}" FontWeight="SemiBold"/><TextBlock Text="{Binding RetailPlaceAddress, TargetNullValue=''}" Style="{StaticResource BudgetOptionalText}" Foreground="{StaticResource LedgerMuted}"/><c:MoneyAmount Display="{Binding Amount}" AmountAlignment="Left" Margin="0,4,0,0" FontWeight="SemiBold" Foreground="{StaticResource LedgerExpense}" FontSize="18" AutomationProperties.Name="Итог чека"/><TextBlock Text="{Binding Tag.Message, ElementName=DetailsPanel}" Style="{StaticResource BudgetOptionalText}" Foreground="{DynamicResource Warning.Svg.Brush}" TextWrapping="Wrap" AutomationProperties.LiveSetting="Polite"/></StackPanel>
      <Grid Grid.Row="2" Margin="0,0,0,8"><Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="Auto" MinWidth="48" SharedSizeGroup="ExpenseItemQuantity"/><ColumnDefinition Width="Auto" MinWidth="74" SharedSizeGroup="ExpenseItemPrice"/><ColumnDefinition Width="Auto" MinWidth="82" SharedSizeGroup="ExpenseItemSum"/><ColumnDefinition Width="32"/></Grid.ColumnDefinitions><TextBlock Text="Название" Margin="8,0,0,0" Foreground="{StaticResource LedgerMuted}"/><TextBlock Grid.Column="1" Text="Кол-во" TextAlignment="Right" Foreground="{StaticResource LedgerMuted}"/><TextBlock Grid.Column="2" Text="Цена" Margin="14,0,0,0" TextAlignment="Right" Foreground="{StaticResource LedgerMuted}"/><TextBlock Grid.Column="3" Text="Сумма" Margin="14,0,0,0" TextAlignment="Right" Foreground="{StaticResource LedgerMuted}"/></Grid>

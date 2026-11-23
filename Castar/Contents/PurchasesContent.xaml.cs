@@ -164,6 +164,8 @@ public partial class PurchasesContent : UserControl
         if (e.PropertyName is not (nameof(ClientSettings.DisplayCurrency) or nameof(ClientSettings.DisplayTimeZoneId)))
             return;
 
+        if (e.PropertyName == nameof(ClientSettings.DisplayCurrency))
+            RefreshRecurringPurchasesAfterServerChange();
         dataStale = true;
         hasLoaded = false;
         if (listeningForChanges)
@@ -400,13 +402,15 @@ public partial class PurchasesContent : UserControl
         return currency is not null && date is { } day && rates.TryGetValue((currency, day), out var rate) ? rate : null;
     }
 
+    private static string[] FormatPurchaseTotals(IEnumerable<PurchaseRow> rows) =>
+        rows.SelectMany(row => row.SelectionAmounts())
+            .Where(row => row.Amount.HasValue && HistoricalExchangeRates.IsCurrencyCode(row.Currency))
+            .GroupBy(row => row.Currency)
+            .Select(group => HistoricalExchangeRates.Format(group.Sum(row => row.Amount!.Value), group.Key)).ToArray();
+
     private void ShowPurchases(PurchaseRow[] rows, string target)
     {
-        var amounts = rows.SelectMany(row => row.SelectionAmounts())
-            .Where(row => row.Amount.HasValue && HistoricalExchangeRates.IsCurrencyCode(row.Currency))
-            .Select(row => (row.Amount!.Value, row.Currency));
-        var totals = amounts.GroupBy(amount => amount.Currency)
-            .Select(group => HistoricalExchangeRates.Format(group.Sum(amount => amount.Value), group.Key)).ToArray();
+        var totals = FormatPurchaseTotals(rows);
         ExpenseNativeTotals.ItemsSource = totals.Length > 1 ? totals : null;
         var excludedCount = rows.Count(row => row.AmountWarning is not null);
         ExpenseTotal.Text = totals.Length == 1 ? totals[0] : excludedCount > 0 && totals.Length == 0 ? "Итог недоступен" : "";
@@ -663,7 +667,7 @@ public partial class PurchasesContent : UserControl
     private void PurchaseActions_Click(object sender, RoutedEventArgs e)
     {
         if (purchaseAction is not null || sender is not Button { ContextMenu: { } menu, Tag: { } row } button ||
-            row is not (PurchaseRow { CanDelete: true } or PurchaseRow { HasReceiptSource: true } or ItemRow { Revision: not null }))
+            row is not (PurchaseRow { CanDelete: true } or PurchaseRow { HasReceiptSource: true } or ItemRow))
             return;
         menu.DataContext = row;
         menu.Tag = new ActionMenuSnapshot(row, connectionRevision);
@@ -733,12 +737,21 @@ public partial class PurchasesContent : UserControl
         if (purchaseView is null)
             return;
 
-        DateOnly? previousDay = null;
-        foreach (var row in purchaseView.OfType<PurchaseRow>())
+        var days = purchaseView.OfType<PurchaseRow>().GroupBy(row => row.PurchaseDay);
+        foreach (var day in days)
         {
-            var day = row.PurchaseDay;
-            row.SetStartsPurchaseDay(day.HasValue && day != previousDay);
-            previousDay = day;
+            if (day.Key is null)
+                continue;
+            var totals = FormatPurchaseTotals(day);
+            var excluded = day.Count(row => row.AmountWarning is not null);
+            var total = totals.Length > 0 ? string.Join(" · ", totals) : "Итог недоступен";
+            var warning = excluded > 0 ? $"Покупок вне итога за день: {excluded} из {day.Count()}." : null;
+            var first = true;
+            foreach (var row in day)
+            {
+                row.SetPurchaseDayTotal(first ? total : null, first ? warning : null);
+                first = false;
+            }
         }
     }
 
@@ -809,7 +822,7 @@ public partial class PurchasesContent : UserControl
     private async void PurchaseItemRow_DoubleClick(object sender, MouseButtonEventArgs e)
     {
         if (e.ChangedButton != MouseButton.Left || e.OriginalSource is DependencyObject origin && IsActionElement(origin) || purchaseAction is not null ||
-            sender is not ListViewItem { DataContext: ItemRow { Revision: { } revision } row })
+            sender is not ListViewItem { DataContext: ItemRow row })
             return;
 
         e.Handled = true;
@@ -824,33 +837,48 @@ public partial class PurchasesContent : UserControl
 
     private Task EditPurchaseItemRowAsync(ItemRow row, object? source = null)
     {
-        if (row.Revision is not { } revision || purchaseAction is not null)
+        if (purchaseAction is not null)
             return Task.CompletedTask;
+        if (row.Revision is not { } revision)
+            return RunPurchaseActionAsync(_ => ShowPurchaseActionMessageAsync(
+                "Сервер не передал версию покупки. Обновите список и откройте товар снова.", "Редактирование товара недоступно"));
         return ShowPurchaseItemEditorAsync(row.Source, row.Currency, row.SupportsCurrencyEdit, "Изменить товар", "Сохранить",
-            null, source, (item, token) => server.EditPurchaseItemAsync(row.PurchaseId, row.Id, revision, item, token));
+            null, source, (item, token) => server.EditPurchaseItemAsync(row.PurchaseId, row.Id, revision, item, token),
+            amountsReadOnly: row.IsFiscalReceipt);
     }
 
     private Task ShowPurchaseItemEditorAsync(PurchaseItemDto item, string? currency, bool supportsCurrencyEdit, string title, string action,
         Func<PurchaseItemWriteDto, ValidatePopupDialog>? enqueue, object? source,
-        Func<PurchaseItemWriteDto, CancellationToken, Task<bool>>? mutate = null) =>
+        Func<PurchaseItemWriteDto, CancellationToken, Task<bool>>? mutate = null, bool amountsReadOnly = false) =>
         RunPurchaseActionAsync(async token =>
         {
             IReadOnlyList<BudgetCategoryDto>? categories = null;
             ManualCurrencySettingsDto? currencies = null;
+            string? currencyRestriction = null;
             await ButtonLoading.RunAsync(source, async () =>
             {
                 var categoryRequest = server.GetOperationCategoriesAsync(BudgetEvents.Purchase, token);
-                var settingsRequest = supportsCurrencyEdit ? server.GetServerSettingsAsync(token) : null;
+                var settingsRequest = supportsCurrencyEdit && !amountsReadOnly ? server.GetServerSettingsAsync(token) : null;
                 await Task.WhenAll(categoryRequest, settingsRequest ?? Task.CompletedTask);
                 categories = await categoryRequest;
+                if (amountsReadOnly)
+                    return;
                 if (settingsRequest is not null && await settingsRequest is { SupportsItemCurrencies: true } configuration)
-                    currencies = configuration.ManualCurrency;
+                {
+                    if (configuration.ManualCurrency is { Currencies: { } codes } policy && codes.Any(HistoricalExchangeRates.IsCurrencyCode))
+                        currencies = policy;
+                    else
+                        currencyRestriction = "Список валют пуст. Проверьте разрешённые валюты в настройках сервера.";
+                }
+                else
+                    currencyRestriction = "Выбор валюты товара недоступен на этой версии сервера. Обновите Castar Server.";
             });
             token.ThrowIfCancellationRequested();
 
             var editor = new PurchaseItemEditor(item, currency, usePurchaseFormStyle: true, categories: categories,
                 allowedCurrencies: currencies?.Currencies, defaultCurrency: currencies?.DefaultCurrency,
-                currencyReadOnly: currencies is null, preserveInheritedCurrency: item.Id != Guid.Empty);
+                currencyReadOnly: currencies is null, preserveInheritedCurrency: item.Id != Guid.Empty,
+                amountsReadOnly: amountsReadOnly, currencyRestriction: currencyRestriction);
             if (enqueue is not null)
             {
                 var accepted = await PopupDialog.Show(editor, PopupDialog.TypeDialogEnum.Confirm, options =>
@@ -909,7 +937,7 @@ public partial class PurchasesContent : UserControl
 
     private async void DeletePurchaseItem_Click(object sender, RoutedEventArgs e)
     {
-        if (GetMenuRow<ItemRow>(sender) is not { Revision: { } revision } row)
+        if (GetMenuRow<ItemRow>(sender) is not { CanDelete: true, Revision: { } revision } row)
             return;
 
         var message = $"Товар «{row.Name}» будет удалён.";
@@ -949,10 +977,10 @@ public partial class PurchasesContent : UserControl
             await ShowPurchaseActionMessageAsync("Покупка или позиция уже удалена.");
     }
 
-    private static Task<bool?> ShowPurchaseActionMessageAsync(string message) =>
+    private static Task<bool?> ShowPurchaseActionMessageAsync(string message, string title = "Расходы") =>
         PopupDialog.Show(message, PopupDialog.TypeDialogEnum.Default, options =>
         {
-            options.Title = "Расходы";
+            options.Title = title;
             return options;
         });
 
@@ -1066,6 +1094,7 @@ public partial class PurchasesContent : UserControl
                 var currency = item.Currency ?? source.Currency;
                 var rate = RateFor(currency, date, target, rates);
                 return new ItemRow(source.Id, item, ItemCurrencyFallback, source.Revision, source.SupportsItemCurrencyEdit,
+                    IsFiscalReceipt,
                     FormatAmount(item.Price, currency, target, rate), FormatAmount(item.Sum, currency, target, rate),
                     GetAmountWarning(currency, date, target, rate) is null ? ConvertAmount(item.Sum, currency, target, rate) : null,
                     target.Length == 0 ? currency : target);
@@ -1082,12 +1111,18 @@ public partial class PurchasesContent : UserControl
         public string? OwnerName => Source.Owner?.Name;
         public byte[]? OwnerAvatar { get; private set; }
         public bool CanDelete => Source.Revision.HasValue;
+        public bool CanAddItems => CanDelete && !IsFiscalReceipt;
+        public string? AddItemRestriction => IsFiscalReceipt ? "Состав покупки загружен из фискального чека. Добавлять товары в него нельзя."
+            : CanDelete ? null : "Сервер не передал версию покупки. Обновите список перед добавлением товара.";
+        private bool IsFiscalReceipt => Source.IsFiscalReceipt || Source.ReceiptDate.HasValue;
         public bool HasReceiptSource => Source.HasReceiptSource;
         public string? ItemCurrencyFallback => Source.Currency ?? (nativeAmounts.Count == 1 ? nativeAmounts[0].Currency : null);
         public DateTime? AddedOn => Source.AddedOn;
         public DateOnly? PurchaseDay => AddedOn is { } time ? DateOnly.FromDateTime(time) : null;
         public string? PurchaseDayLabel => PurchaseDay?.Day.ToString();
-        public bool StartsPurchaseDay { get; private set; }
+        public bool StartsPurchaseDay => DayTotal is not null;
+        public string? DayTotal { get; private set; }
+        public string? DayTotalWarning { get; private set; }
         public string? RetailPlace => string.IsNullOrWhiteSpace(Source.RetailPlace) ? null : Source.RetailPlace;
         public string? RetailPlaceAddress => string.IsNullOrWhiteSpace(Source.RetailPlaceAddress) ? null : Source.RetailPlaceAddress;
         public decimal DisplayTotal { get; }
@@ -1116,12 +1151,17 @@ public partial class PurchasesContent : UserControl
             PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(OwnerAvatar)));
         }
 
-        public void SetStartsPurchaseDay(bool value)
+        public void SetPurchaseDayTotal(string? total, string? warning)
         {
-            if (StartsPurchaseDay == value)
+            if (DayTotal == total && DayTotalWarning == warning)
                 return;
-            StartsPurchaseDay = value;
-            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(StartsPurchaseDay)));
+            var startsDayChanged = StartsPurchaseDay != (total is not null);
+            DayTotal = total;
+            DayTotalWarning = warning;
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(DayTotal)));
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(DayTotalWarning)));
+            if (startsDayChanged)
+                PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(StartsPurchaseDay)));
         }
 
         private static string? GetAmountWarning(string? currency, DateOnly? operationDate, string target, decimal? rate)
@@ -1143,9 +1183,12 @@ public partial class PurchasesContent : UserControl
     }
 
     private sealed record ItemRow(Guid PurchaseId, PurchaseItemDto Source, string? Currency, long? Revision,
-        bool SupportsCurrencyEdit, MoneyAmountDisplay Price, MoneyAmountDisplay Sum, decimal? SelectionTotal, string? SelectionCurrency)
+        bool SupportsCurrencyEdit, bool IsFiscalReceipt, MoneyAmountDisplay Price, MoneyAmountDisplay Sum,
+        decimal? SelectionTotal, string? SelectionCurrency)
     {
         public Guid Id => Source.Id;
+        public bool CanDelete => Revision.HasValue && !IsFiscalReceipt;
+        public string? DeleteItemRestriction => IsFiscalReceipt ? "Состав фискального чека фиксирован. Удалять товары из него нельзя." : null;
         public string Name => Source.Name;
         public double Quantity => Source.Quantity;
         public bool IsEdited => Source.IsEdited;

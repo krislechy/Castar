@@ -25,8 +25,17 @@
                    FontSize="{StaticResource Castar.Font.Caption}" FontWeight="SemiBold"
                    HorizontalAlignment="Center" VerticalAlignment="Center"/>
        </Grid>
-       <Border x:Name="PurchaseDaySeparatorLine" Grid.Column="1" Height="1" Margin="8,0,0,0" VerticalAlignment="Center"
-               Background="{DynamicResource Castar.Accent}" Opacity="0.15" SnapsToDevicePixels="True"/>
+       <DockPanel Grid.Column="1" Margin="8,0,0,0">
+        <ContentControl x:Name="PurchaseDayTotalWarning" DockPanel.Dock="Right"
+                        Style="{DynamicResource ExpenseAmountWarning}" ToolTip="{Binding DayTotalWarning}"/>
+        <TextBlock x:Name="PurchaseDayTotal" DockPanel.Dock="Right" Text="{Binding DayTotal}"
+                   Margin="8,0,0,0" Foreground="{StaticResource LedgerMuted}"
+                   FontSize="{StaticResource Castar.Font.Caption}" FontWeight="SemiBold"
+                   Typography.NumeralAlignment="Tabular" VerticalAlignment="Center"
+                   TextTrimming="CharacterEllipsis" TextAlignment="Right"/>
+        <Border x:Name="PurchaseDaySeparatorLine" Height="1" VerticalAlignment="Center"
+                Background="{DynamicResource Castar.Accent}" Opacity="0.15" SnapsToDevicePixels="True"/>
+       </DockPanel>
       </Grid>
       <Border x:Name="PurchaseRowSurface" Grid.Row="1" MinHeight="{TemplateBinding MinHeight}"
               Background="{TemplateBinding Background}" Padding="{TemplateBinding Padding}"

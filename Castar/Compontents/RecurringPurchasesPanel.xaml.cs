@@ -29,19 +29,21 @@ public partial class RecurringPurchasesPanel : UserControl
     {
         this.displayZone = displayZone ?? TimeZoneInfo.Local;
         InitializeComponent();
+        SelectionAmount.EnableSelectAll(Subscriptions);
     }
 
     internal event Action<RecurringPurchaseAction, RecurringPurchaseDto?>? ActionRequested;
 
-    internal void SetRows(IReadOnlyList<RecurringPurchaseDto> subscriptions)
+    internal void SetRows(IReadOnlyList<RecurringPurchaseDto> subscriptions, string target,
+        IReadOnlyDictionary<string, CurrencyRateDto> quotes)
     {
-        var selected = (Subscriptions.SelectedItem as SubscriptionRow)?.Subscription.Id;
+        var selected = Subscriptions.SelectedItems.OfType<SubscriptionRow>().Select(row => row.Subscription.Id).ToHashSet();
         var rows = subscriptions.OrderBy(item => item.IsPaused).ThenBy(item => item.NextRunUtc ?? DateTimeOffset.MaxValue)
             .ThenBy(item => item.Schedule.Template.Purchase.Name, StringComparer.CurrentCultureIgnoreCase)
-            .Select(CreateRow).ToArray();
+            .Select(subscription => CreateRow(subscription, target, quotes)).ToArray();
         Subscriptions.ItemsSource = rows;
-        if (selected.HasValue)
-            Subscriptions.SelectedItem = rows.FirstOrDefault(row => row.Subscription.Id == selected);
+        foreach (var row in rows.Where(row => selected.Contains(row.Subscription.Id)))
+            Subscriptions.SelectedItems.Add(row);
         hasLoaded = true;
         UpdateVisibility();
     }
@@ -69,7 +71,11 @@ public partial class RecurringPurchasesPanel : UserControl
             ? Visibility.Visible : Visibility.Collapsed;
     }
 
-    private SubscriptionRow CreateRow(RecurringPurchaseDto item)
+    private void SubscriptionsSelection_Changed(object sender, SelectionChangedEventArgs e) =>
+        SelectionAmount.Show(SelectionTotal, SelectionTotalText,
+            Subscriptions.SelectedItems.OfType<SubscriptionRow>().SelectMany(row => row.SelectionAmounts));
+
+    private SubscriptionRow CreateRow(RecurringPurchaseDto item, string target, IReadOnlyDictionary<string, CurrencyRateDto> quotes)
     {
         var template = item.Schedule.Template;
         var frequency = item.Schedule.Frequency switch
@@ -92,22 +98,40 @@ public partial class RecurringPurchasesPanel : UserControl
                 ? $" ({RecurringPurchaseTime.FormatOffset((int)local.Offset.TotalMinutes)})" : "";
             timing = $"{local:dd.MM.yyyy, HH:mm}{offset} · {frequency}";
         }
-        return new(item, template.Purchase.Name, timing, FormatAmounts(template));
-    }
-
-    private static string[] FormatAmounts(PurchaseCreateDto template)
-    {
         try
         {
             var purchase = new Purchase { Currency = template.Purchase.Currency };
-            return template.Items.GroupBy(item => item.Currency ?? purchase.Currency)
-                .Select(group => HistoricalExchangeRates.Format(group.Sum(item =>
-                    purchase.CalculateManualItemAmounts(item.Quantity, item.Price, item.Currency).Sum), group.Key))
+            var totals = template.Items.GroupBy(line => line.Currency ?? template.Purchase.Currency)
+                .Select(group => (Amount: group.Sum(line =>
+                    purchase.CalculateManualItemAmounts(line.Quantity, line.Price, line.Currency).Sum), Currency: group.Key))
                 .ToArray();
+            var row = new SubscriptionRow(item, template.Purchase.Name, timing,
+                totals.Select(total => HistoricalExchangeRates.Format(total.Amount, total.Currency)).ToArray(),
+                totals.Select(total => ((decimal?)total.Amount, total.Currency)).ToArray());
+            if (target.Length == 0 || totals.All(total => total.Currency == target))
+                return row;
+
+            var foreign = totals.Where(total => total.Currency != target).ToArray();
+            var missing = foreign.Where(total => total.Currency is null || !quotes.ContainsKey(total.Currency))
+                .Select(total => total.Currency is { } currency ? $"{currency} → {target}" : "Сумма без исходной валюты").ToArray();
+            if (missing.Length > 0)
+                return row with { SelectionAmounts = [(null, target)], RateSummary = "Курс недоступен", RateDetails = string.Join("\n", missing) };
+
+            var estimate = totals.Sum(total => total.Currency == target ? total.Amount
+                : HistoricalExchangeRates.ConvertAmount(total.Amount, quotes[total.Currency!].Rate));
+            var exchange = foreign.Select(total => quotes[total.Currency!]).ToArray();
+            string RateLabel(CurrencyRateDto quote) => $"1 {quote.Currency} = {HistoricalExchangeRates.Format(quote.Rate, target)}";
+            return row with
+            {
+                SelectionAmounts = [(estimate, target)],
+                EstimatedAmount = $"≈ {HistoricalExchangeRates.Format(estimate, target)}",
+                RateSummary = RateLabel(exchange[0]) + (exchange.Length > 1 ? $" · ещё {exchange.Length - 1}" : ""),
+                RateDetails = string.Join("\n", exchange.Select(quote => $"{RateLabel(quote)} · {quote.QuotedOn:dd.MM.yyyy}"))
+            };
         }
         catch (OverflowException)
         {
-            return ["—"];
+            return new(item, template.Purchase.Name, timing, ["—"], [(null, target)]);
         }
     }
 
@@ -165,5 +189,11 @@ public partial class RecurringPurchasesPanel : UserControl
             ActionRequested?.Invoke(action, item);
     }
 
-    private sealed record SubscriptionRow(RecurringPurchaseDto Subscription, string Name, string Timing, string[] Amounts);
+    private sealed record SubscriptionRow(RecurringPurchaseDto Subscription, string Name, string Timing, string[] Amounts,
+        (decimal? Amount, string? Currency)[] SelectionAmounts)
+    {
+        public string? EstimatedAmount { get; init; }
+        public string? RateSummary { get; init; }
+        public string? RateDetails { get; init; }
+    }
 }

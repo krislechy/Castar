@@ -149,6 +149,11 @@ public partial class PurchasesContent
             var purchase = await server.GetPurchaseDetailsAsync(item.PurchaseId, CancellationToken.None);
             if (item.Scope != PurchaseItemQueueScope)
                 return false;
+            if (purchase.IsFiscalReceipt || purchase.ReceiptDate.HasValue)
+            {
+                purchaseItemQueueErrors[item.Key] = "В фискальный чек нельзя добавлять товары. Товар сохранён в очереди.";
+                return false;
+            }
             if (item.Item.Currency is not null && !purchase.SupportsItemCurrencyEdit)
             {
                 purchaseItemQueueErrors[item.Key] = "Сервер или покупка не поддерживает валюту товара. Товар сохранён в очереди.";

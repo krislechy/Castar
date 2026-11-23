@@ -555,6 +555,9 @@ public static partial class CastarEndpoints
         PurchaseMutationResult.UnsupportedItemCurrency => ItemCurrencyClientRequired(),
         PurchaseMutationResult.ItemCurrencyInUse => InvalidInput("Для этой покупки валюту можно изменить в товарах."),
         PurchaseMutationResult.FiscalCurrency => InvalidInput("Валюту фискального чека определяет поставщик чека."),
+        PurchaseMutationResult.FiscalItemAddition => InvalidInput("В фискальный чек нельзя добавлять товары."),
+        PurchaseMutationResult.FiscalItemDeletion => InvalidInput("Из фискального чека нельзя удалять товары."),
+        PurchaseMutationResult.FiscalItemAmounts => InvalidInput("Цену и количество товара из фискального чека изменить нельзя."),
         PurchaseMutationResult.Conflict => Results.Problem(statusCode: StatusCodes.Status409Conflict,
             title: "Покупка уже изменилась", detail: "Обновите данные и повторите действие."),
         _ => throw new ArgumentOutOfRangeException(nameof(result))
@@ -690,7 +693,7 @@ public static partial class CastarEndpoints
         }).ToArray();
         amounts ??= purchase.GetAmountsByCurrency();
         var scalar = amounts.Length == 1 ? amounts[0] : (Amount: 0m, Currency: (string?)null);
-        var isFiscal = purchase.RawData is not null || purchase.OriginalReceiptSnapshot is not null;
+        var isFiscal = PurchasesRepository.IsFiscalReceipt(purchase);
         return new(purchase.Id, purchase.UserId, purchase.Name, scalar.Amount, scalar.Currency, purchase.MessageId,
             purchase.AddedOn is { } date ? BudgetTime.InZone(date, BudgetTime.Belgrade) : null,
             purchase.RetailPlace, purchase.RetailPlaceAddress, items)
@@ -700,6 +703,7 @@ public static partial class CastarEndpoints
             RateDate = purchase.RateDate,
             Revision = purchase.Revision,
             HasReceiptSource = PurchasesRepository.HasReceiptSource(purchase),
+            IsFiscalReceipt = isFiscal,
             SupportsCurrencyEdit = false,
             SupportsItemCurrencyEdit = !isFiscal,
             AmountsByCurrency = amounts.Length > 1

@@ -184,9 +184,8 @@ namespace Castar.DAL.Repositories.DataBase
             if (!supportsItemCurrency && purchase.HasMultipleCurrencies())
                 return PurchaseMutationResult.UnsupportedItemCurrency;
 
-            var fiscal = IsFiscal(Context, purchase);
-            if (fiscal)
-                PreserveOriginalReceipt(purchase);
+            if (IsFiscal(Context, purchase))
+                return PurchaseMutationResult.FiscalItemDeletion;
             purchase.Items.Remove(item);
             Context.Items.Remove(item);
             purchase.Revision = checked(purchase.Revision + 1);
@@ -271,6 +270,8 @@ namespace Castar.DAL.Repositories.DataBase
                 return PurchaseMutationResult.Conflict;
 
             var fiscal = IsFiscal(Context, purchase);
+            if (fiscal && (item.Quantity != quantity || item.Price != price))
+                return PurchaseMutationResult.FiscalItemAmounts;
             var validation = ResolveItemCurrency(purchase, item, currency, currencyPolicy, supportsItemCurrency,
                 fiscal, out var storedCurrency);
             if (validation != PurchaseMutationResult.Applied)
@@ -329,16 +330,15 @@ namespace Castar.DAL.Repositories.DataBase
             if (purchase.Revision != expectedRevision)
                 return PurchaseMutationResult.Conflict;
 
-            var fiscal = IsFiscal(Context, purchase);
+            if (IsFiscal(Context, purchase))
+                return PurchaseMutationResult.FiscalItemAddition;
             var validation = ResolveItemCurrency(purchase, null, currency, currencyPolicy, supportsItemCurrency,
-                fiscal, out var storedCurrency);
+                fiscal: false, out var storedCurrency);
             if (validation != PurchaseMutationResult.Applied)
                 return validation;
-            storedCurrency ??= ManualCurrencySettings.NormalizeCode(fiscal ? FiscalCurrency(purchase) : purchase.Currency);
-            if (storedCurrency is null && !fiscal && supportsItemCurrency)
+            storedCurrency ??= ManualCurrencySettings.NormalizeCode(purchase.Currency);
+            if (storedCurrency is null && supportsItemCurrency)
                 storedCurrency = (currencyPolicy ?? ManualCurrencySettings.Default).DefaultCurrency;
-            if (fiscal)
-                PreserveOriginalReceipt(purchase);
             var (unitPrice, sum) = purchase.CalculateManualItemAmounts(quantity, price, storedCurrency);
             var lineNumber = purchase.Items.Select(item =>
                 Context.Entry(item).Property<int?>(CastarDbContext.LineNumber).CurrentValue ?? -1)
@@ -421,8 +421,11 @@ namespace Castar.DAL.Repositories.DataBase
                 throw new InvalidOperationException("Позиции фискального чека нельзя редактировать вручную.");
         }
 
+        public static bool IsFiscalReceipt(Purchase purchase) =>
+            purchase.RawData is not null || purchase.ReceiptDate is not null || purchase.OriginalReceiptSnapshot is not null;
+
         private static bool IsFiscal(CastarDbContext db, Purchase purchase) =>
-            purchase.RawData is not null || db.Entry(purchase).Property<byte[]>(CastarDbContext.ReceiptKey).CurrentValue is not null;
+            IsFiscalReceipt(purchase) || db.Entry(purchase).Property<byte[]>(CastarDbContext.ReceiptKey).CurrentValue is not null;
 
         private static string? FiscalCurrency(Purchase purchase) =>
             FiscalReceiptSnapshot.Read(purchase.OriginalReceiptSnapshot)?.Currency ?? purchase.Currency;

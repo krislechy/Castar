@@ -21,7 +21,8 @@ public partial class PurchaseItemEditor : UserControl
 
     internal PurchaseItemEditor(PurchaseItemDto item, string? currency, bool manualEntry = false, bool usePurchaseFormStyle = false,
         IReadOnlyList<BudgetCategoryDto>? categories = null, IReadOnlyList<string>? allowedCurrencies = null,
-        string? defaultCurrency = null, bool currencyReadOnly = false, bool preserveInheritedCurrency = false)
+        string? defaultCurrency = null, bool currencyReadOnly = false, bool preserveInheritedCurrency = false,
+        bool amountsReadOnly = false, string? currencyRestriction = null)
     {
         originalName = item.Name;
         originalCategoryId = item.BudgetCategoryId;
@@ -32,6 +33,19 @@ public partial class PurchaseItemEditor : UserControl
         ItemName.Text = item.Name;
         Quantity.Text = item.Quantity.ToString(CultureInfo.CurrentCulture);
         UnitPrice.Text = item.Price.ToString(CultureInfo.CurrentCulture);
+        if (amountsReadOnly)
+        {
+            Quantity.IsReadOnly = UnitPrice.IsReadOnly = true;
+            Quantity.IsTabStop = UnitPrice.IsTabStop = false;
+        }
+        var restriction = amountsReadOnly
+            ? "Товар из фискального чека. Можно изменить название и категорию. Цена, количество и валюта взяты из чека. Удалять товар нельзя."
+            : currencyRestriction;
+        if (restriction is not null)
+        {
+            RestrictionText.Text = restriction;
+            RestrictionNotice.Visibility = Visibility.Visible;
+        }
         ItemCategory.Load(categories, originalCategoryId, compact: manualEntry);
         var isNew = item.Id == Guid.Empty && !preserveInheritedCurrency;
         retainInheritedCurrency = !isNew && (item.Currency is null || item.Currency == currency);

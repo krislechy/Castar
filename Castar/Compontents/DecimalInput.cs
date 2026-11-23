@@ -26,7 +26,7 @@ public sealed class DecimalInput : TextBox
     protected override void OnPreviewTextInput(TextCompositionEventArgs e)
     {
         base.OnPreviewTextInput(e);
-        if (e.Handled || e.Text.Length == 0)
+        if (e.Handled || IsReadOnly || e.Text.Length == 0)
             return;
 
         var inserted = Normalize(e.Text);

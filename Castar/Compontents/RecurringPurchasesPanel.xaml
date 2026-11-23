@@ -15,6 +15,18 @@
                 <Setter Property="Padding" Value="7"/>
                 <Setter Property="VerticalAlignment" Value="Center"/>
             </Style>
+            <Style x:Key="SubscriptionOriginalAmount" TargetType="TextBlock">
+                <Setter Property="Foreground" Value="{DynamicResource Foreground.Gray}"/>
+                <Setter Property="FontSize" Value="{StaticResource Castar.Font.Caption}"/>
+                <Style.Triggers>
+                    <DataTrigger Binding="{Binding DataContext.EstimatedAmount, RelativeSource={RelativeSource AncestorType=ItemsControl}, TargetNullValue=''}"
+                                 Value="">
+                        <Setter Property="Foreground" Value="{DynamicResource Foreground.White}"/>
+                        <Setter Property="FontSize" Value="{StaticResource Castar.Font.Body}"/>
+                        <Setter Property="FontWeight" Value="SemiBold"/>
+                    </DataTrigger>
+                </Style.Triggers>
+            </Style>
         </ResourceDictionary>
     </UserControl.Resources>
     <StackPanel>
@@ -31,6 +43,7 @@
                    Foreground="{DynamicResource Foreground.Gray}" Margin="0,24,0,32"/>
         <ListView x:Name="Subscriptions" MaxHeight="344" Style="{StaticResource BudgetList}" Visibility="Collapsed"
                   HorizontalContentAlignment="Stretch" Background="Transparent" BorderThickness="0"
+                  SelectionMode="Extended" SelectionChanged="SubscriptionsSelection_Changed"
                   ScrollViewer.HorizontalScrollBarVisibility="Disabled" AutomationProperties.Name="Список подписок">
             <ListView.Resources>
                 <Style TargetType="ScrollViewer" BasedOn="{StaticResource LedgerScrollViewer}"/>
@@ -53,17 +66,25 @@
                             <ColumnDefinition Width="Auto"/>
                             <ColumnDefinition Width="Auto"/>
                         </Grid.ColumnDefinitions>
-                        <StackPanel Margin="0,0,12,0">
+                        <StackPanel VerticalAlignment="Center" Margin="0,0,12,0">
                             <TextBlock Text="{Binding Name}" TextTrimming="CharacterEllipsis" FontWeight="SemiBold"/>
                             <TextBlock Text="{Binding Timing}" TextTrimming="CharacterEllipsis"
                                        Foreground="{DynamicResource Foreground.Gray}" FontSize="12" Margin="0,4,0,0"/>
+                            <TextBlock Text="{Binding RateSummary, TargetNullValue=''}" ToolTip="{Binding RateDetails}"
+                                       TextWrapping="Wrap" Foreground="{DynamicResource Foreground.Gray}"
+                                       FontSize="{StaticResource Castar.Font.Caption}" Margin="0,4,0,0"
+                                       Style="{StaticResource BudgetOptionalText}"/>
                         </StackPanel>
-                        <StackPanel Grid.Column="1" VerticalAlignment="Center" Margin="0,0,12,0" MaxWidth="148">
+                        <StackPanel Grid.Column="1" VerticalAlignment="Center" Margin="0,0,12,0" MaxWidth="176">
+                            <TextBlock Text="{Binding EstimatedAmount, TargetNullValue=''}" TextTrimming="CharacterEllipsis"
+                                       TextAlignment="Right" TextWrapping="NoWrap" Typography.NumeralAlignment="Tabular"
+                                       FontWeight="SemiBold" Foreground="{DynamicResource Foreground.White}"
+                                       FontSize="{StaticResource Castar.Font.Body}" Style="{StaticResource BudgetOptionalText}"/>
                             <ItemsControl ItemsSource="{Binding Amounts}">
                                 <ItemsControl.ItemTemplate>
                                     <DataTemplate>
                                         <TextBlock Text="{Binding}" TextTrimming="CharacterEllipsis" TextAlignment="Right"
-                                                   FontWeight="SemiBold" Typography.NumeralAlignment="Tabular"/>
+                                                   Typography.NumeralAlignment="Tabular" Style="{StaticResource SubscriptionOriginalAmount}"/>
                                     </DataTemplate>
                                 </ItemsControl.ItemTemplate>
                             </ItemsControl>
@@ -92,5 +113,10 @@
                 </DataTemplate>
             </ListView.ItemTemplate>
         </ListView>
+        <Border x:Name="SelectionTotal" Style="{StaticResource LedgerSelectionTotal}"
+                HorizontalAlignment="Right" Margin="0,8,0,0">
+            <TextBlock x:Name="SelectionTotalText" Style="{StaticResource LedgerSelectionTotalText}"
+                       Typography.NumeralAlignment="Tabular" AutomationProperties.LiveSetting="Polite"/>
+        </Border>
     </StackPanel>
 </UserControl>

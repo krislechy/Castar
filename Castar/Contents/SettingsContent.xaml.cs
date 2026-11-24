@@ -47,8 +47,7 @@ public partial class SettingsContent : UserControl
         this.events = events;
         this.updateService = updateService;
         this.exchangeRates = exchangeRates;
-        context = new SettingsContext(settings, new ServerSettingsViewModel(server, events));
-        context.ServerConfiguration.Updates.SetConnection(settings.ServerUrl, settings.ProtectedApiKey);
+        context = new SettingsContext(settings, new ServerSettingsViewModel(server));
         context.ServerConfiguration.CredentialsCleared += (_, _) => telegramTokenInput?.Clear();
         context.PropertyChanged += (_, change) =>
         {
@@ -108,15 +107,13 @@ public partial class SettingsContent : UserControl
 
         return Task.WhenAll(
             context.ServerConfiguration.HasSettings ? Task.CompletedTask : context.ServerConfiguration.ReloadAsync(),
-            context.UsersAvailable && context.UsersStatus.Length == 0 ? Task.CompletedTask : LoadUsersAsync(),
-            context.ServerConfiguration.Updates.RefreshWorkingUpdateAsync());
+            context.UsersAvailable && context.UsersStatus.Length == 0 ? Task.CompletedTask : LoadUsersAsync());
     }
 
     private async void Server_ConnectionChanged(object? sender, EventArgs e)
     {
         context.HasSavedConnection = settings.ApiKey.Length != 0;
         backupRequest?.Cancel();
-        context.ServerConfiguration.Updates.SetConnection(settings.ServerUrl, settings.ProtectedApiKey);
         SetSavedConnectionStatus(context.HasSavedConnection ? CastarServerClient.ConnectionNotEstablished : "");
         ResetUsers();
         if (preloadStarted)
@@ -167,9 +164,6 @@ public partial class SettingsContent : UserControl
             () => viewModel.CanEdit && ReferenceEquals(viewModel.ManualCurrency, original), panel.Validate,
             () => viewModel.SetManualCurrency(original, panel.CreateResult()), panel.CancelCatalog);
     }
-
-    private async void UpdateServer_Click(object sender, RoutedEventArgs e) =>
-        await ButtonLoading.RunAsync(sender, () => context.ServerConfiguration.Updates.StartAsync());
 
     private void TelegramToken_PasswordChanged(object sender, RoutedEventArgs e)
     {
@@ -251,8 +245,7 @@ public partial class SettingsContent : UserControl
                     previous != address || settings.ApiKey != key)
                     settings.SaveConnection(address, key);
                 else
-                    _ = Task.WhenAll(context.ServerConfiguration.MarkChangedAsync(), LoadUsersAsync(verifyConnection: false),
-                        context.ServerConfiguration.Updates.RefreshWorkingUpdateAsync());
+                    _ = Task.WhenAll(context.ServerConfiguration.MarkChangedAsync(), LoadUsersAsync(verifyConnection: false));
                 ApiKeyInput.Clear();
                 pendingKey = "";
                 context.IsApiKeyEditorVisible = false;

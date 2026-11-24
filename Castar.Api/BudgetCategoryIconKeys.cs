@@ -13,7 +13,7 @@ public static class BudgetCategoryIconKeys
     public static IReadOnlyList<string> Purchase { get; } = Array.AsReadOnly<string>(
         ["shopping-cart", "utensils", "house", "car-front", "heart-pulse", "shirt", "smartphone", "monitor", "repeat",
          "gamepad-2", "plane", "dumbbell", "graduation-cap", "shopping-bag", "scissors", "landmark", "wallet",
-         "paw-print", "gift", "ellipsis", "coffee", "bus", "fuel", "zap", "pill", "baby", "shield-check", "receipt-text",
+         "paw-print", "gift", "ellipsis", "coffee", "bus", "fuel", "zap", "pill", "cross", "baby", "shield-check", "receipt-text",
          "package", "banknote", "wine",
          "archive", "ice-cream-cone", "candy", "cookie", "can", "bike", "book-open", "car-taxi-front", "cat",
          "clapperboard", "flower-2", "guitar", "hammer", "hand-heart", "key-round", "plug", "ticket",

@@ -11,13 +11,12 @@ using Castar.Services.TelegramBot.Commands;
 using Microsoft.AspNetCore.ResponseCompression;
 using Microsoft.EntityFrameworkCore;
 
-if (args is ["--stage-server-update", var updateWork, var updateStatus])
-    return await ServerUpdateStaging.RunAsync(updateWork, updateStatus);
 if (args is ["--supervise-server", var installationRoot])
     return await DesktopServerSupervisor.RunAsync(installationRoot);
 if (args is ["--import-legacy", .. var importArguments])
     return await LegacyImport.RunAsync(importArguments);
 
+var version = typeof(Program).Assembly.GetName().Version!.ToString(3);
 var builder = WebApplication.CreateBuilder(args);
 
 var configuration = builder.Configuration;
@@ -65,8 +64,6 @@ builder.Services.AddExchangeRates();
 builder.Services.AddSignalR();
 builder.Services.AddSingleton<BudgetEventPublisher>();
 builder.Services.AddHostedService(provider => provider.GetRequiredService<BudgetEventPublisher>());
-builder.Services.AddSingleton<ServerUpdateEvents>();
-builder.Services.AddHostedService(provider => provider.GetRequiredService<ServerUpdateEvents>());
 builder.Services.AddSingleton(settings);
 builder.Services.AddSingleton<IReceiptProvider, SerbiaReceiptProvider>();
 builder.Services.AddSingleton<IReceiptProvider>(_ => new Nalog(() =>
@@ -131,7 +128,7 @@ app.UseWhen(context => HttpMethods.IsGet(context.Request.Method) &&
 
 app.MapGet("/health", () => Results.Ok(new
 {
-    status = "ready", version = ServerUpdateStaging.InstalledVersion.ToString(), processId = Environment.ProcessId
+    status = "ready", version, processId = Environment.ProcessId
 }));
 app.MapGet("/api/status", async (CastarDbContext database, CancellationToken token) =>
 {
@@ -140,7 +137,6 @@ app.MapGet("/api/status", async (CastarDbContext database, CancellationToken tok
         : Results.StatusCode(StatusCodes.Status503ServiceUnavailable);
 });
 app.MapCastarApi();
-app.MapServerUpdate();
 app.MapHub<BudgetEventsHub>("/" + BudgetEvents.Path);
 try
 {

@@ -24,9 +24,7 @@
 #define SERVER_LOG "/var/jb/var/log/castar/server.log"
 #define WATCHDOG_LOG "/var/jb/var/log/castar/watchdog.log"
 #define LAUNCHCTL "/var/jb/usr/bin/launchctl"
-#define UPDATE_JOB "system/org.castar.updater"
-#define UPDATE_STATUS "/var/jb/var/run/castar/update.json"
-#define APPLY_MARKER STATE_DIRECTORY "/applying"
+#define INSTALL_MARKER STATE_DIRECTORY "/applying"
 #define SERVER_JOB "system/org.castar.server"
 #define SERVER_PLIST "/var/jb/usr/libexec/castar/org.castar.server.plist"
 #define HEALTH_PORT 5080
@@ -217,29 +215,6 @@ static bool health_ok(const char *version)
     return healthy;
 }
 
-static void send_update_status(int client)
-{
-    static const char idle[] = "{\"state\":\"idle\",\"installedVersion\":null,\"version\":null,"
-        "\"downloadedBytes\":0,\"totalBytes\":0,\"error\":null}\n";
-    const int file = open(UPDATE_STATUS, O_RDONLY | O_NOFOLLOW | O_NONBLOCK);
-    if (file < 0) {
-        send_text(client, idle);
-        return;
-    }
-    struct stat info;
-    char json[4096];
-    ssize_t count = -1;
-    if (fstat(file, &info) == 0 && S_ISREG(info.st_mode) && info.st_uid == 0 &&
-        (info.st_mode & 0022) == 0 && info.st_size > 0 && (size_t)info.st_size < sizeof(json)) {
-        count = pread(file, json, (size_t)info.st_size, 0);
-    }
-    if (count > 0 && count == info.st_size && json[0] == '{')
-        write_all(client, json, (size_t)count);
-    else
-        send_text(client, idle);
-    close(file);
-}
-
 static void send_log(int client)
 {
     const int log = open(SERVER_LOG, O_RDONLY | O_NOFOLLOW | O_NONBLOCK);
@@ -284,7 +259,7 @@ static void limit_log(const char *path)
 
 static int check_server(struct supervision *service, int64_t now)
 {
-    if (access(APPLY_MARKER, F_OK) == 0) {
+    if (access(INSTALL_MARKER, F_OK) == 0) {
         service->state = "starting\n";
         service->failures = 0;
         service->job_check_at = 0;
@@ -333,7 +308,7 @@ static int check_server(struct supervision *service, int64_t now)
         if (!job_checked)
             job = service_job();
         if (job == job_absent || service->failures == failed_probes_before_recovery) {
-            if (access(APPLY_MARKER, F_OK) == 0) {
+            if (access(INSTALL_MARKER, F_OK) == 0) {
                 service->state = "starting\n";
                 service->failures = 0;
                 return retry_probe_interval;
@@ -371,12 +346,7 @@ static void handle_client(int client, uid_t allowed_user, struct supervision *se
         send_text(client, service->state);
     } else if (strcmp(request, "logs\n") == 0) {
         send_log(client);
-    } else if (strcmp(request, "update-status\n") == 0) {
-        send_update_status(client);
-    } else if (strcmp(request, "update\n") == 0) {
-        const bool started = access(APPLY_MARKER, F_OK) != 0 && launchctl("kickstart", UPDATE_JOB, NULL) == 0;
-        send_text(client, started ? "ok\n" : "error\n");
-    } else if (access(APPLY_MARKER, F_OK) == 0) {
+    } else if (access(INSTALL_MARKER, F_OK) == 0) {
         send_text(client, "error\n");
     } else if (strcmp(request, "stop\n") == 0) {
         const bool stopped = save_stopped(true) && stop_server();

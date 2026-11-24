@@ -171,21 +171,6 @@ static NSString *ResponseString(NSDictionary *response, NSString *field)
     return [value isKindOfClass:NSString.class] ? value : nil;
 }
 
-static NSDictionary *ReadUpdateStatus(void)
-{
-    NSData *data = ReadSocketResponse(controlSocketPath, 0, @"update-status", 4096, 2);
-    if (!data)
-        return nil;
-    id response = [NSJSONSerialization JSONObjectWithData:data options:0 error:NULL];
-    return [response isKindOfClass:NSDictionary.class] ? response : nil;
-}
-
-static BOOL IsActiveUpdate(NSString *state)
-{
-    return [state isEqualToString:@"checking"] || [state isEqualToString:@"downloading"] ||
-           [state isEqualToString:@"installing"];
-}
-
 static void CopyApiKey(NSString *value)
 {
     [UIPasteboard.generalPasteboard setItems:@[@{@"public.utf8-plain-text": value}]
@@ -518,21 +503,12 @@ typedef NS_ENUM(NSInteger, CastarKeysSection) {
 @property(nonatomic, strong) UITextView *logView;
 @property(nonatomic, strong) UIButton *restartButton;
 @property(nonatomic, strong) UIButton *stopButton;
-@property(nonatomic, strong) UIButton *updateButton;
-@property(nonatomic, strong) UILabel *updateLabel;
-@property(nonatomic, strong) UIProgressView *updateProgress;
 @property(nonatomic, strong) NSTimer *refreshTimer;
 @property(nonatomic, strong) dispatch_queue_t controlQueue;
 @property(nonatomic) BOOL visible;
 @property(nonatomic) BOOL refreshing;
 @property(nonatomic) BOOL controlling;
-@property(nonatomic) BOOL updateRequestPending;
-@property(nonatomic) NSTimeInterval lastUpdateStatusAt;
-@property(nonatomic) NSTimeInterval ignoreStaleUpdateUntil;
 @property(nonatomic, copy) NSString *serviceStatus;
-@property(nonatomic, copy) NSString *updateState;
-@property(nonatomic, copy) NSDictionary *updateSnapshot;
-@property(nonatomic, copy) NSDictionary *previousUpdateSnapshot;
 @property(nonatomic, strong) CastarKeysViewController *keysController;
 @end
 
@@ -552,12 +528,10 @@ typedef NS_ENUM(NSInteger, CastarKeysSection) {
     self.statusLabel.text = @"Проверка статуса…";
     self.restartButton = [self buttonWithTitle:@"Перезапустить" action:@selector(restartService:) filled:YES tint:nil];
     self.stopButton = [self buttonWithTitle:@"Остановить" action:@selector(stopService:) filled:NO tint:UIColor.systemRedColor];
-    self.updateButton = [self buttonWithTitle:@"Обновить сервер" action:@selector(updateService:) filled:NO tint:nil];
-    self.updateLabel = [self labelWithStyle:UIFontTextStyleFootnote];
-    self.updateLabel.hidden = YES;
-    self.updateProgress = [[UIProgressView alloc] initWithProgressViewStyle:UIProgressViewStyleDefault];
-    self.updateProgress.hidden = YES;
-    self.updateProgress.isAccessibilityElement = NO;
+    UILabel *versionLabel = [self labelWithStyle:UIFontTextStyleFootnote];
+    NSString *version = [NSBundle.mainBundle objectForInfoDictionaryKey:@"CFBundleShortVersionString"];
+    versionLabel.text = version.length > 0 ? [NSString stringWithFormat:@"Версия %@", version] : nil;
+    versionLabel.hidden = versionLabel.text.length == 0;
     [self updateButtons];
 
     self.actionErrorLabel = [self labelWithStyle:UIFontTextStyleFootnote];
@@ -579,12 +553,12 @@ typedef NS_ENUM(NSInteger, CastarKeysSection) {
         scaledFontForFont:[UIFont monospacedSystemFontOfSize:13 weight:UIFontWeightRegular]];
 
     UIStackView *layout = [[UIStackView alloc] initWithArrangedSubviews:@[
-        self.statusLabel, self.restartButton, self.stopButton, self.actionErrorLabel,
-        self.updateButton, self.updateLabel, self.updateProgress, logsHeading, self.logView
+        self.statusLabel, versionLabel, self.restartButton, self.stopButton, self.actionErrorLabel,
+        logsHeading, self.logView
     ]];
     layout.axis = UILayoutConstraintAxisVertical;
     layout.spacing = 10;
-    [layout setCustomSpacing:18 afterView:self.statusLabel];
+    [layout setCustomSpacing:18 afterView:versionLabel];
     [layout setCustomSpacing:14 afterView:self.stopButton];
     layout.translatesAutoresizingMaskIntoConstraints = NO;
     [self.view addSubview:layout];
@@ -688,86 +662,14 @@ typedef NS_ENUM(NSInteger, CastarKeysSection) {
     self.refreshing = YES;
     dispatch_async(self.controlQueue, ^{
         NSString *status = ReadStatus();
-        NSDictionary *update = status ? ReadUpdateStatus() : nil;
         NSString *log = status ? SendCommand(@"logs", maximumLogBytes, 2) : nil;
         dispatch_async(dispatch_get_main_queue(), ^{
             self.refreshing = NO;
-            if (!self.updateRequestPending)
-                [self applyUpdateStatus:update];
-            if (!self.controlling && (status || !IsActiveUpdate(self.updateState)))
+            if (!self.controlling)
                 [self updateStatus:status];
-            if (log || !IsActiveUpdate(self.updateState))
-                [self updateLog:log];
+            [self updateLog:log];
         });
     });
-}
-
-- (void)applyUpdateStatus:(NSDictionary *)response
-{
-    NSString *state = ResponseString(response, @"state");
-    NSTimeInterval now = NSProcessInfo.processInfo.systemUptime;
-    if (response && now < self.ignoreStaleUpdateUntil &&
-        ([state isEqualToString:@"idle"] || [response isEqualToDictionary:self.previousUpdateSnapshot]))
-        return;
-
-    NSString *version = ResponseString(response, @"version");
-    NSString *installed = ResponseString(response, @"installedVersion");
-    NSString *label = nil;
-    float progress = -1;
-
-    if ([state isEqualToString:@"idle"]) {
-        if (installed.length > 0)
-            label = [NSString stringWithFormat:@"Версия %@", installed];
-    } else if ([state isEqualToString:@"checking"]) {
-        label = @"Проверка обновлений…";
-    } else if ([state isEqualToString:@"current"]) {
-        label = installed.length > 0 ? [NSString stringWithFormat:@"Текущая версия %@", installed] : @"Обновлений нет";
-    } else if ([state isEqualToString:@"downloading"]) {
-        id downloaded = response[@"downloadedBytes"];
-        id total = response[@"totalBytes"];
-        if ([downloaded isKindOfClass:NSNumber.class] && [total isKindOfClass:NSNumber.class] &&
-            [downloaded doubleValue] >= 0 && [total doubleValue] > 0) {
-            double fraction = MIN([downloaded doubleValue] / [total doubleValue], 1);
-            progress = (float)fraction;
-            label = [NSString stringWithFormat:@"Скачивание… %d%%", (int)(fraction * 100)];
-        } else {
-            label = @"Скачивание…";
-        }
-    } else if ([state isEqualToString:@"installing"]) {
-        label = @"Установка…";
-    } else if ([state isEqualToString:@"complete"]) {
-        NSString *updated = version.length > 0 ? version : installed;
-        label = updated.length > 0 ? [NSString stringWithFormat:@"Установлена версия %@", updated] : @"Сервер обновлён";
-    } else if ([state isEqualToString:@"failed"]) {
-        NSString *error = ResponseString(response, @"error");
-        label = error.length > 0 ? error : @"Не удалось обновить сервер";
-    } else {
-        if (IsActiveUpdate(self.updateState)) {
-            if (now - self.lastUpdateStatusAt < 30)
-                return;
-            label = @"Статус обновления недоступен";
-        }
-        state = nil;
-    }
-
-    if (state) {
-        self.lastUpdateStatusAt = now;
-        self.updateSnapshot = response;
-        self.ignoreStaleUpdateUntil = 0;
-        self.previousUpdateSnapshot = nil;
-    }
-    BOOL failed = [state isEqualToString:@"failed"];
-    BOOL announce = failed && ![self.updateState isEqualToString:state];
-    self.updateState = state;
-    self.updateLabel.text = label;
-    self.updateLabel.hidden = label.length == 0;
-    self.updateLabel.textColor = failed ? UIColor.systemRedColor : UIColor.secondaryLabelColor;
-    self.updateProgress.hidden = progress < 0;
-    if (!self.updateProgress.hidden)
-        self.updateProgress.progress = progress;
-    [self updateButtons];
-    if (announce && self.visible)
-        UIAccessibilityPostNotification(UIAccessibilityAnnouncementNotification, label);
 }
 
 - (void)updateStatus:(NSString *)status
@@ -786,10 +688,8 @@ typedef NS_ENUM(NSInteger, CastarKeysSection) {
 
 - (void)updateButtons
 {
-    BOOL busy = self.controlling || self.updateRequestPending || IsActiveUpdate(self.updateState);
-    self.restartButton.enabled = self.serviceStatus != nil && !busy;
+    self.restartButton.enabled = self.serviceStatus != nil && !self.controlling;
     self.stopButton.enabled = self.restartButton.enabled && ![self.serviceStatus isEqualToString:@"stopped"];
-    self.updateButton.enabled = self.updateState != nil && !busy;
 }
 
 - (void)updateLog:(NSString *)log
@@ -821,37 +721,6 @@ typedef NS_ENUM(NSInteger, CastarKeysSection) {
 {
     (void)sender;
     [self controlService:@"stop" pendingStatus:@"Остановка…" failureMessage:@"Не удалось остановить службу"];
-}
-
-- (void)updateService:(UIButton *)sender
-{
-    (void)sender;
-    if (!self.updateButton.enabled)
-        return;
-
-    NSDictionary *previous = self.updateSnapshot;
-    self.updateRequestPending = YES;
-    self.actionErrorLabel.hidden = YES;
-    [self applyUpdateStatus:@{@"state": @"checking"}];
-    dispatch_async(self.controlQueue, ^{
-        NSString *response = SendCommand(@"update", 32, 3);
-        BOOL accepted = [[response stringByTrimmingCharactersInSet:NSCharacterSet.newlineCharacterSet]
-            isEqualToString:@"ok"];
-        NSDictionary *update = ReadUpdateStatus();
-        if (!accepted && !IsActiveUpdate(ResponseString(update, @"state")) &&
-            ![ResponseString(update, @"state") isEqualToString:@"failed"]) {
-            update = @{@"state": @"failed", @"error": @"Не удалось начать обновление"};
-        }
-        dispatch_async(dispatch_get_main_queue(), ^{
-            self.updateRequestPending = NO;
-            if (accepted) {
-                self.ignoreStaleUpdateUntil = NSProcessInfo.processInfo.systemUptime + 8;
-                self.previousUpdateSnapshot = previous;
-            }
-            [self applyUpdateStatus:update];
-            [self updateButtons];
-        });
-    });
 }
 
 - (void)controlService:(NSString *)command pendingStatus:(NSString *)pendingStatus failureMessage:(NSString *)failureMessage

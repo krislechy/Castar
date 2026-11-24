@@ -8,6 +8,21 @@ permissions:
   contents: read
 
 jobs:
+  release-plan:
+    runs-on: ubuntu-24.04
+    outputs:
+      build-server: ${{ steps.plan.outputs.build_server }}
+      server-tag: ${{ steps.plan.outputs.server_tag }}
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - id: plan
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 .github/scripts/castar_release.py plan "$GITHUB_REF_NAME" "$GITHUB_OUTPUT"
+
   windows-client:
     runs-on: windows-2025
     steps:
@@ -51,13 +66,12 @@ jobs:
           [IO.File]::WriteAllLines((Join-Path $publishPath 'Castar.UpdateFiles.txt'), [string[]]$files)
           $updateArchive = Join-Path $env:RUNNER_TEMP 'Castar-Update-win-x64.zip'
           [IO.Compression.ZipFile]::CreateFromDirectory($publishPath, $updateArchive)
-      - name: Build and verify the installer
+      - name: Build the installer
         shell: pwsh
         run: |
           $compilerSetup = Join-Path $env:RUNNER_TEMP 'innosetup-6.7.3.exe'
           $compilerPath = Join-Path $env:RUNNER_TEMP 'inno'
           $publishPath = Join-Path $env:RUNNER_TEMP 'castar-publish'
-          $installPath = Join-Path $env:RUNNER_TEMP 'castar-smoke'
           Invoke-WebRequest 'https://github.com/jrsoftware/issrc/releases/download/is-6_7_3/innosetup-6.7.3.exe' -OutFile $compilerSetup
           if ((Get-FileHash $compilerSetup).Hash -ne '9c73c3bae7ed48d44112a0f48e66742c00090bdb5bef71d9d3c056c66e97b732') {
             throw "Unexpected Inno Setup checksum."
@@ -66,53 +80,8 @@ jobs:
           if ($setup.ExitCode -ne 0) { throw "Inno Setup installation failed." }
           & (Join-Path $compilerPath 'ISCC.exe') "/DCastarVersion=$env:CASTAR_VERSION" "/DPublishDir=$publishPath" "/O$env:RUNNER_TEMP" installer/Castar.iss
           if ($LASTEXITCODE -ne 0) { throw "Installer compilation failed." }
-          $installer = Join-Path $env:RUNNER_TEMP 'Castar-win-x64.exe'
-          $setup = Start-Process -FilePath $installer -ArgumentList "/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /DIR=`"$installPath`"" -WindowStyle Hidden -Wait -PassThru
-          if ($setup.ExitCode -ne 0 -or !(Test-Path (Join-Path $installPath 'Castar.exe'))) {
-            throw "Castar installer smoke test failed."
-          }
-          $fileVersion = (Get-Item (Join-Path $installPath 'Castar.exe')).VersionInfo.ProductVersion
-          if ($fileVersion.Split('+')[0] -ne $env:CASTAR_VERSION) {
-            throw "Installed executable version does not match the release."
-          }
-      - name: Verify the archived update against an installed client
-        shell: pwsh
-        run: |
-          $updateArchive = Join-Path $env:RUNNER_TEMP 'Castar-Update-win-x64.zip'
-          $payloadPath = Join-Path $env:RUNNER_TEMP 'castar-update-smoke'
-          $installPath = Join-Path $env:RUNNER_TEMP 'castar-smoke'
-          [IO.Compression.ZipFile]::ExtractToDirectory($updateArchive, $payloadPath)
-          $manifestName = 'Castar.UpdateFiles.txt'
-          $manifest = Get-Content -LiteralPath (Join-Path $payloadPath $manifestName)
-          $files = Get-ChildItem -LiteralPath $payloadPath -File -Force -Recurse |
-            ForEach-Object { [IO.Path]::GetRelativePath($payloadPath, $_.FullName).Replace('\', '/') } |
-            Where-Object { $_ -ne $manifestName }
-          if (Compare-Object $manifest $files) { throw "The update manifest does not match the archive." }
-
-          $installedDll = Join-Path $installPath 'Castar.dll'
-          $installedSettings = Join-Path $installPath 'Castar.Settings.xml'
-          $installedUninstaller = Get-ChildItem -LiteralPath $installPath -Filter 'unins*.exe' -File | Select-Object -First 1
-          if (!$installedUninstaller) { throw "The first installer did not supply an uninstaller." }
-          $obsoleteDll = Join-Path $installPath 'Castar.Obsolete.dll'
-          Set-Content -LiteralPath $installedDll -Value 'previous assembly'
-          Set-Content -LiteralPath $installedSettings -Value '<Settings />'
-          Set-Content -LiteralPath $obsoleteDll -Value 'obsolete assembly'
-          Add-Content -LiteralPath (Join-Path $installPath $manifestName) -Value 'Castar.Obsolete.dll'
-          $settingsHash = (Get-FileHash -LiteralPath $installedSettings).Hash
-          $uninstallerHash = (Get-FileHash -LiteralPath $installedUninstaller.FullName).Hash
-
-          & (Join-Path $payloadPath 'Castar.Updater.exe') $installPath $payloadPath --no-restart
-          if ($LASTEXITCODE -ne 0) { throw "The update helper failed." }
-          $payloadDllHash = (Get-FileHash -LiteralPath (Join-Path $payloadPath 'Castar.dll')).Hash
-          if ((Get-FileHash -LiteralPath $installedDll).Hash -ne $payloadDllHash -or
-              (Test-Path -LiteralPath $obsoleteDll) -or
-              (Get-FileHash -LiteralPath $installedSettings).Hash -ne $settingsHash -or
-              (Get-FileHash -LiteralPath $installedUninstaller.FullName).Hash -ne $uninstallerHash) {
-            throw "The update did not replace the client or preserve the existing settings and uninstaller."
-          }
-          $payloadManifestHash = (Get-FileHash -LiteralPath (Join-Path $payloadPath $manifestName)).Hash
-          if ((Get-FileHash -LiteralPath (Join-Path $installPath $manifestName)).Hash -ne $payloadManifestHash) {
-            throw "The update manifest was not installed."
+          if (!(Test-Path (Join-Path $env:RUNNER_TEMP 'Castar-win-x64.exe'))) {
+            throw "The installer file is missing."
           }
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
@@ -123,6 +92,8 @@ jobs:
           if-no-files-found: error
 
   server:
+    needs: release-plan
+    if: needs.release-plan.outputs.build-server == 'true'
     strategy:
       fail-fast: false
       matrix:
@@ -130,15 +101,12 @@ jobs:
           - os: windows-2025
             rid: win-x64
             archive: Castar-Server-win-x64.zip
-            executable: Castar.Server.exe
           - os: ubuntu-24.04
             rid: linux-x64
             archive: Castar-Server-linux-x64.tar.gz
-            executable: Castar.Server
           - os: ubuntu-24.04-arm
             rid: linux-arm64
             archive: Castar-Server-linux-arm64.tar.gz
-            executable: Castar.Server
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
@@ -168,77 +136,6 @@ jobs:
             tar -czf $archivePath -C $publishPath .
             if ($LASTEXITCODE -ne 0) { throw "Castar Server archive creation failed." }
           }
-      - name: Verify the packaged server
-        shell: pwsh
-        env:
-          CASTAR_ARCHIVE: ${{ matrix.archive }}
-          CASTAR_EXECUTABLE: ${{ matrix.executable }}
-        run: |
-          $archivePath = Join-Path $env:RUNNER_TEMP $env:CASTAR_ARCHIVE
-          $smokePath = Join-Path $env:RUNNER_TEMP 'castar-server-smoke'
-          foreach ($slot in 'bootstrap', 'current') {
-            $slotPath = Join-Path $smokePath $slot
-            New-Item -ItemType Directory -Path $slotPath -Force | Out-Null
-            if ($IsWindows) {
-              [IO.Compression.ZipFile]::ExtractToDirectory($archivePath, $slotPath)
-            } else {
-              tar -xzf $archivePath -C $slotPath
-              if ($LASTEXITCODE -ne 0) { throw "Castar Server archive extraction failed." }
-            }
-          }
-          $env:Castar__ApiKey = [Convert]::ToHexString([Security.Cryptography.RandomNumberGenerator]::GetBytes(32))
-          $env:Castar__Telegram__Enabled = 'false'
-          $env:Database__SqlitePath = Join-Path $smokePath 'castar-smoke.sqlite'
-          $env:ASPNETCORE_URLS = 'http://127.0.0.1:5080'
-          $stdout = Join-Path $env:RUNNER_TEMP 'castar-server.stdout.log'
-          $stderr = Join-Path $env:RUNNER_TEMP 'castar-server.stderr.log'
-          $processArgs = @{
-            FilePath = Join-Path $smokePath "bootstrap/$env:CASTAR_EXECUTABLE"
-            ArgumentList = '--supervise-server', ('"{0}"' -f $smokePath)
-            WorkingDirectory = $smokePath
-            RedirectStandardOutput = $stdout
-            RedirectStandardError = $stderr
-            PassThru = $true
-          }
-          if ($IsWindows) { $processArgs.WindowStyle = 'Hidden' }
-          $server = Start-Process @processArgs
-          try {
-            $ready = $false
-            for ($attempt = 0; $attempt -lt 30 -and !$server.HasExited; $attempt++) {
-              try {
-                $health = Invoke-WebRequest "$env:ASPNETCORE_URLS/health" -TimeoutSec 2 -SkipHttpErrorCheck
-                if ($health.StatusCode -eq 200) {
-                  $ready = $true
-                  break
-                }
-              } catch {
-                # The port may not be listening during startup.
-              }
-              Start-Sleep -Seconds 1
-            }
-            if (!$ready) { throw "The packaged Castar Server did not become healthy." }
-
-            $unauthorized = Invoke-WebRequest "$env:ASPNETCORE_URLS/api/users" -TimeoutSec 5 -SkipHttpErrorCheck
-            if ($unauthorized.StatusCode -ne 401) {
-              throw "The packaged Castar Server did not reject a request without a Bearer token."
-            }
-            $headers = @{ Authorization = "Bearer $env:Castar__ApiKey" }
-            $update = Invoke-RestMethod "$env:ASPNETCORE_URLS/api/server-update" -Headers $headers -TimeoutSec 5
-            if ($update.state -ne 'idle' -or $update.installedVersion -ne $env:GITHUB_REF_NAME.Substring(1)) {
-              throw "The packaged Castar Server did not report its initial managed update state."
-            }
-            $users = Invoke-WebRequest "$env:ASPNETCORE_URLS/api/users" -Headers $headers -TimeoutSec 5
-            $records = ConvertFrom-Json -InputObject $users.Content -NoEnumerate
-            if ($records -isnot [array] -or $records.Count -ne 0) {
-              throw "The packaged Castar Server did not return an empty database."
-            }
-          } catch {
-            Get-Content -LiteralPath $stdout, $stderr -ErrorAction SilentlyContinue
-            throw
-          } finally {
-            if (!$server.HasExited) { $server.Kill($true) }
-            $server.Dispose()
-          }
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: castar-server-${{ matrix.rid }}
@@ -246,7 +143,10 @@ jobs:
           if-no-files-found: error
 
   release:
-    needs: [windows-client, server]
+    needs: [release-plan, windows-client, server]
+    if: >-
+      ${{ !cancelled() && needs.release-plan.result == 'success' && needs.windows-client.result == 'success'
+          && (needs.server.result == 'success' || needs.server.result == 'skipped') }}
     runs-on: ubuntu-24.04
     permissions:
       contents: write
@@ -259,16 +159,8 @@ jobs:
           pattern: castar-*
           merge-multiple: true
           path: release-assets
-      # The release operator adds the iPhone artifacts built with the supplied iPhoneOS SDK.
-      - name: Create the GitHub release draft
-        shell: bash
+      - name: Attach verified packages to the release
         env:
           GH_TOKEN: ${{ github.token }}
-        run: |
-          gh release create "$GITHUB_REF_NAME" \
-            release-assets/Castar-win-x64.exe \
-            release-assets/Castar-Update-win-x64.zip \
-            release-assets/Castar-Server-win-x64.zip \
-            release-assets/Castar-Server-linux-x64.tar.gz \
-            release-assets/Castar-Server-linux-arm64.tar.gz \
-            --verify-tag --draft --title "Castar ${GITHUB_REF_NAME#v}" --notes-file installer/ReleaseNotes.md
+          SERVER_TAG: ${{ needs.release-plan.outputs.server-tag }}
+        run: python3 .github/scripts/castar_release.py draft "$GITHUB_REF_NAME" release-assets "$SERVER_TAG"

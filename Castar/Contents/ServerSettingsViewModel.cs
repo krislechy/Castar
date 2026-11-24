@@ -12,7 +12,7 @@ using System.Threading.Tasks;
 
 namespace Castar.Contents;
 
-internal sealed class ServerSettingsViewModel(CastarServerClient server, BudgetEventConnection? events = null) : BaseSettingsModel
+internal sealed class ServerSettingsViewModel(CastarServerClient server) : BaseSettingsModel
 {
     private (string Address, string Key)? connection;
     private CancellationTokenSource? request;
@@ -41,7 +41,6 @@ internal sealed class ServerSettingsViewModel(CastarServerClient server, BudgetE
 
     public bool HasConnection => connection is not null;
     internal bool HasSettings => saved is not null;
-    public ServerUpdateViewModel Updates { get; } = new(server, events);
     public bool CanReload => active && HasConnection && request is null;
     public bool CanEdit => active && HasConnection && saved is not null && (request is null || refreshingInBackground);
     public bool SupportsCredentials => saved?.ReceiptAuthenticationProfiles is not null || saved?.NalogConfigured is not null;
@@ -233,8 +232,7 @@ internal sealed class ServerSettingsViewModel(CastarServerClient server, BudgetE
         }
 
         NotifyActions();
-        var settings = saved is null ? ReloadAsync() : RefreshAfterNotificationAsync();
-        return Task.WhenAll(settings, Updates.OpenAsync(address, protectedKey));
+        return saved is null ? ReloadAsync() : RefreshAfterNotificationAsync();
     }
 
     public Task ReloadAsync() => CanReload

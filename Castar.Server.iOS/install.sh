@@ -10,11 +10,10 @@ fi
 
 payload=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
 server=/var/jb/usr/libexec/castar
-supervisor=/var/jb/usr/libexec/castar-updater
+legacy_supervisor=/var/jb/usr/libexec/castar-updater
 app=/var/jb/Applications/CastarControl.app
 watch=/var/jb/Library/LaunchDaemons/org.castar.watchdog.plist
-updater=/var/jb/Library/LaunchDaemons/org.castar.updater.plist
-recovery_job=/var/jb/Library/LaunchDaemons/org.castar.updater-recovery.plist
+legacy_jobs=(org.castar.updater org.castar.updater-recovery)
 control=/var/jb/var/lib/castar-control
 data=/var/jb/var/lib/castar
 config=/var/jb/etc/castar/server.env
@@ -28,30 +27,28 @@ version=''
 recovering=0
 if [[ $# == 1 && $1 == --recover ]]; then
     recovering=1
-elif [[ $# == 2 && $1 == --update && $2 =~ $version_pattern ]]; then
-    version=$2
-    ldid="$supervisor/ldid"
-    [[ -f "$payload/version" && $(<"$payload/version") == "$version" ]]
 elif [[ $# == 0 ]]; then
     ldid=$(command -v "${LDID:-ldid}")
 else
-    printf '%s\n' 'Usage: install.sh [--update VERSION]' >&2
+    printf '%s\n' 'Usage: install.sh [--recover]' >&2
     exit 1
 fi
 if [[ $recovering == 0 ]]; then
-for tool in "$ldid" uicache launchctl; do
+for tool in "$ldid" uicache launchctl sudo; do
     command -v "$tool" >/dev/null || { printf 'Missing tool: %s\n' "$tool" >&2; exit 1; }
 done
 for file in Castar.Server.dll castar-host castar-watchdog run-server.sh org.castar.server.plist \
-            org.castar.watchdog.plist update-server.sh org.castar.updater.plist org.castar.updater-recovery.plist version \
+            org.castar.watchdog.plist version \
             CastarControl.entitlements.plist CastarControl.app/CastarControl CastarControl.app/Info.plist \
             CastarControl.app/AppIcon60@2x.png CastarControl.app/AppIcon60@3x.png \
             lib/libcoreclr.dylib lib/libe_sqlite3.dylib lib/libSkiaSharp.dylib lib/libZXing.dylib; do
     [[ -f "$payload/$file" ]] || { printf 'Missing archive member: %s\n' "$file" >&2; exit 1; }
 done
+version=$(<"$payload/version")
+if [[ ! $version =~ $version_pattern ]]; then
+    printf '%s\n' 'Invalid Castar package version.' >&2
+    exit 1
 fi
-if [[ -n "$version" ]]; then
-    command -v sudo >/dev/null
 fi
 
 as_mobile() (
@@ -93,6 +90,43 @@ unload() {
         done
         return 1
     fi
+}
+
+disable_legacy_jobs() {
+    local job description result
+    for job in "${legacy_jobs[@]}"; do
+        result=0
+        description=$(launchctl print "system/$job" 2>/dev/null) || result=$?
+        if [[ $result == 113 ]]; then continue; fi
+        if [[ $result != 0 ]]; then return 1; fi
+        if [[ $job == org.castar.updater && $description =~ $'\n'[[:blank:]]+pid[[:blank:]]+=[[:blank:]]+([0-9]+) ]]; then
+            printf '%s\n' 'The previous Castar updater is still running. Retry after it exits.' >&2
+            return 1
+        fi
+        touch "$stage/$job.loaded"
+        unload "$job" || return 1
+    done
+}
+
+restore_legacy_jobs() {
+    local job
+    for job in "${legacy_jobs[@]}"; do
+        if [[ -f "$stage/$job.loaded" ]] && ! launchctl print "system/$job" >/dev/null 2>&1; then
+            launchctl bootstrap system "/var/jb/Library/LaunchDaemons/$job.plist" || return 1
+        fi
+    done
+}
+
+finish_installation() {
+    local job
+    if [[ -f "$stage/manual-install" ]]; then
+        for job in "${legacy_jobs[@]}"; do
+            rm -f -- "/var/jb/Library/LaunchDaemons/$job.plist" || return 1
+        done
+        rm -f -- "$legacy_supervisor/install.sh" "$legacy_supervisor/update-server.sh" \
+            "$legacy_supervisor/ldid" /var/jb/var/run/castar/update.json || return 1
+    fi
+    rm -f -- "$verify" "$activation" "$applying"
 }
 
 snapshot_data() {
@@ -166,7 +200,7 @@ restore() {
     trap - EXIT HUP INT TERM
     set +e
     if [[ $status != 0 && -f "$stage/finished" ]]; then
-        # A committed update can be activated by the independent recovery job.
+        # Preserve the committed installation for completion with --recover.
         exit 70
     fi
     if [[ $status != 0 && $unloaded == 1 ]]; then
@@ -202,6 +236,7 @@ restore() {
             ! launchctl print system/org.castar.watchdog >/dev/null 2>&1; then
             launchctl bootstrap system "$watch" || restored=0
         fi
+        if [[ $restored == 1 ]]; then restore_legacy_jobs || restored=0; fi
         if [[ $restored == 0 ]]; then
             printf 'Automatic rollback failed. Backup files: %s\n' "$stage" >&2
         fi
@@ -210,7 +245,7 @@ restore() {
     # Clean up the lock only after all displaced files have been restored or the new version committed.
     rm -rf -- "$stage"
     rm -f -- "$lock"
-    if [[ $recovering == 1 && $unloaded == 1 ]]; then exit 3; fi
+    if [[ $recovering == 1 ]]; then exit 0; fi
     exit "$status"
 }
 
@@ -225,10 +260,10 @@ if [[ $recovering == 1 ]]; then
     fi
     stage="/var/jb/usr/libexec/$name"
     if [[ -f "$stage/finished" ]]; then
-        rm -f -- "$verify" "$activation" "$applying"
+        finish_installation
         rm -rf -- "$stage"
         rm -f -- "$lock"
-        exit 4
+        exit 0
     fi
     if [[ ! -d "$stage" ]]; then
         rm -f -- "$verify" "$activation" "$applying" "$lock"
@@ -256,6 +291,7 @@ rm -f -- "$lock_record"
 trap restore EXIT
 trap 'exit 1' HUP INT TERM
 
+touch "$stage/manual-install"
 install -d -m 0755 "$stage/server"
 cp -R "$payload/lib" "$stage/server/lib"
 cp -R "$payload/CastarControl.app" "$stage/app"
@@ -273,34 +309,24 @@ for file in "$stage/server"/lib/*.dylib; do "$ldid" -S "$file"; done
 chmod 0755 "$stage/app/CastarControl"
 "$ldid" "-S$payload/CastarControl.entitlements.plist" "$stage/app/CastarControl"
 install -o root -g wheel -m 0644 "$payload/org.castar.watchdog.plist" "$stage/watchdog.plist"
-if [[ -z "$version" ]]; then
-    # Keep the manually selected, working signer and updater outside the replaceable server tree.
-    install -d -o root -g wheel -m 0700 "$supervisor"
-    install -o root -g wheel -m 0700 "$ldid" "$stage/ldid"
-    install -o root -g wheel -m 0600 "$payload/install.sh" "$stage/install.sh"
-    install -o root -g wheel -m 0600 "$payload/update-server.sh" "$stage/update-server.sh"
-    install -o root -g wheel -m 0644 "$payload/org.castar.updater.plist" "$stage/updater.plist"
-    install -o root -g wheel -m 0644 "$payload/org.castar.updater-recovery.plist" "$stage/recovery.plist"
-fi
 
 touch "$stage/armed"
 sync
 unloaded=1
-unload org.castar.watchdog
 restart_watchdog=1
+unload org.castar.watchdog
 unload org.castar.server
-if [[ -n "$version" ]]; then
-    as_mobile true
-    snapshot_data
-    snapshot=1
-    touch "$stage/data-ready"
-    install -o root -g wheel -m 0600 /dev/null "$applying"
-    applying_created=1
-    install -o root -g wheel -m 0644 /dev/null "$activation"
-    activation_created=1
-    install -o root -g wheel -m 0644 /dev/null "$verify"
-    verify_created=1
-fi
+disable_legacy_jobs
+as_mobile true
+snapshot_data
+snapshot=1
+touch "$stage/data-ready"
+install -o root -g wheel -m 0600 /dev/null "$applying"
+applying_created=1
+install -o root -g wheel -m 0644 /dev/null "$activation"
+activation_created=1
+install -o root -g wheel -m 0644 /dev/null "$verify"
+verify_created=1
 touch "$stage/swapping"
 sync
 swapped=1
@@ -311,32 +337,17 @@ mv "$stage/server" "$server"
 mv "$stage/app" "$app"
 mv "$stage/watchdog.plist" "$watch"
 uicache -p "$app"
-if [[ -n "$version" ]]; then
-    launchctl bootstrap system "$watch"
+launchctl bootstrap system "$watch"
+launchctl bootstrap system "$server/org.castar.server.plist"
+wait_for_version
+unload org.castar.server
+rm -f -- "$verify"
+verify_created=0
+if [[ ! -e "$control/stopped" ]]; then
     launchctl bootstrap system "$server/org.castar.server.plist"
     wait_for_version
-    unload org.castar.server
-    rm -f -- "$verify"
-    verify_created=0
-    if [[ ! -e "$control/stopped" ]]; then
-        launchctl bootstrap system "$server/org.castar.server.plist"
-        wait_for_version
-    fi
-else
-    # No active update runs during the first installation. Subsequent in-app updates keep this job loaded.
-    unload org.castar.updater
-    unload org.castar.updater-recovery
-    mv -f "$stage/ldid" "$supervisor/ldid"
-    mv -f "$stage/install.sh" "$supervisor/install.sh"
-    mv -f "$stage/update-server.sh" "$supervisor/update-server.sh"
-    mv -f "$stage/updater.plist" "$updater"
-    mv -f "$stage/recovery.plist" "$recovery_job"
-    launchctl bootstrap system "$updater"
-    launchctl bootstrap system "$recovery_job"
-    launchctl bootstrap system "$watch"
 fi
 touch "$stage/finished"
 sync
-if [[ $activation_created == 1 ]]; then rm -f -- "$activation"; fi
-if [[ $applying_created == 1 ]]; then rm -f -- "$applying"; fi
+finish_installation
 printf '%s\n' 'Castar installed. Open Castar for service status.'

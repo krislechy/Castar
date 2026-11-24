@@ -224,22 +224,6 @@
                                            AutomationProperties.LiveSetting="Polite"/>
                             </StackPanel>
                         </Border>
-                        <Border Style="{StaticResource SettingsDivider}"/>
-                        <Border Style="{StaticResource SettingsGroup}">
-                            <StackPanel>
-                                <TextBlock Text="Версия сервера" Style="{StaticResource SettingsGroupTitle}"/>
-                                <StackPanel DataContext="{Binding Updates}">
-                                    <Button Content="Обновить сервер" Style="{StaticResource FormAction}"
-                                            IsEnabled="{Binding CanStart}" Click="UpdateServer_Click"/>
-                                    <TextBlock Text="{Binding Status}" Style="{StaticResource ViewStatus}"
-                                               AutomationProperties.LiveSetting="Polite"/>
-                                    <ProgressBar Minimum="0" Maximum="100" Value="{Binding Percent, Mode=OneWay}"
-                                                 IsIndeterminate="{Binding IsIndeterminate, Mode=OneWay}"
-                                                 Visibility="{Binding IsWorking, Converter={StaticResource ServerConnectionVisibility}}"
-                                                 AutomationProperties.Name="Ход обновления сервера"/>
-                                </StackPanel>
-                            </StackPanel>
-                        </Border>
                     </StackPanel>
                 </Grid>
                 <Grid Visibility="Collapsed">

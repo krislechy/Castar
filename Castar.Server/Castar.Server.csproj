@@ -3,7 +3,7 @@
     <TargetFramework>net11.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
-    <Version>0.11.21</Version>
+    <Version>0.11.22</Version>
   </PropertyGroup>
   <ItemGroup>
     <PackageReference Include="TimeZoneConverter" />
@@ -12,7 +12,6 @@
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\Castar.Api\Castar.Api.csproj" />
-    <ProjectReference Include="..\Castar.ReleaseUpdates\Castar.ReleaseUpdates.csproj" />
     <ProjectReference Include="..\Castar.BL\Castar.BL.csproj" />
     <ProjectReference Include="..\Castar.DAL\Castar.DAL.csproj" />
     <ProjectReference Include="..\Castar.Services.Receipts.Nalog\Castar.Services.Receipts.Nalog.csproj" />

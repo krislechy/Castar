@@ -3,7 +3,7 @@ using Microsoft.AspNetCore.SignalR;
 
 namespace Castar.Server;
 
-internal sealed class BudgetEventsHub(ApiKeyStore keys, ServerUpdateEvents updates) : Hub
+internal sealed class BudgetEventsHub(ApiKeyStore keys) : Hub
 {
     private static readonly object RevocationHandler = new();
 
@@ -53,16 +53,5 @@ internal sealed class BudgetEventsHub(ApiKeyStore keys, ServerUpdateEvents updat
     {
         if (Context.Items.Remove(RevocationHandler, out var handler) && handler is Action<Guid> close)
             keys.Revoked -= close;
-    }
-
-    [HubMethodName(ServerSynchronization.SubscribeUpdates)]
-    public async Task<ServerUpdateSnapshotDto> SubscribeServerUpdates()
-    {
-        if (Context.GetHttpContext()?.Items[typeof(BudgetEventsHub)] is not Guid keyId ||
-            !keys.GetActiveKeyIds().Contains(keyId))
-            throw new HubException("A valid Castar API key is required.");
-
-        await Groups.AddToGroupAsync(Context.ConnectionId, ServerUpdateEvents.GroupName(keyId), Context.ConnectionAborted);
-        return await updates.GetSnapshotAsync(Context.ConnectionAborted);
     }
 }

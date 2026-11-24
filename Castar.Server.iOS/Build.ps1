@@ -215,12 +215,12 @@ try {
     finally {
         Pop-Location
     }
-    foreach ($file in @('run-server.sh', 'install.sh', 'update-server.sh')) {
+    foreach ($file in @('run-server.sh', 'install.sh')) {
         $script = Get-Content -LiteralPath (Join-Path $PSScriptRoot $file) -Raw
         [IO.File]::WriteAllText((Join-Path $bundle $file), $script.Replace("`r`n", "`n"))
     }
-    foreach ($file in @('org.castar.server.plist', 'org.castar.watchdog.plist', 'org.castar.updater.plist',
-            'org.castar.updater-recovery.plist', 'DEPLOYMENT.md', 'New-HttpsCertificate.ps1')) {
+    foreach ($file in @('org.castar.server.plist', 'org.castar.watchdog.plist', 'DEPLOYMENT.md',
+            'New-HttpsCertificate.ps1')) {
         Copy-Item -LiteralPath (Join-Path $PSScriptRoot $file) -Destination $bundle
     }
     $serverProject = Join-Path $repo 'Castar.Server/Castar.Server.csproj'

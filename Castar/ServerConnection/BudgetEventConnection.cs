@@ -27,8 +27,6 @@ public sealed class BudgetEventConnection(ClientSettings settings) : IDisposable
 
     public event Action<BudgetEventDto>? Changed;
     public event Action<ServerSynchronizationDto>? ConfigurationChanged;
-    public event Action<ServerUpdateStatusDto?>? UpdateStatusChanged;
-    public event Action? UpdateEventsUnavailable;
     public event Action? Synchronized;
     public event Action? Disconnected;
     public bool IsSynchronized { get; private set; }
@@ -110,22 +108,6 @@ public sealed class BudgetEventConnection(ClientSettings settings) : IDisposable
                         .Build();
                     var closed = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
                     var ready = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-                    var updateGate = new object();
-                    var updateSequence = -1L;
-                    void ReceiveUpdate(ServerUpdateSnapshotDto snapshot)
-                    {
-                        Notify(() =>
-                        {
-                            lock (updateGate)
-                            {
-                                if (snapshot.Sequence <= updateSequence)
-                                    return;
-                                updateSequence = snapshot.Sequence;
-                                SupportsConfigurationEvents = true;
-                                UpdateStatusChanged?.Invoke(snapshot.Status);
-                            }
-                        });
-                    }
 
                     connection.Closed += error =>
                     {
@@ -142,8 +124,6 @@ public sealed class BudgetEventConnection(ClientSettings settings) : IDisposable
                             SupportsConfigurationEvents = true;
                             ConfigurationChanged?.Invoke(change);
                         }));
-                    using var updateSubscription = connection.On<ServerUpdateSnapshotDto>(ServerSynchronization.UpdateChanged,
-                        ReceiveUpdate);
                     using var confirmation = connection.On(BudgetEvents.Ready, () => { ready.TrySetResult(); });
                     using (var startup = CancellationTokenSource.CreateLinkedTokenSource(token))
                     {
@@ -160,25 +140,6 @@ public sealed class BudgetEventConnection(ClientSettings settings) : IDisposable
                         Synchronized?.Invoke();
                     });
                     delay = TimeSpan.FromSeconds(1);
-                    using (var updates = CancellationTokenSource.CreateLinkedTokenSource(token))
-                    {
-                        updates.CancelAfter(TimeSpan.FromSeconds(5));
-                        try
-                        {
-                            var snapshot = await connection.InvokeAsync<ServerUpdateSnapshotDto>(
-                                ServerSynchronization.SubscribeUpdates, updates.Token);
-                            ReceiveUpdate(snapshot);
-                        }
-                        catch (HubException)
-                        {
-                            // Older servers still support budget changes through the same connection.
-                            Notify(() => UpdateEventsUnavailable?.Invoke());
-                        }
-                        catch (OperationCanceledException) when (!token.IsCancellationRequested)
-                        {
-                            Notify(() => UpdateEventsUnavailable?.Invoke());
-                        }
-                    }
                     await closed.Task.WaitAsync(token);
                 }
                 catch (Exception error) when (error is HttpRequestException or IOException or

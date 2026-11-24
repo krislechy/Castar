@@ -23,9 +23,9 @@
         </dict>
     </dict>
     <key>CFBundleShortVersionString</key>
-    <string>0.11.20</string>
+    <string>0.11.21</string>
     <key>CFBundleVersion</key>
-    <string>31</string>
+    <string>32</string>
     <key>MinimumOSVersion</key>
     <string>15.0</string>
     <key>LSRequiresIPhoneOS</key>

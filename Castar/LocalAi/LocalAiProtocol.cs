@@ -7,6 +7,7 @@ using System.Net.Http;
 using System.Net.Http.Json;
 using System.Text.Encodings.Web;
 using System.Text.Json;
+using System.Text.RegularExpressions;
 using System.Text.Unicode;
 using System.Threading;
 using System.Threading.Tasks;
@@ -37,10 +38,26 @@ internal sealed class LocalAiProtocol(HttpClient http)
         or null if none fit. Return only JSON, using this format even if the classification instructions include an older output example.
         """;
 
-    private const string SerbianReceiptInstructions = """
-        Classify items independently. On Serbian receipts, product nouns carry the meaning: paradajz = tomato,
-        mleko = milk, sok = juice, vino = wine, pivo = beer. Cherry is a variety in cherry tomatoes.
-        For alcohol, verify that the item itself is an alcoholic drink; bezalkoholno means non-alcoholic.
+    private const string PurchaseReceiptInstructions = """
+        Classify each row independently by the product sold. Ignore receipt codes, KOM/KG, package sizes and shop names
+        when the product is recognizable. Modifiers, fillings and flavors do not change the base product.
+
+        When both categories exist, keep staples and cooking ingredients in «Продукты»: bread, vegetables, herbs,
+        meat, plain dairy, sauces and plain water. Use «Вкусняшки» for fruit and berries (including lemons),
+        candy, gum, chocolate, sweet pastries, puddings, ice cream, snack chips, soft drinks and fruit juices.
+        A fruit used as a flavor or ingredient does not move mayonnaise, cream or other cooking ingredients into snacks.
+        Herbs and seasonings such as basil (bosiljak), parsley and dill always go under «Продукты» when available.
+        Alcohol applies only to alcoholic drinks. Bezalkoholno and 0.0% indicate a non-alcoholic drink.
+
+        Serbian receipt examples (including spellings without accents):
+        «Продукты»: baget/hleb = bread, šargarepa = carrot, bosiljak = basil, juneće usit. meso = ground beef,
+        paradajz (including paradajz cherry or na itali. n.) = tomato, krem za kuvanje = cooking cream,
+        kiselo mleko = fermented milk, voda negazirana = still water.
+        «Вкусняшки»: krofna kajsija = apricot doughnut, limun rinfuz = loose lemons, puding vanila = vanilla pudding,
+        jelly beans slatke = candy, žvaka = gum, sladoled = ice cream, čips = chips, sok od jabuke = apple juice.
+        «Алкоголь»: vino crveno = red wine, pivo svetlo = lager. Non-alcoholic beer belongs with soft drinks.
+        Match the product examples before considering category tags. For each row, look up the chosen category's ID in
+        the supplied catalog. Check each mapping independently, especially when adjacent rows have different categories.
         """;
 
     internal async Task<string[]> DiscoverAsync(Uri endpoint, LocalAiProvider provider, CancellationToken token)
@@ -69,7 +86,7 @@ internal sealed class LocalAiProtocol(HttpClient http)
             Identify the product itself before using a flavor, variant, package size, unit marker, or store.
             Assign a specialized category only when the actual product type supports it.
             """;
-        var guidance = isIncome ? OutputInstructions : $"{OutputInstructions}\n{SerbianReceiptInstructions}";
+        var guidance = isIncome ? OutputInstructions : $"{OutputInstructions}\n{PurchaseReceiptInstructions}";
         var messages = new[]
         {
             new { role = "system", content = $"{task}\n{ClassificationInstructions}\n{guidance}" },
@@ -79,7 +96,11 @@ internal sealed class LocalAiProtocol(HttpClient http)
                 content = JsonSerializer.Serialize(new
                 {
                     shop,
-                    items = items.Select((item, index) => new { index, name = item.Name }),
+                    items = items.Select((item, index) => new
+                    {
+                        index,
+                        name = isIncome ? item.Name : ExplainSerbianProduct(item.Name)
+                    }),
                     categories = catalog.Select((category, index) => new
                     {
                         id = index + 1,
@@ -197,6 +218,18 @@ internal sealed class LocalAiProtocol(HttpClient http)
                 return value.GetString();
         }
         return null;
+    }
+
+    private static string ExplainSerbianProduct(string name)
+    {
+        var product = Regex.Match(name, @"^\s*(bosiljak|majonez|jabuk[ae])\b", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+        return product.Value.Trim().ToLowerInvariant() switch
+        {
+            "bosiljak" => $"Basil (cooking herb) — {name}",
+            "majonez" => $"Mayonnaise (condiment) — {name}",
+            "jabuka" or "jabuke" => $"Apples (fruit) — {name}",
+            _ => name
+        };
     }
 
     private static int MaxOutputTokens(int itemCount) => 96 + 48 * itemCount;

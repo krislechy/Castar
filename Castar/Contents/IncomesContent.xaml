@@ -114,11 +114,9 @@
       </StackPanel>
       <Border Grid.Column="1" BorderBrush="{StaticResource LedgerBorder}" BorderThickness="1,0,0,0" Padding="20,0" Margin="0,0,12,0">
        <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition/></Grid.ColumnDefinitions>
-        <c:UserAvatar Width="38" Height="38" Margin="0,0,16,0" UserName="{Binding Income.User.Name}" Photo="{Binding Income.User.ImageRaw, Converter={StaticResource UserAvatarImageConverter}}"/>
-        <StackPanel Grid.Column="1" VerticalAlignment="Center">
-         <TextBlock Text="{Binding Income.User.Name}" FontWeight="SemiBold" Foreground="{DynamicResource Foreground.White}" TextTrimming="CharacterEllipsis"/>
-         <TextBlock Text="{Binding Income.Source}" Foreground="{StaticResource LedgerMuted}" TextTrimming="CharacterEllipsis" FontSize="12" Margin="0,2,0,0"/>
-        </StackPanel>
+        <c:UserAvatar Width="38" Height="38" Margin="0,0,16,0" UserName="{Binding Income.User.Name}" Photo="{Binding Income.User.ImageRaw, Converter={StaticResource UserAvatarImageConverter}}" VerticalAlignment="Center"/>
+        <TextBlock Grid.Column="1" Text="{Binding Income.Source}" TextAlignment="Left" VerticalAlignment="Center"
+                   Foreground="{DynamicResource Foreground.White}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis"/>
        </Grid>
       </Border>
       <c:MoneyAmount Grid.Column="2" Display="{Binding Amount}" Prefix="{Binding Income.Sum, Converter={StaticResource IncomeGroupPresentation}, ConverterParameter=prefix}" Foreground="{StaticResource LedgerIncome}" FontWeight="SemiBold" FontSize="18" VerticalAlignment="Center" Margin="0,0,12,0"/>

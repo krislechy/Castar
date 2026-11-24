@@ -33,7 +33,18 @@ internal static class BudgetCategoryIcons
         ["graduation-cap"] = "Образование", ["shopping-bag"] = "Покупки", ["scissors"] = "Красота",
         ["wallet"] = "Кошелёк", ["paw-print"] = "Питомцы", ["coffee"] = "Кофе", ["bus"] = "Транспорт",
         ["fuel"] = "Топливо", ["zap"] = "Коммунальные услуги", ["pill"] = "Аптека", ["baby"] = "Дети",
-        ["shield-check"] = "Страхование", ["package"] = "Доставка", ["wine"] = "Алкоголь"
+        ["shield-check"] = "Страхование", ["package"] = "Доставка", ["wine"] = "Алкоголь",
+        ["archive"] = "Архив", ["arrow-left-right"] = "Перевод", ["banknote-arrow-up"] = "Поступление наличных",
+        ["badge-check"] = "Подтверждённая выплата", ["chart-candlestick"] = "Торговля активами", ["circle-percent"] = "Кешбэк",
+        ["file-check"] = "Выплата по договору", ["handshake"] = "Партнёрство", ["key-round"] = "Недвижимость",
+        ["medal"] = "Награда", ["package-check"] = "Доход от продаж", ["rocket"] = "Свой проект",
+        ["trending-up"] = "Рост капитала", ["vault"] = "Вклад", ["wallet-cards"] = "Личные поступления",
+        ["calendar-check"] = "Регулярное поступление", ["ice-cream-cone"] = "Мороженое", ["candy"] = "Сладости и жвачка",
+        ["cookie"] = "Печенье и снеки", ["can"] = "Напитки", ["bike"] = "Велосипед",
+        ["book-open"] = "Книги", ["car-taxi-front"] = "Такси", ["cat"] = "Кошки",
+        ["clapperboard"] = "Кино", ["flower-2"] = "Цветы", ["guitar"] = "Музыка",
+        ["hammer"] = "Ремонт", ["hand-heart"] = "Благотворительность", ["plug"] = "Электричество",
+        ["ticket"] = "Билеты", ["washing-machine"] = "Бытовая техника", ["wrench"] = "Обслуживание"
     };
 
     internal static IReadOnlyList<Choice> ForKind(string kind) => BudgetCategoryIconKeys.ForKind(kind)

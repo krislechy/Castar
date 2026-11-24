@@ -27,7 +27,7 @@
     </Viewbox>
     <Viewbox x:Key="Svg.CurrentMonth" x:Shared="false" Stretch="Uniform" Width="16" Height="16">
         <Canvas Width="24" Height="24">
-            <Path Data="{StaticResource Lucide.calendar-check}" Style="{StaticResource LucideAliasStroke}" Stroke="{DynamicResource Foreground.Gray}"/>
+            <Path Data="{StaticResource Lucide.calendar-check}" Style="{StaticResource LucideAliasStroke}"/>
         </Canvas>
     </Viewbox>
     <Viewbox x:Key="Svg.Warning" x:Shared="false" Stretch="Uniform" Width="16" Height="16">

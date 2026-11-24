@@ -5,13 +5,19 @@ public static class BudgetCategoryIconKeys
     public static IReadOnlyList<string> Income { get; } = Array.AsReadOnly<string>(
         ["briefcase-business", "laptop", "building-2", "chart-no-axes-combined", "store", "rotate-ccw", "gift",
          "landmark", "ellipsis", "star", "house", "percent", "banknote", "coins", "hand-coins",
-         "badge-dollar-sign", "credit-card", "piggy-bank", "receipt-text", "users"]);
+         "badge-dollar-sign", "credit-card", "piggy-bank", "receipt-text", "users",
+         "archive", "arrow-left-right", "banknote-arrow-up", "badge-check", "chart-candlestick", "circle-percent",
+         "file-check", "handshake", "key-round", "medal", "package-check", "rocket", "trending-up", "vault",
+         "wallet-cards", "calendar-check"]);
 
     public static IReadOnlyList<string> Purchase { get; } = Array.AsReadOnly<string>(
         ["shopping-cart", "utensils", "house", "car-front", "heart-pulse", "shirt", "smartphone", "monitor", "repeat",
          "gamepad-2", "plane", "dumbbell", "graduation-cap", "shopping-bag", "scissors", "landmark", "wallet",
          "paw-print", "gift", "ellipsis", "coffee", "bus", "fuel", "zap", "pill", "baby", "shield-check", "receipt-text",
-         "package", "banknote", "wine"]);
+         "package", "banknote", "wine",
+         "archive", "ice-cream-cone", "candy", "cookie", "can", "bike", "book-open", "car-taxi-front", "cat",
+         "clapperboard", "flower-2", "guitar", "hammer", "hand-heart", "key-round", "plug", "ticket",
+         "washing-machine", "wrench"]);
 
     private static readonly IReadOnlyDictionary<string, string> IncomeAliases = new Dictionary<string, string>(StringComparer.Ordinal)
     {

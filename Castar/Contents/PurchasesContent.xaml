@@ -135,103 +135,110 @@
    </Grid>
    <Border x:Name="DetailsPanel" Grid.Column="2" Style="{StaticResource ExpenseCardSurface}" Padding="18,16">
     <Grid Grid.IsSharedSizeScope="True"><Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
-     <Grid Margin="0,0,0,12">
-      <Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
-      <TextBlock Text="Товары" Style="{StaticResource ExpenseSectionTitle}" VerticalAlignment="Center"/>
-      <StackPanel x:Name="UncategorizedItemsWarning" Grid.Column="1" Orientation="Horizontal" Margin="8,0,10,0"
-                  VerticalAlignment="Center" Background="Transparent" ToolTip="Товары без категории">
-       <StackPanel.Style>
-        <Style TargetType="StackPanel">
-         <Style.Triggers>
-          <DataTrigger Binding="{Binding UncategorizedItemCount, FallbackValue=0}" Value="0">
-           <Setter Property="Visibility" Value="Collapsed"/>
-          </DataTrigger>
-         </Style.Triggers>
-        </Style>
-       </StackPanel.Style>
-       <ContentControl Content="{DynamicResource Svg.Warning}" VerticalAlignment="Center"/>
-       <TextBlock x:Name="UncategorizedItemsCount" Text="{Binding UncategorizedItemCount}" Margin="4,0,0,0"
-                  Foreground="{DynamicResource Warning.Svg.Brush}" FontWeight="SemiBold" VerticalAlignment="Center"
-                  AutomationProperties.Name="{Binding UncategorizedItemCount, StringFormat='Товары без категории: {0}'}"/>
-      </StackPanel>
-      <c:PeriodClassificationButton x:Name="ReclassifyPurchaseButton" Grid.Column="2"
-              MinWidth="40" MinHeight="40" Padding="8" Click="ReclassifyPurchase_Click"
-              Content="Повторить категоризацию покупки" AutomationProperties.Name="Повторить категоризацию покупки"
-              AutomationProperties.HelpText="" ToolTipService.ShowOnDisabled="True"/>
-      <Grid x:Name="PurchaseItemQueueStatus" Grid.Column="3" Width="68" Margin="0,0,8,0" VerticalAlignment="Center">
-       <Grid.ColumnDefinitions><ColumnDefinition Width="40"/><ColumnDefinition/></Grid.ColumnDefinitions>
-       <Grid.Style>
-        <Style TargetType="Grid">
-         <Style.Triggers>
-          <DataTrigger Binding="{Binding PendingPurchaseItemCount, RelativeSource={RelativeSource AncestorType=views:PurchasesContent}, FallbackValue=0}" Value="0">
-           <Setter Property="Visibility" Value="Hidden"/>
-          </DataTrigger>
-         </Style.Triggers>
-        </Style>
-       </Grid.Style>
-       <Button x:Name="RetryPurchaseItemsButton" Padding="8" Click="RetryPendingPurchaseItems_Click"
-               ToolTip="{Binding PurchaseItemQueueMessage, RelativeSource={RelativeSource AncestorType=views:PurchasesContent}}"
-               AutomationProperties.ItemStatus="{Binding ToolTip, RelativeSource={RelativeSource Self}}"
-               ToolTipService.ShowOnDisabled="True">
-        <Button.Style>
-         <Style TargetType="Button" BasedOn="{StaticResource LedgerActionButton}">
-          <Setter Property="Foreground" Value="{DynamicResource Warning.Svg.Brush}"/>
-          <Setter Property="AutomationProperties.Name" Value="Повторить отправку товаров"/>
-          <Style.Triggers>
-           <DataTrigger Binding="{Binding IsPurchaseItemQueueWaiting, RelativeSource={RelativeSource AncestorType=views:PurchasesContent}, FallbackValue=False}" Value="True">
-            <Setter Property="c:ButtonLoading.IsBusy" Value="True"/>
-            <Setter Property="Foreground" Value="{DynamicResource Highlight}"/>
-            <Setter Property="AutomationProperties.Name" Value="Товары ожидают отправки"/>
-           </DataTrigger>
-          </Style.Triggers>
-         </Style>
-        </Button.Style>
-        <Path Style="{StaticResource ExpenseCategoryStatusIcon}" Data="{StaticResource Lucide.rotate-ccw}"
-              Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"/>
-       </Button>
-       <TextBlock x:Name="PendingPurchaseItemsCount" Grid.Column="1" Margin="4,0,0,0"
-                  Text="{Binding PendingPurchaseItemCount, RelativeSource={RelativeSource AncestorType=views:PurchasesContent}}"
-                  Foreground="{Binding Foreground, ElementName=RetryPurchaseItemsButton}"
-                  FontWeight="SemiBold" VerticalAlignment="Center" HorizontalAlignment="Center"
-                  TextTrimming="CharacterEllipsis"
-                  ToolTip="{Binding ToolTip, ElementName=RetryPurchaseItemsButton}"
-                  AutomationProperties.Name="{Binding Text, RelativeSource={RelativeSource Self}, StringFormat='Товаров в очереди: {0}'}"
-                  AutomationProperties.LiveSetting="Polite"/>
+     <DockPanel Margin="0,0,0,8">
+      <Grid DockPanel.Dock="Left" Height="40" Margin="0,0,8,4" VerticalAlignment="Top">
+       <TextBlock Text="Товары" Style="{StaticResource ExpenseSectionTitle}" VerticalAlignment="Center"/>
       </Grid>
-      <Button x:Name="AddPurchaseItemButton" Grid.Column="4"
-              Click="AddPurchaseItem_Click" AutomationProperties.Name="Добавить товар"
-              IsEnabled="{Binding CanAddItems, FallbackValue=False}"
-              ToolTip="{Binding AddItemRestriction}" ToolTipService.ShowOnDisabled="True"
-              AutomationProperties.HelpText="{Binding AddItemRestriction}">
-       <Button.Style>
-        <Style TargetType="Button" BasedOn="{StaticResource LedgerActionButton}">
-         <Style.Triggers>
-          <MultiDataTrigger>
-           <MultiDataTrigger.Conditions>
-            <Condition Binding="{Binding CanAddItems, FallbackValue=False}" Value="False"/>
-            <Condition Binding="{Binding AddItemRestriction, FallbackValue={x:Null}}" Value="{x:Null}"/>
-           </MultiDataTrigger.Conditions>
-           <Setter Property="Visibility" Value="Collapsed"/>
-          </MultiDataTrigger>
-         </Style.Triggers>
-        </Style>
-       </Button.Style>
-       <StackPanel Orientation="Horizontal">
-        <ContentPresenter Content="{DynamicResource Svg.Warning}" VerticalAlignment="Center" Margin="0,0,8,0">
-         <ContentPresenter.Style>
-          <Style TargetType="ContentPresenter">
-           <Style.Triggers>
-            <DataTrigger Binding="{Binding ToolTip, RelativeSource={RelativeSource AncestorType=Button}, FallbackValue={x:Null}}" Value="{x:Null}">
-             <Setter Property="Visibility" Value="Collapsed"/>
-            </DataTrigger>
-           </Style.Triggers>
-          </Style>
-         </ContentPresenter.Style>
-        </ContentPresenter>
-        <TextBlock Text="Добавить товар" VerticalAlignment="Center"/>
+      <!-- Start each line at the right edge while keeping the controls inside each group left to right. -->
+      <WrapPanel FlowDirection="RightToLeft" VerticalAlignment="Center">
+       <StackPanel Orientation="Horizontal" FlowDirection="LeftToRight" Margin="0,0,0,4">
+         <c:PeriodClassificationButton x:Name="ReclassifyPurchaseButton"
+                 MinWidth="40" MinHeight="40" Padding="8" Click="ReclassifyPurchase_Click"
+                 Content="Повторить категоризацию покупки" AutomationProperties.Name="Повторить категоризацию покупки"
+                 AutomationProperties.HelpText="" ToolTipService.ShowOnDisabled="True"/>
+         <Button x:Name="AddPurchaseItemButton"
+                 Click="AddPurchaseItem_Click" AutomationProperties.Name="Добавить товар"
+                 IsEnabled="{Binding CanAddItems, FallbackValue=False}"
+                 ToolTip="{Binding AddItemRestriction}" ToolTipService.ShowOnDisabled="True"
+                 AutomationProperties.HelpText="{Binding AddItemRestriction}">
+          <Button.Style>
+           <Style TargetType="Button" BasedOn="{StaticResource LedgerActionButton}">
+            <Style.Triggers>
+             <MultiDataTrigger>
+              <MultiDataTrigger.Conditions>
+               <Condition Binding="{Binding CanAddItems, FallbackValue=False}" Value="False"/>
+               <Condition Binding="{Binding AddItemRestriction, FallbackValue={x:Null}}" Value="{x:Null}"/>
+              </MultiDataTrigger.Conditions>
+              <Setter Property="Visibility" Value="Collapsed"/>
+             </MultiDataTrigger>
+            </Style.Triggers>
+           </Style>
+          </Button.Style>
+          <StackPanel Orientation="Horizontal">
+           <ContentPresenter Content="{DynamicResource Svg.Warning}" VerticalAlignment="Center" Margin="0,0,8,0">
+            <ContentPresenter.Style>
+             <Style TargetType="ContentPresenter">
+              <Style.Triggers>
+               <DataTrigger Binding="{Binding ToolTip, RelativeSource={RelativeSource AncestorType=Button}, FallbackValue={x:Null}}" Value="{x:Null}">
+                <Setter Property="Visibility" Value="Collapsed"/>
+               </DataTrigger>
+              </Style.Triggers>
+             </Style>
+            </ContentPresenter.Style>
+           </ContentPresenter>
+           <TextBlock Text="Добавить товар" VerticalAlignment="Center"/>
+          </StackPanel>
+         </Button>
        </StackPanel>
-      </Button>
-     </Grid>
+       <StackPanel Orientation="Horizontal" FlowDirection="LeftToRight" VerticalAlignment="Center" Margin="0,0,0,4">
+         <Grid x:Name="PurchaseItemQueueStatus" Margin="0,0,8,0" VerticalAlignment="Center">
+          <Grid.ColumnDefinitions><ColumnDefinition Width="40"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+          <Grid.Style>
+           <Style TargetType="Grid">
+            <Style.Triggers>
+             <DataTrigger Binding="{Binding PendingPurchaseItemCount, RelativeSource={RelativeSource AncestorType=views:PurchasesContent}, FallbackValue=0}" Value="0">
+              <Setter Property="Visibility" Value="Collapsed"/>
+             </DataTrigger>
+            </Style.Triggers>
+           </Style>
+          </Grid.Style>
+          <Button x:Name="RetryPurchaseItemsButton" Padding="8" Click="RetryPendingPurchaseItems_Click"
+                  ToolTip="{Binding PurchaseItemQueueMessage, RelativeSource={RelativeSource AncestorType=views:PurchasesContent}}"
+                  AutomationProperties.ItemStatus="{Binding ToolTip, RelativeSource={RelativeSource Self}}"
+                  ToolTipService.ShowOnDisabled="True">
+           <Button.Style>
+            <Style TargetType="Button" BasedOn="{StaticResource LedgerActionButton}">
+             <Setter Property="Foreground" Value="{DynamicResource Warning.Svg.Brush}"/>
+             <Setter Property="AutomationProperties.Name" Value="Повторить отправку товаров"/>
+             <Style.Triggers>
+              <DataTrigger Binding="{Binding IsPurchaseItemQueueWaiting, RelativeSource={RelativeSource AncestorType=views:PurchasesContent}, FallbackValue=False}" Value="True">
+               <Setter Property="c:ButtonLoading.IsBusy" Value="True"/>
+               <Setter Property="Foreground" Value="{DynamicResource Highlight}"/>
+               <Setter Property="AutomationProperties.Name" Value="Товары ожидают отправки"/>
+              </DataTrigger>
+             </Style.Triggers>
+            </Style>
+           </Button.Style>
+           <Path Style="{StaticResource ExpenseCategoryStatusIcon}" Data="{StaticResource Lucide.rotate-ccw}"
+                 Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"/>
+          </Button>
+          <TextBlock x:Name="PendingPurchaseItemsCount" Grid.Column="1" Margin="4,0,0,0"
+                     Text="{Binding PendingPurchaseItemCount, RelativeSource={RelativeSource AncestorType=views:PurchasesContent}}"
+                     Foreground="{Binding Foreground, ElementName=RetryPurchaseItemsButton}"
+                     FontWeight="SemiBold" VerticalAlignment="Center" HorizontalAlignment="Center"
+                     ToolTip="{Binding ToolTip, ElementName=RetryPurchaseItemsButton}"
+                     AutomationProperties.Name="{Binding Text, RelativeSource={RelativeSource Self}, StringFormat='Товаров в очереди: {0}'}"
+                     AutomationProperties.LiveSetting="Polite"/>
+         </Grid>
+         <StackPanel x:Name="UncategorizedItemsWarning" Orientation="Horizontal" Margin="0,0,8,0"
+                     VerticalAlignment="Center" Background="Transparent" ToolTip="Товары без категории">
+          <StackPanel.Style>
+           <Style TargetType="StackPanel">
+            <Style.Triggers>
+             <DataTrigger Binding="{Binding UncategorizedItemCount, FallbackValue=0}" Value="0">
+              <Setter Property="Visibility" Value="Collapsed"/>
+             </DataTrigger>
+            </Style.Triggers>
+           </Style>
+          </StackPanel.Style>
+          <ContentControl Content="{DynamicResource Svg.Warning}" VerticalAlignment="Center"/>
+          <TextBlock x:Name="UncategorizedItemsCount" Text="{Binding UncategorizedItemCount}" Margin="4,0,0,0"
+                     Foreground="{DynamicResource Warning.Svg.Brush}" FontWeight="SemiBold" VerticalAlignment="Center"
+                     AutomationProperties.Name="{Binding UncategorizedItemCount, StringFormat='Товары без категории: {0}'}"/>
+         </StackPanel>
+       </StackPanel>
+      </WrapPanel>
+     </DockPanel>
      <StackPanel Grid.Row="1" Margin="0,0,0,12"><TextBlock Text="{Binding RetailPlace, TargetNullValue=''}" Style="{StaticResource BudgetOptionalText}" Foreground="{DynamicResource Foreground.White}" FontWeight="SemiBold"/><TextBlock Text="{Binding RetailPlaceAddress, TargetNullValue=''}" Style="{StaticResource BudgetOptionalText}" Foreground="{StaticResource LedgerMuted}"/><c:MoneyAmount Display="{Binding Amount}" AmountAlignment="Left" Margin="0,4,0,0" FontWeight="SemiBold" Foreground="{StaticResource LedgerExpense}" FontSize="18" AutomationProperties.Name="Итог чека"/><TextBlock Text="{Binding Tag.Message, ElementName=DetailsPanel}" Style="{StaticResource BudgetOptionalText}" Foreground="{DynamicResource Warning.Svg.Brush}" TextWrapping="Wrap" AutomationProperties.LiveSetting="Polite"/></StackPanel>
      <Grid Grid.Row="2" Margin="0,0,0,8"><Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="Auto" MinWidth="48" SharedSizeGroup="ExpenseItemQuantity"/><ColumnDefinition Width="Auto" MinWidth="74" SharedSizeGroup="ExpenseItemPrice"/><ColumnDefinition Width="Auto" MinWidth="82" SharedSizeGroup="ExpenseItemSum"/><ColumnDefinition Width="32"/></Grid.ColumnDefinitions><TextBlock Text="Название" Margin="8,0,0,0" Foreground="{StaticResource LedgerMuted}"/><TextBlock Grid.Column="1" Text="Кол-во" TextAlignment="Right" Foreground="{StaticResource LedgerMuted}"/><TextBlock Grid.Column="2" Text="Цена" Margin="14,0,0,0" TextAlignment="Right" Foreground="{StaticResource LedgerMuted}"/><TextBlock Grid.Column="3" Text="Сумма" Margin="14,0,0,0" TextAlignment="Right" Foreground="{StaticResource LedgerMuted}"/></Grid>
      <ListView x:Name="ItemsList" Grid.Row="3" FontSize="14" Style="{StaticResource BudgetList}" Background="Transparent" Padding="0" BorderThickness="0" ItemsSource="{Binding Items}" SelectionMode="Extended" SelectionChanged="ItemsSelection_Changed" ScrollViewer.HorizontalScrollBarVisibility="Disabled" AutomationProperties.Name="Товары выбранной покупки">

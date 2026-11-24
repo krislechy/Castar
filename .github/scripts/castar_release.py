@@ -18,7 +18,7 @@ DESKTOP = ("Castar-Server-win-x64.zip", "Castar-Server-linux-x64.tar.gz", "Casta
 IPHONE = ("Castar-Server-ios-arm64.tar", "Castar-Control-ios-arm64.zip")
 SERVER = DESKTOP + IPHONE
 CLIENT_DIRECTORIES = {"Castar", "Castar.Updater", "Castar.ReleaseUpdates", "Castar.Logger", "Castar.TrayNotify.Windows"}
-DOCS = {"PLAN.md", "README.md", "AGENTS.md"}
+NON_SERVER_FILES = {"PLAN.md", "README.md", "AGENTS.md", ".github/scripts/castar_release.py"}
 TAG = re.compile(r"v(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)")
 DIGEST = re.compile(r"sha256:[a-f0-9]{64}")
 
@@ -62,7 +62,7 @@ def referenced_directories(project):
 def server_changes(base, tag):
     client_directories = CLIENT_DIRECTORIES - referenced_directories("Castar.Server/Castar.Server.csproj")
     changes = capture("git", "diff", "--name-only", "--no-renames", "-z", base, tag).split("\0")
-    return [path for path in changes if path and path not in DOCS
+    return [path for path in changes if path and path not in NON_SERVER_FILES
             and PurePosixPath(path).parts[0] not in client_directories]
 
 
@@ -204,7 +204,10 @@ def publish_full(tag, directory):
     info = plistlib.loads(plist)
     if f"v{actual}" != tag or info["CFBundleShortVersionString"] != actual:
         raise ValueError("The iPhone package does not match the full release version.")
-    if plist != Path("Castar.Server.iOS/App/Info.plist").read_bytes() or b"/releases/tag/" + tag.encode() not in guide:
+    expected_plist = subprocess.check_output(("git", "show", f"{tag}:Castar.Server.iOS/App/Info.plist"))
+    expected_guide = subprocess.check_output(("git", "show", f"{tag}:Castar.Server.iOS/DEPLOYMENT.md"))
+    if (plist.replace(b"\r\n", b"\n") != expected_plist or guide.replace(b"\r\n", b"\n") != expected_guide
+            or b"/releases/tag/" + tag.encode() not in guide):
         raise ValueError("The iPhone app metadata or guide does not match the tagged release.")
 
     existing = verified_assets(release(tag), CLIENT + DESKTOP)

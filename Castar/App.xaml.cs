@@ -32,6 +32,11 @@ public partial class App : Application
     private ServiceProvider? serviceProvider;
     private Mutex? categorizationInstance;
     private ITrayIcon? categorizationTray;
+#if !DEBUG
+    private Mutex? windowInstance;
+    private EventWaitHandle? windowActivation;
+    private RegisteredWaitHandle? windowActivationWait;
+#endif
 
     public App()
     {
@@ -41,6 +46,14 @@ public partial class App : Application
 
     protected override void OnStartup(StartupEventArgs e)
     {
+        var isCategorizationAgent = Array.Exists(e.Args, arg => arg == "--categorization-agent");
+#if !DEBUG
+        if (!isCategorizationAgent && !TryStartWindowInstance())
+        {
+            Shutdown();
+            return;
+        }
+#endif
         var version = typeof(App).Assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion;
         cLogger.Log<App>($"Запуск Castar {version}.", TypeLog.Info);
         base.OnStartup(e);
@@ -86,7 +99,7 @@ public partial class App : Application
         });
 
         serviceProvider = services.BuildServiceProvider(validateScopes: true);
-        if (Array.Exists(e.Args, arg => arg == "--categorization-agent"))
+        if (isCategorizationAgent)
         {
             StartCategorizationAgent(settings);
             return;
@@ -124,6 +137,13 @@ public partial class App : Application
         MainWindow = serviceProvider.GetRequiredService<MainWindow>();
         _ = serviceProvider.GetRequiredService<SettingsContent>().PreloadAsync();
         MainWindow.Show();
+#if !DEBUG
+        if (windowActivation is not null)
+        {
+            windowActivationWait = ThreadPool.RegisterWaitForSingleObject(windowActivation,
+                (_, _) => Dispatcher.InvokeAsync(RestoreFromTray), null, Timeout.Infinite, executeOnlyOnce: false);
+        }
+#endif
         cLogger.Log<App>("Главное окно открыто.", TypeLog.Info);
         if (settingsReadFailed)
             _ = ShowSettingsWarning("Не удалось прочитать настройки. Укажите адрес и ключ сервера.");
@@ -255,6 +275,31 @@ public partial class App : Application
 
     private void ExitFromTray() => (MainWindow as MainWindow)?.Exit();
 
+#if !DEBUG
+    private bool TryStartWindowInstance()
+    {
+        var profile = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(ClientSettings.DataDirectory.ToUpperInvariant())));
+        var name = $@"Local\Castar.Window.{profile}";
+        windowActivation = new EventWaitHandle(false, EventResetMode.AutoReset, name + ".Activate");
+        var instance = new Mutex(false, name);
+        try
+        {
+            if (!instance.WaitOne(0))
+            {
+                instance.Dispose();
+                windowActivation.Set();
+                return false;
+            }
+        }
+        catch (AbandonedMutexException)
+        {
+            // This process now owns the lock.
+        }
+        windowInstance = instance;
+        return true;
+    }
+#endif
+
     private bool TryStartCategorization()
     {
         var profile = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(ClientSettings.DataDirectory.ToUpperInvariant())));
@@ -309,6 +354,12 @@ public partial class App : Application
         }
         finally
         {
+#if !DEBUG
+            windowActivationWait?.Unregister(null);
+            windowActivation?.Dispose();
+            windowInstance?.ReleaseMutex();
+            windowInstance?.Dispose();
+#endif
             categorizationInstance?.ReleaseMutex();
             categorizationInstance?.Dispose();
             cLogger.Log<App>($"Завершение Castar. Код {e.ApplicationExitCode}.", TypeLog.Info);

@@ -18,7 +18,7 @@ DESKTOP = ("Castar-Server-win-x64.zip", "Castar-Server-linux-x64.tar.gz", "Casta
 IPHONE = ("Castar-Server-ios-arm64.tar", "Castar-Control-ios-arm64.zip")
 SERVER = DESKTOP + IPHONE
 CLIENT_DIRECTORIES = {"Castar", "Castar.Updater", "Castar.ReleaseUpdates", "Castar.Logger", "Castar.TrayNotify.Windows"}
-NON_SERVER_FILES = {"PLAN.md", "README.md", "AGENTS.md", ".github/scripts/castar_release.py"}
+NON_SERVER_FILES = {"PLAN.md", "README.md", "AGENTS.md", ".github/scripts/castar_release.py", "installer/ReleaseNotes.md"}
 TAG = re.compile(r"v(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)")
 DIGEST = re.compile(r"sha256:[a-f0-9]{64}")
 

@@ -3,7 +3,6 @@ using Castar.Compontents;
 using Castar.Currency;
 using Castar.Domain.Models.DataBase;
 using Castar.Domain.Models.SettingsModel;
-using Castar.Extensions;
 using Castar.ServerConnection;
 using Castar.Settings;
 using System;
@@ -558,7 +557,7 @@ public partial class IncomesContent : UserControl
 
         var income = row.Income;
         var connection = (settings.ServerUrl, settings.ProtectedApiKey);
-        var description = $"{income.Source} — {HistoricalExchangeRates.Format(income.Sum, income.Currency)}";
+        var description = $"{income.Source} — {MoneyText.Format(income.Sum, income.Currency)}";
         var accepted = await PopupDialog.Show(description, PopupDialog.TypeDialogEnum.Confirm,
             options =>
             {
@@ -727,7 +726,7 @@ public partial class IncomesContent : UserControl
             get => hasLoaded;
             set { if (SetField(ref hasLoaded, value)) OnPropertyChanged(nameof(TotalSum)); }
         }
-        public string TotalSum => !hasLoaded ? "—" : Incomes.Count == 0 ? HistoricalExchangeRates.Format(0, summaryCurrency) :
+        public string TotalSum => !hasLoaded ? "—" : Incomes.Count == 0 ? MoneyText.Format(0, summaryCurrency) :
             IncomeDisplayRow.FormatTotals(Incomes) is { Length: > 0 } total ? total : "—";
         public string SummaryCurrency
         {
@@ -750,7 +749,7 @@ internal sealed record IncomeDisplayRow(
     Income Income, MoneyAmountDisplay Amount, decimal? AggregateAmount, string? AggregateCurrency, DateTime DisplayDate = default)
 {
     public IncomeCategoryGroup Category { get; init; } = IncomeCategoryGroup.Uncategorized;
-    internal static string FormatTotals(IEnumerable<IncomeDisplayRow> rows) => HistoricalExchangeRates.FormatTotals(rows
+    internal static string FormatTotals(IEnumerable<IncomeDisplayRow> rows) => MoneyText.FormatTotals(rows
         .Where(row => row.AggregateAmount.HasValue).Select(row => (row.AggregateAmount!.Value, row.AggregateCurrency)));
 }
 

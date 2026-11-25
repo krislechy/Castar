@@ -26,7 +26,7 @@
                 <TextBlock x:Name="ItemNamePlaceholder" Text="Товар"
                            Style="{StaticResource PurchaseFormPlaceholder}" Tag="{Binding ElementName=ItemName}"/>
                 <Path Style="{StaticResource PurchaseFormFieldIcon}" Data="{StaticResource Lucide.package}"
-                      Visibility="{Binding UsesPurchaseFormStyle, ElementName=Editor, Converter={StaticResource PurchaseFormVisibility}}"/>
+                      Visibility="{Binding UsesPurchaseFormStyle, ElementName=Editor, Converter={StaticResource Castar.VisibleWhenTrue}}"/>
             </Grid>
         </StackPanel>
         <StackPanel Grid.Column="1" Margin="0,0,8,0">
@@ -39,7 +39,7 @@
                 </Grid.ColumnDefinitions>
                 <Border Grid.ColumnSpan="3" CornerRadius="{DynamicResource InputCornerRadius}" BorderThickness="1"
                         Background="{DynamicResource Main.Background.lvl2}" IsHitTestVisible="False"
-                        Visibility="{Binding IsManualEntry, ElementName=Editor, Converter={StaticResource PurchaseFormVisibility}}">
+                        Visibility="{Binding IsManualEntry, ElementName=Editor, Converter={StaticResource Castar.VisibleWhenTrue}}">
                     <Border.Style>
                         <Style TargetType="Border">
                             <Setter Property="BorderBrush" Value="{DynamicResource Main.Top.Panel}"/>
@@ -53,12 +53,12 @@
                 </Border>
                 <Button x:Name="DecreaseQuantityButton" Content="{DynamicResource Svg.Minimize}" Click="DecreaseQuantity_Click"
                         Style="{StaticResource PurchaseFormStepButton}" AutomationProperties.Name="Уменьшить количество"
-                        Visibility="{Binding IsManualEntry, ElementName=Editor, Converter={StaticResource PurchaseFormVisibility}}"/>
+                        Visibility="{Binding IsManualEntry, ElementName=Editor, Converter={StaticResource Castar.VisibleWhenTrue}}"/>
                 <c:DecimalInput x:Name="Quantity" Grid.Column="1" FractionDigits="-1"
                                 AutomationProperties.LabeledBy="{Binding ElementName=QuantityLabel}"/>
                 <Button x:Name="IncreaseQuantityButton" Grid.Column="2" Content="{DynamicResource Svg.Add}" Click="IncreaseQuantity_Click"
                         Style="{StaticResource PurchaseFormStepButton}" AutomationProperties.Name="Увеличить количество"
-                        Visibility="{Binding IsManualEntry, ElementName=Editor, Converter={StaticResource PurchaseFormVisibility}}"/>
+                        Visibility="{Binding IsManualEntry, ElementName=Editor, Converter={StaticResource Castar.VisibleWhenTrue}}"/>
             </Grid>
         </StackPanel>
         <StackPanel Grid.Column="2">
@@ -69,7 +69,7 @@
                 <TextBlock x:Name="UnitPricePlaceholder" Text="0"
                            Style="{StaticResource PurchaseFormPlaceholder}" Tag="{Binding ElementName=UnitPrice}"/>
                 <Path Style="{StaticResource PurchaseFormFieldIcon}" Data="{StaticResource Lucide.coins}"
-                      Visibility="{Binding UsesPurchaseFormStyle, ElementName=Editor, Converter={StaticResource PurchaseFormVisibility}}"/>
+                      Visibility="{Binding UsesPurchaseFormStyle, ElementName=Editor, Converter={StaticResource Castar.VisibleWhenTrue}}"/>
             </Grid>
         </StackPanel>
         <StackPanel x:Name="CurrencyField" Grid.Column="3" Margin="8,0,0,0" Width="72" Visibility="Collapsed">

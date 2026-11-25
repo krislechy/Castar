@@ -6,6 +6,8 @@ namespace Castar.Services.TelegramBot.Commands;
 
 internal static class BotMenu
 {
+    private static readonly TimeSpan RequestTimeout = TimeSpan.FromSeconds(5);
+
     public const string Purchase = "purchase";
     public const string Cancel = "cancel";
     public const string Info = "info";
@@ -32,21 +34,27 @@ internal static class BotMenu
 
     internal static async Task<(string? Username, bool Configured)> ConfigureAsync(ITelegramBotClient bot, CancellationToken token)
     {
-        string? username = null;
+        var profile = GetUsernameAsync(bot, token);
+        var privateMenu = SetCommandsAsync(bot, PrivateCommands, new BotCommandScopeAllPrivateChats(), token);
+        var groupMenu = SetCommandsAsync(bot, CommonCommands, new BotCommandScopeAllGroupChats(), token);
+        await Task.WhenAll(profile, privateMenu, groupMenu);
+        var username = await profile;
+        return (username, username is not null && await privateMenu && await groupMenu);
+    }
+
+    private static async Task<string?> GetUsernameAsync(ITelegramBotClient bot, CancellationToken token)
+    {
         try
         {
             using var request = CancellationTokenSource.CreateLinkedTokenSource(token);
-            request.CancelAfter(TimeSpan.FromSeconds(5));
-            username = (await bot.GetMe(request.Token)).Username;
+            request.CancelAfter(RequestTimeout);
+            return (await bot.GetMe(request.Token)).Username;
         }
         catch (Exception ex) when (!token.IsCancellationRequested)
         {
             CastarTelegramBotClient.LogError(ex);
+            return null;
         }
-
-        var privateMenu = await SetCommandsAsync(bot, PrivateCommands, new BotCommandScopeAllPrivateChats(), token);
-        var groupMenu = await SetCommandsAsync(bot, CommonCommands, new BotCommandScopeAllGroupChats(), token);
-        return (username, username is not null && privateMenu && groupMenu);
     }
 
     private static async Task<bool> SetCommandsAsync(ITelegramBotClient bot, BotCommand[] commands, BotCommandScope scope,
@@ -55,7 +63,7 @@ internal static class BotMenu
         try
         {
             using var request = CancellationTokenSource.CreateLinkedTokenSource(token);
-            request.CancelAfter(TimeSpan.FromSeconds(5));
+            request.CancelAfter(RequestTimeout);
             await bot.SetMyCommands(commands, scope: scope, cancellationToken: request.Token);
             return true;
         }

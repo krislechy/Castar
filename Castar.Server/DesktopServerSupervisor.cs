@@ -118,13 +118,11 @@ internal sealed class DesktopServerSupervisor
             await StartAsync(version, token);
             while (true)
             {
-                await Task.Delay(PollDelay, token);
-                if (child!.Process.HasExited)
-                {
-                    await StopAsync();
-                    Console.Error.WriteLine("Castar Server exited. Restarting the supervised process.");
-                    await StartAsync(version, token);
-                }
+                await child!.Process.WaitForExitAsync(token);
+                token.ThrowIfCancellationRequested();
+                await StopAsync();
+                Console.Error.WriteLine("Castar Server exited. Restarting the supervised process.");
+                await StartAsync(version, token);
             }
         }
         finally

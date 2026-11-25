@@ -33,6 +33,7 @@
                 <ResourceDictionary Source="pack://application:,,,/Castar;component/Styles/DatePickerTextBox.xaml"/>
                 <ResourceDictionary Source="pack://application:,,,/Castar;component/Styles/DatePicker.xaml"/>
             </ResourceDictionary.MergedDictionaries>
+            <BooleanToVisibilityConverter x:Key="Castar.VisibleWhenTrue"/>
         </ResourceDictionary>
     </Application.Resources>
 </Application>

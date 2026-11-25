@@ -22,16 +22,26 @@ public static partial class CastarEndpoints
 
         // Keep equal native amounts together so the client can round each converted operation before multiplying.
         var counted = new Dictionary<(bool IsIncome, Guid? CategoryId, string? Currency, decimal Amount, DateOnly RateDate), long>();
-        void Add(bool isIncome, Guid? categoryId, string? currency, decimal amount, DateOnly rateDate)
+        void Add(bool isIncome, Guid? categoryId, string? currency, decimal amount, DateOnly rateDate, long count = 1)
         {
             var key = (isIncome, categoryId, currency, amount, rateDate);
-            counted[key] = counted.GetValueOrDefault(key) + 1;
+            counted[key] = counted.GetValueOrDefault(key) + count;
         }
 
         var incomes = db.Incomes.AsNoTracking().Where(row => row.AddedOn >= first && row.AddedOn < endExclusive)
-            .Select(row => new { row.CategoryId, row.Currency, row.Sum, row.AddedOn, row.RateDate });
+            .GroupBy(row => new
+            {
+                row.CategoryId, row.Currency, row.Sum, row.RateDate,
+                LegacyAddedOn = row.RateDate == null ? (DateTime?)row.AddedOn : null
+            })
+            .Select(group => new
+            {
+                group.Key.CategoryId, group.Key.Currency, group.Key.Sum, group.Key.RateDate, group.Key.LegacyAddedOn,
+                Count = group.LongCount()
+            });
         await foreach (var income in incomes.AsAsyncEnumerable().WithCancellation(token))
-            Add(true, income.CategoryId, income.Currency, income.Sum, income.RateDate ?? BudgetTime.BelgradeDate(income.AddedOn));
+            Add(true, income.CategoryId, income.Currency, income.Sum,
+                income.RateDate ?? BudgetTime.BelgradeDate(income.LegacyAddedOn!.Value), income.Count);
 
         var purchases = db.Purchases.AsNoTracking().Where(row => row.AddedOn >= first && row.AddedOn < endExclusive);
         var totals = GetPurchaseBudgetLines(db, purchases)

@@ -17,8 +17,6 @@ Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Castar.Logger", "Castar.Log
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Castar.Extensions", "Castar.Extensions\Castar.Extensions.csproj", "{D3653CE0-7FC1-43A6-858A-C1CEED453616}"
 EndProject
-Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Castar.Security.Cryptography", "Castar.Security.Cryptography\Castar.Security.Cryptography.csproj", "{13D7B42C-1AAE-4FA8-ABBB-E94E2D99C912}"
-EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Castar.Services.TelegramBot", "Castar.Services.TelegramBot\Castar.Services.TelegramBot.csproj", "{6A8EC3D4-2EAB-45DB-BA0D-1D2827B2E329}"
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Castar.Services.Receipts", "Castar.Services.Receipts\Castar.Services.Receipts.csproj", "{9EABC7EE-1E46-4A2A-A199-CD0234810101}"
@@ -69,10 +67,6 @@ Global
 		{D3653CE0-7FC1-43A6-858A-C1CEED453616}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{D3653CE0-7FC1-43A6-858A-C1CEED453616}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{D3653CE0-7FC1-43A6-858A-C1CEED453616}.Release|Any CPU.Build.0 = Release|Any CPU
-		{13D7B42C-1AAE-4FA8-ABBB-E94E2D99C912}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
-		{13D7B42C-1AAE-4FA8-ABBB-E94E2D99C912}.Debug|Any CPU.Build.0 = Debug|Any CPU
-		{13D7B42C-1AAE-4FA8-ABBB-E94E2D99C912}.Release|Any CPU.ActiveCfg = Release|Any CPU
-		{13D7B42C-1AAE-4FA8-ABBB-E94E2D99C912}.Release|Any CPU.Build.0 = Release|Any CPU
 		{6A8EC3D4-2EAB-45DB-BA0D-1D2827B2E329}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
 		{6A8EC3D4-2EAB-45DB-BA0D-1D2827B2E329}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{6A8EC3D4-2EAB-45DB-BA0D-1D2827B2E329}.Release|Any CPU.ActiveCfg = Release|Any CPU

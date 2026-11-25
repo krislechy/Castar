@@ -8,10 +8,10 @@ public sealed record MoneyAmountDisplay(string Primary, string? Original)
 {
     internal static MoneyAmountDisplay Create(decimal amount, string? currency, decimal? converted = null, string? target = null)
     {
-        var original = HistoricalExchangeRates.Format(amount, currency);
+        var original = MoneyText.Format(amount, currency);
         return converted is { } value && currency != target && HistoricalExchangeRates.IsCurrencyCode(currency) &&
             HistoricalExchangeRates.IsCurrencyCode(target)
-            ? new(HistoricalExchangeRates.Format(value, target), original)
+            ? new(MoneyText.Format(value, target), original)
             : new(original, null);
     }
 }

@@ -40,7 +40,7 @@ internal static class SelectionAmount
 
         var known = rows.Where(row => row.Amount.HasValue && HistoricalExchangeRates.IsCurrencyCode(row.Currency))
             .Select(row => (row.Amount!.Value, row.Currency)).ToArray();
-        var amount = known.Length == 0 ? "—" : HistoricalExchangeRates.FormatTotals(known);
+        var amount = known.Length == 0 ? "—" : MoneyText.FormatTotals(known);
         var excluded = rows.Length - known.Length;
         text.Text = excluded == 0 ? $"Выбрано: {amount}" : $"Выбрано: {amount} · вне суммы: {excluded}";
         panel.ToolTip = excluded == 0 ? null : "В сумму не вошли строки без валюты или исторического курса.";

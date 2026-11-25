@@ -8,7 +8,7 @@ using Microsoft.AspNetCore.Hosting.Server.Features;
 namespace Castar.Server;
 
 internal sealed class LocalKeyAdmin(
-    IConfiguration configuration, IServer server, ApiKeyStore keys, ILogger<LocalKeyAdmin> logger) : BackgroundService
+    IConfiguration configuration, IServer server, ApiKeyStore keys, ServerActivationState activation, ILogger<LocalKeyAdmin> logger) : BackgroundService
 {
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
     private readonly Socket listener = new(AddressFamily.Unix, SocketType.Stream, ProtocolType.Unspecified);
@@ -79,7 +79,7 @@ internal sealed class LocalKeyAdmin(
 
     private async Task<object> HandleCommandAsync(string command, CancellationToken token)
     {
-        if (configuration["Castar:UpdateActivationGate"] is { } gate && File.Exists(gate))
+        if (activation.IsBlocked())
             return new { error = "Сервер завершает обновление." };
 
         var separator = command.IndexOf(' ');

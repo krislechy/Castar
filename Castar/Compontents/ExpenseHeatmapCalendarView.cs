@@ -13,18 +13,22 @@ using System.Windows.Media;
 namespace Castar.Compontents;
 
 internal sealed record ExpenseHeatmapCell(DateOnly Date, decimal? Amount);
-internal sealed record ExpenseHeatmapPeriod(DateOnly Start, string Currency, bool ByMonth,
+internal enum ExpenseHeatmapGranularity { Day, Month, Year }
+
+internal sealed record ExpenseHeatmapPeriod(DateOnly Start, string Currency, ExpenseHeatmapGranularity Granularity,
     IReadOnlyList<ExpenseHeatmapCell> Cells, decimal Maximum, decimal? Average, ClientSettings Preferences, Action<DateOnly> Open)
 {
-    public string ColorSensitivityProperty => ByMonth
+    public bool IsGrouped => Granularity != ExpenseHeatmapGranularity.Day;
+
+    public string ColorSensitivityProperty => IsGrouped
         ? nameof(ClientSettings.MonthlyHeatmapColorSensitivity) : nameof(ClientSettings.DailyHeatmapColorSensitivity);
 
     public int ColorSensitivity
     {
-        get => ByMonth ? Preferences.MonthlyHeatmapColorSensitivity : Preferences.DailyHeatmapColorSensitivity;
+        get => IsGrouped ? Preferences.MonthlyHeatmapColorSensitivity : Preferences.DailyHeatmapColorSensitivity;
         set
         {
-            if (ByMonth) Preferences.MonthlyHeatmapColorSensitivity = value;
+            if (IsGrouped) Preferences.MonthlyHeatmapColorSensitivity = value;
             else Preferences.DailyHeatmapColorSensitivity = value;
         }
     }
@@ -61,11 +65,23 @@ public sealed partial class ExpenseHeatmapCalendarView : UserControl
         ListenToPreferences(period.Preferences);
         var stack = new StackPanel { Margin = new Thickness(4, 8, 4, 12) };
         var culture = CultureInfo.CurrentCulture;
-        var heading = Text(period.Start.ToString(period.ByMonth ? "yyyy" : "MMMM yyyy", culture), 14, "Foreground.White");
-        heading.Margin = new Thickness(3, 0, 0, 8);
-        stack.Children.Add(heading);
-        var grid = new UniformGrid { Columns = period.ByMonth ? 4 : 7 };
-        if (!period.ByMonth)
+        if (period.Granularity != ExpenseHeatmapGranularity.Year)
+        {
+            var heading = Text(period.Start.ToString(period.IsGrouped ? "yyyy" : "MMMM yyyy", culture), 14, "Foreground.White");
+            heading.Margin = new Thickness(3, 0, 0, 8);
+            stack.Children.Add(heading);
+        }
+
+        var grid = new UniformGrid
+        {
+            Columns = period.Granularity switch
+            {
+                ExpenseHeatmapGranularity.Year => Math.Min(4, period.Cells.Count),
+                ExpenseHeatmapGranularity.Month => 4,
+                _ => 7
+            }
+        };
+        if (!period.IsGrouped)
         {
             var weekdays = new UniformGrid { Columns = 7, Margin = new Thickness(0, 0, 0, 3) };
             foreach (var label in new[] { "Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс" })
@@ -77,13 +93,17 @@ public sealed partial class ExpenseHeatmapCalendarView : UserControl
             }
             stack.Children.Add(weekdays);
         }
-        var offset = period.ByMonth ? period.Cells[0].Date.Month - 1 :
-            ((int)period.Start.DayOfWeek + 6) % 7 + period.Cells[0].Date.Day - 1;
+        var firstDayOffset = ((int)period.Start.DayOfWeek + 6) % 7;
+        var (offset, slotCount) = period.Granularity switch
+        {
+            ExpenseHeatmapGranularity.Year => (0, period.Cells.Count),
+            ExpenseHeatmapGranularity.Month => (period.Cells[0].Date.Month - 1, 12),
+            _ => (firstDayOffset + period.Cells[0].Date.Day - 1,
+                firstDayOffset + DateTime.DaysInMonth(period.Start.Year, period.Start.Month))
+        };
         for (var i = 0; i < offset; i++) grid.Children.Add(new Border());
         foreach (var entry in period.Cells)
             grid.Children.Add(CreateCell(period, entry, culture));
-        var slotCount = period.ByMonth ? 12 :
-            ((int)period.Start.DayOfWeek + 6) % 7 + DateTime.DaysInMonth(period.Start.Year, period.Start.Month);
         for (var i = grid.Children.Count; i < slotCount; i++)
             grid.Children.Add(new Border());
         stack.Children.Add(grid);
@@ -104,14 +124,20 @@ public sealed partial class ExpenseHeatmapCalendarView : UserControl
         var background = new LinearGradientBrush(neutralSurface, neutralSurface, 44);
         var outline = new SolidColorBrush(border);
         var textAccent = new SolidColorBrush();
-        var label = Text(entry.Date.ToString(period.ByMonth ? "MMM" : "%d", culture), period.ByMonth ? 14 : 12, "Foreground.White");
+        var (labelFormat, tooltipFormat) = period.Granularity switch
+        {
+            ExpenseHeatmapGranularity.Year => ("yyyy", "yyyy"),
+            ExpenseHeatmapGranularity.Month => ("MMM", "MMMM yyyy"),
+            _ => ("%d", "dd.MM.yyyy")
+        };
+        var label = Text(entry.Date.ToString(labelFormat, culture), period.IsGrouped ? 14 : 12, "Foreground.White");
         label.Foreground = textAccent;
         label.FontWeight = FontWeights.Medium;
-        var value = Text(entry.Amount is { } amount ? FormatAmount(amount) : "—", period.ByMonth ? 18 : 13, "Foreground.White");
+        var value = Text(entry.Amount is { } amount ? FormatAmount(amount) : "—", period.IsGrouped ? 18 : 13, "Foreground.White");
         value.FontWeight = FontWeights.SemiBold;
         var amountRow = new DockPanel { Margin = new Thickness(0, 2, 0, 0) };
         var delta = Delta(entry.Amount, period.Average, culture);
-        if (period.ByMonth && delta.Length > 0)
+        if (period.IsGrouped && delta.Length > 0)
         {
             var change = Text(delta, 12, "Foreground.White");
             change.Foreground = textAccent;
@@ -123,7 +149,7 @@ public sealed partial class ExpenseHeatmapCalendarView : UserControl
             amountRow.Children.Add(change);
         }
         amountRow.Children.Add(new Viewbox { Child = value, StretchDirection = StretchDirection.DownOnly,
-            HorizontalAlignment = HorizontalAlignment.Left, MaxHeight = period.ByMonth ? 24 : 18 });
+            HorizontalAlignment = HorizontalAlignment.Left, MaxHeight = period.IsGrouped ? 24 : 18 });
 
         var content = new StackPanel();
         content.Children.Add(label);
@@ -132,7 +158,7 @@ public sealed partial class ExpenseHeatmapCalendarView : UserControl
         var indicatorColor = new SolidColorBrush();
         if (entry.Amount.HasValue)
             content.Children.Add(CreateIndicator(strength, trackColor, indicatorColor));
-        var tooltip = entry.Date.ToString(period.ByMonth ? "MMMM yyyy" : "dd.MM.yyyy", culture)
+        var tooltip = entry.Date.ToString(tooltipFormat, culture)
             + " · " + (entry.Amount is { } total ? FormatAmount(total, period.Currency) : "Нет валюты или курса");
         if (delta.Length > 0)
             tooltip += "\nК среднему · " + delta;
@@ -143,7 +169,7 @@ public sealed partial class ExpenseHeatmapCalendarView : UserControl
         var cell = new Button
         {
             Style = (Style)FindResource("HeatmapCellButton"), Tag = entry.Date, Content = content, ToolTip = tooltip,
-            MinHeight = period.ByMonth ? 72 : 58, Background = background,
+            MinHeight = period.IsGrouped ? 72 : 58, Background = background,
             BorderBrush = outline
         };
         AutomationProperties.SetName(cell, tooltip.Replace("\n", ", "));
@@ -186,7 +212,13 @@ public sealed partial class ExpenseHeatmapCalendarView : UserControl
         var legend = new DockPanel { Margin = new Thickness(3, 10, 3, 0) };
         if (period.Average is { } average)
         {
-            var averageLabel = Text((period.ByMonth ? "Среднее за месяц · " : "Среднее за день · ")
+            var averageCaption = period.Granularity switch
+            {
+                ExpenseHeatmapGranularity.Year => "Среднее за год · ",
+                ExpenseHeatmapGranularity.Month => "Среднее за месяц · ",
+                _ => "Среднее за день · "
+            };
+            var averageLabel = Text(averageCaption
                 + FormatAmount(average, period.Currency), 12, "Foreground.White");
             averageLabel.Margin = new Thickness(period.Maximum > 0 ? 16 : 0, 0, 0, 0);
             DockPanel.SetDock(averageLabel, Dock.Right);
@@ -295,7 +327,7 @@ public sealed partial class ExpenseHeatmapCalendarView : UserControl
     }
 
     private static string FormatAmount(decimal value, string? currency = null) =>
-        HistoricalExchangeRates.Format(decimal.Round(value, 2, MidpointRounding.AwayFromZero), currency);
+        MoneyText.FormatRounded(value, currency);
 
     private static TextBlock Text(string value, double size, string foreground)
     {

@@ -10,7 +10,6 @@
             <ResourceDictionary.MergedDictionaries>
                 <ResourceDictionary Source="../Styles/Settings.xaml"/>
             </ResourceDictionary.MergedDictionaries>
-            <BooleanToVisibilityConverter x:Key="ServerConnectionVisibility"/>
             <converters:SexConverter x:Key="UserSex"/>
             <Style TargetType="TextBox" BasedOn="{StaticResource {x:Type TextBox}}">
                 <Setter Property="Background" Value="{DynamicResource Castar.Field}"/>
@@ -60,7 +59,7 @@
                             </DockPanel>
                             <ProgressBar Minimum="0" Maximum="100" Value="{Binding UpdateDownloadPercent, Mode=OneWay}"
                                          Margin="0,8,0,0" AutomationProperties.Name="Ход загрузки обновления"
-                                         Visibility="{Binding IsDownloadingUpdate, Converter={StaticResource ServerConnectionVisibility}}"/>
+                                         Visibility="{Binding IsDownloadingUpdate, Converter={StaticResource Castar.VisibleWhenTrue}}"/>
                         </StackPanel>
                     </Border>
                     <Border Style="{StaticResource SettingsNavigationGroup}">
@@ -70,11 +69,11 @@
                                     Style="{StaticResource SettingsSectionButton}" Click="OpenSettingsSection_Click"/>
                             <Button Content="Сервер" Tag="{Binding ElementName=ServerSection}"
                                     CommandParameter="{DynamicResource Svg.DataBase}"
-                                    Visibility="{Binding ServerConfiguration.HasConnection, Converter={StaticResource ServerConnectionVisibility}}"
+                                    Visibility="{Binding ServerConfiguration.HasConnection, Converter={StaticResource Castar.VisibleWhenTrue}}"
                                     Style="{StaticResource SettingsSectionButton}" Click="OpenSettingsSection_Click"/>
                             <Button Content="Пользователи" Tag="{Binding ElementName=UsersSection}"
                                     CommandParameter="{DynamicResource Svg.Users}"
-                                    Visibility="{Binding UsersAvailable, Converter={StaticResource ServerConnectionVisibility}}"
+                                    Visibility="{Binding UsersAvailable, Converter={StaticResource Castar.VisibleWhenTrue}}"
                                     Style="{StaticResource SettingsSectionButton}" Click="OpenSettingsSection_Click"/>
                         </StackPanel>
                     </Border>
@@ -84,6 +83,15 @@
                             <Button Content="Приложение" Tag="{Binding ElementName=ApplicationSection}"
                                     CommandParameter="{DynamicResource Svg.Tools}"
                                     Style="{StaticResource SettingsSectionButton}" Click="OpenSettingsSection_Click"/>
+                            <Button x:Name="ChartCacheSectionButton" Content="Кеш графиков"
+                                    Tag="{Binding ElementName=ChartCacheSection}"
+                                    Style="{StaticResource SettingsSectionButton}" Click="OpenSettingsSection_Click">
+                                <Button.CommandParameter>
+                                    <Path Data="{StaticResource Lucide.chart-column-increasing}" Width="18" Height="18" Stretch="Uniform"
+                                          Stroke="{DynamicResource Foreground.Gray}" StrokeThickness="1.5"
+                                          StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round"/>
+                                </Button.CommandParameter>
+                            </Button>
                             <Button x:Name="LocalAiSectionButton" Content="Автоматическая категоризация"
                                     Tag="{Binding ElementName=LocalAiSection}"
                                     Style="{StaticResource SettingsSectionButton}" Click="OpenSettingsSection_Click">
@@ -125,7 +133,7 @@
                                             </Style>
                                         </Button.Style>
                                     </Button>
-                                    <StackPanel Visibility="{Binding IsApiKeyEditorVisible, Converter={StaticResource ServerConnectionVisibility}}">
+                                    <StackPanel Visibility="{Binding IsApiKeyEditorVisible, Converter={StaticResource Castar.VisibleWhenTrue}}">
                                         <TextBlock Text="Ключ API" Style="{StaticResource FormFieldLabel}"/>
                                         <PasswordBox x:Name="ApiKeyInput" AutomationProperties.Name="Ключ API"
                                                      PasswordChanged="ApiKey_PasswordChanged"/>
@@ -135,7 +143,7 @@
                                 </StackPanel>
                                 <Button x:Name="DisconnectServerButton" Content="Отключиться"
                                         Style="{StaticResource SettingsDangerAction}" Click="DisconnectServer_Click"
-                                        Visibility="{Binding HasSavedConnection, Converter={StaticResource ServerConnectionVisibility}}"/>
+                                        Visibility="{Binding HasSavedConnection, Converter={StaticResource Castar.VisibleWhenTrue}}"/>
                                 <TextBlock Text="{Binding ConnectionStatus}" Style="{StaticResource ViewStatus}"
                                            AutomationProperties.LiveSetting="Polite"/>
                             </StackPanel>
@@ -151,14 +159,14 @@
                                     <CheckBox Style="{StaticResource SettingsSwitchRow}" Content="Telegram-бот" IsChecked="{Binding TelegramEnabled}"
                                               IsEnabled="{Binding CanEditTelegram}"/>
                                     <TextBlock Text="{Binding TelegramStatus}" Style="{StaticResource ViewStatus}"/>
-                                    <StackPanel Visibility="{Binding SupportsCredentials, Converter={StaticResource ServerConnectionVisibility}}">
+                                    <StackPanel Visibility="{Binding SupportsCredentials, Converter={StaticResource Castar.VisibleWhenTrue}}">
                                         <TextBlock Text="Токен Telegram" Style="{StaticResource FormFieldLabel}"/>
                                         <PasswordBox AutomationProperties.Name="Токен Telegram" PasswordChanged="TelegramToken_PasswordChanged"/>
                                     </StackPanel>
                                     <Button Content="Настройки Telegram" Click="ConfigureTelegramPreferences_Click"
                                             CommandParameter="{DynamicResource Svg.Telegram}"
                                             Style="{StaticResource SettingsSubpageButton}"
-                                            Visibility="{Binding SupportsTelegramPreferences, Converter={StaticResource ServerConnectionVisibility}}"/>
+                                            Visibility="{Binding SupportsTelegramPreferences, Converter={StaticResource Castar.VisibleWhenTrue}}"/>
                                 </StackPanel>
                             </Border>
                             <Border Style="{StaticResource SettingsDivider}"/>
@@ -171,7 +179,7 @@
                                     <c:CastarComboBox ItemsSource="{Binding ReceiptProviders}" DisplayMemberPath="Label"
                                                       SelectedValuePath="Id" SelectedValue="{Binding ReceiptProvider}"
                                                       AutomationProperties.Name="Поставщик чеков"/>
-                                    <StackPanel Visibility="{Binding SupportsReceiptRetry, Converter={StaticResource ServerConnectionVisibility}}">
+                                    <StackPanel Visibility="{Binding SupportsReceiptRetry, Converter={StaticResource Castar.VisibleWhenTrue}}">
                                         <TextBlock Text="Повтор чека, мин" Style="{StaticResource FormFieldLabel}"/>
                                         <c:DecimalInput FractionDigits="0" AllowNegative="False"
                                                         Text="{Binding ReceiptRetryMinutesText, UpdateSourceTrigger=PropertyChanged}"
@@ -179,14 +187,14 @@
                                     </StackPanel>
                                     <CheckBox Style="{StaticResource SettingsSwitchRow}" Content="Анонимная авторизация" IsChecked="{Binding UseAnonymous, Mode=TwoWay}"
                                               IsEnabled="{Binding CanChooseAuthentication}"
-                                              Visibility="{Binding HasAuthenticationProfile, Converter={StaticResource ServerConnectionVisibility}}"/>
+                                              Visibility="{Binding HasAuthenticationProfile, Converter={StaticResource Castar.VisibleWhenTrue}}"/>
                                     <Button Content="Данные для входа" Style="{StaticResource SettingsSubpageButton}"
                                             CommandParameter="{DynamicResource Svg.SettingsCredentials}"
                                             Click="ConfigureReceiptCredentials_Click"
-                                            Visibility="{Binding ShowReceiptCredentials, Converter={StaticResource ServerConnectionVisibility}}"/>
+                                            Visibility="{Binding ShowReceiptCredentials, Converter={StaticResource Castar.VisibleWhenTrue}}"/>
                                 </StackPanel>
                             </Border>
-                            <StackPanel Visibility="{Binding SupportsManualCurrency, Converter={StaticResource ServerConnectionVisibility}}">
+                            <StackPanel Visibility="{Binding SupportsManualCurrency, Converter={StaticResource Castar.VisibleWhenTrue}}">
                                 <Border Style="{StaticResource SettingsDivider}"/>
                                 <Border Style="{StaticResource SettingsGroup}">
                                     <StackPanel>
@@ -276,6 +284,18 @@
                                                       SelectedItem="{Binding Settings.MaxVisibleNotifications, Mode=TwoWay}"
                                                       AutomationProperties.Name="Количество уведомлений"/>
                                 </StackPanel>
+                            </StackPanel>
+                        </Border>
+                    </StackPanel>
+                </Grid>
+                <Grid Visibility="Collapsed">
+                    <StackPanel x:Name="ChartCacheSection">
+                        <Border Style="{StaticResource SettingsGroup}">
+                            <StackPanel>
+                                <Button x:Name="ClearChartCacheButton" Content="Очистить весь кеш" HorizontalAlignment="Left"
+                                        Style="{StaticResource FormAction}" Margin="0" Click="ClearChartCache_Click"/>
+                                <TextBlock x:Name="ChartCacheStatus" Style="{StaticResource ViewStatus}"
+                                           AutomationProperties.LiveSetting="Polite"/>
                             </StackPanel>
                         </Border>
                     </StackPanel>

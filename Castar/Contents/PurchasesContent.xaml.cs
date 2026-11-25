@@ -403,10 +403,9 @@ public partial class PurchasesContent : UserControl
     }
 
     private static string[] FormatPurchaseTotals(IEnumerable<PurchaseRow> rows) =>
-        rows.SelectMany(row => row.SelectionAmounts())
+        MoneyText.FormatGroups(rows.SelectMany(row => row.SelectionAmounts())
             .Where(row => row.Amount.HasValue && HistoricalExchangeRates.IsCurrencyCode(row.Currency))
-            .GroupBy(row => row.Currency)
-            .Select(group => HistoricalExchangeRates.Format(group.Sum(row => row.Amount!.Value), group.Key)).ToArray();
+            .Select(row => (row.Amount!.Value, row.Currency))).ToArray();
 
     private void ShowPurchases(PurchaseRow[] rows, string target)
     {
@@ -1079,13 +1078,13 @@ public partial class PurchasesContent : UserControl
             }
             else
             {
-                var original = HistoricalExchangeRates.FormatTotals(nativeAmounts.Select(amount => (amount.Amount, amount.Currency)));
+                var original = MoneyText.FormatTotals(nativeAmounts.Select(amount => (amount.Amount, amount.Currency)));
                 if (target.Length == 0 || AmountWarning is not null)
                     Amount = new(original, null);
                 else
                 {
                     DisplayTotal = amounts.Sum(amount => ConvertAmount(amount.Amount, amount.Currency, target, amount.Rate));
-                    Amount = new(HistoricalExchangeRates.Format(DisplayTotal, target), original);
+                    Amount = new(MoneyText.Format(DisplayTotal, target), original);
                 }
             }
 

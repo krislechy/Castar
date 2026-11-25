@@ -1,6 +1,5 @@
 using System.Buffers.Binary;
 using System.Security.Cryptography;
-using System.Text.Json;
 using System.Threading.Channels;
 using Castar.Api;
 using Castar.DAL;
@@ -13,39 +12,11 @@ namespace Castar.Server;
 internal sealed class RecurringPurchaseScheduler(IServiceScopeFactory scopes, BudgetEventPublisher events,
     TimeProvider clock, ILogger<RecurringPurchaseScheduler> logger, Func<bool> activationPending) : BackgroundService
 {
-    private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
     private readonly Channel<bool> changes = Channel.CreateBounded<bool>(new BoundedChannelOptions(1)
     {
         SingleReader = true,
         FullMode = BoundedChannelFullMode.DropWrite
     });
-
-    internal static string Serialize(RecurringPurchaseWriteDto schedule) => JsonSerializer.Serialize(schedule, Json);
-    internal static RecurringPurchaseWriteDto Read(RecurringPurchase row) =>
-        JsonSerializer.Deserialize<RecurringPurchaseWriteDto>(row.ScheduleJson, Json)
-        ?? throw new JsonException("Расписание отсутствует.");
-
-    internal static RecurringPurchaseWriteDto RemoveDeletedCategories(RecurringPurchaseWriteDto schedule,
-        IReadOnlySet<Guid> categories) => schedule with
-    {
-        Template = schedule.Template with
-        {
-            Items = schedule.Template.Items.Select(item => item.Category?.Id is { } id && !categories.Contains(id)
-                ? item with { Category = null } : item).ToArray()
-        }
-    };
-
-    internal static Task<HashSet<Guid>> GetCategoryIdsAsync(CastarDbContext db, CancellationToken token) =>
-        db.BudgetCategories.Where(category => category.Kind == BudgetEvents.Purchase).Select(category => category.Id)
-            .ToHashSetAsync(token);
-
-    internal static RecurringPurchaseDto ToDto(RecurringPurchase row, RecurringPurchaseWriteDto schedule) =>
-        new(row.Id, schedule, !row.IsPaused && row.NextRunUtc is { } due ? new DateTimeOffset(BudgetTime.AsUtc(due)) : null,
-            row.IsPaused, row.Revision)
-        {
-            RetryAfterUtc = !row.IsPaused && row.RetryAfterUtc is { } retry
-                ? new DateTimeOffset(BudgetTime.AsUtc(retry)) : null
-        };
 
     internal static void ResetRetry(RecurringPurchase row)
     {
@@ -171,7 +142,7 @@ internal sealed class RecurringPurchaseScheduler(IServiceScopeFactory scopes, Bu
             return (false, null);
 
         var due = run.Due;
-        var schedule = Read(row);
+        var schedule = RecurringPurchaseTemplate.Read(row);
         var header = schedule.Template.Purchase;
         var purchaseId = PurchaseId(row.Id, due);
         var created = false;
@@ -181,14 +152,14 @@ internal sealed class RecurringPurchaseScheduler(IServiceScopeFactory scopes, Bu
             throw new InvalidOperationException("Владелец регулярной покупки недоступен.");
         if (!await db.Purchases.AnyAsync(purchase => purchase.Id == purchaseId, token))
         {
-            var categories = await GetCategoryIdsAsync(db, token);
+            var categories = await RecurringPurchaseTemplate.GetCategoryIdsAsync(db, schedule.Template.Items, token);
             var purchase = new Purchase
             {
                 Id = purchaseId, UserId = row.UserId, Name = header.Name, Currency = header.Currency,
                 AddedOn = due, RateDate = BudgetTime.BelgradeDate(due),
                 RetailPlace = header.RetailPlace, RetailPlaceAddress = header.RetailPlaceAddress
             };
-            foreach (var item in RemoveDeletedCategories(schedule, categories).Template.Items)
+            foreach (var item in RecurringPurchaseTemplate.RemoveDeletedCategories(schedule, categories).Template.Items)
                 purchase.Items.Add(new Item
                 {
                     Name = item.Name, Quantity = item.Quantity, Price = item.Price, Currency = item.Currency,

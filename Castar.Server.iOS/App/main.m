@@ -12,6 +12,7 @@
 static const char controlSocketPath[] = "/var/jb/var/run/castar/control.sock";
 static const char adminSocketPath[] = "/var/jb/var/lib/castar/admin.sock";
 static const NSUInteger maximumLogBytes = 16384;
+static const NSTimeInterval logRefreshInterval = 15;
 static const NSUInteger maximumAdminBytes = 256 * 1024;
 
 static BOOL WaitForSocket(int fd, short events, NSTimeInterval deadline)
@@ -508,6 +509,7 @@ typedef NS_ENUM(NSInteger, CastarKeysSection) {
 @property(nonatomic) BOOL visible;
 @property(nonatomic) BOOL refreshing;
 @property(nonatomic) BOOL controlling;
+@property(nonatomic) NSTimeInterval nextLogRefresh;
 @property(nonatomic, copy) NSString *serviceStatus;
 @property(nonatomic, strong) CastarKeysViewController *keysController;
 @end
@@ -646,6 +648,7 @@ typedef NS_ENUM(NSInteger, CastarKeysSection) {
         [weakSelf refreshStatus];
     }];
     self.refreshTimer.tolerance = 0.5;
+    self.nextLogRefresh = 0;
     [self refreshStatus];
 }
 
@@ -660,14 +663,21 @@ typedef NS_ENUM(NSInteger, CastarKeysSection) {
     if (!self.refreshTimer || self.refreshing || self.controlling)
         return;
     self.refreshing = YES;
+    NSString *previousStatus = self.serviceStatus;
+    const BOOL logExpired = NSProcessInfo.processInfo.systemUptime >= self.nextLogRefresh;
     dispatch_async(self.controlQueue, ^{
         NSString *status = ReadStatus();
-        NSString *log = status ? SendCommand(@"logs", maximumLogBytes, 2) : nil;
+        const BOOL refreshLog = logExpired || ![status isEqualToString:previousStatus];
+        NSString *log = refreshLog && status ? SendCommand(@"logs", maximumLogBytes, 2) : nil;
         dispatch_async(dispatch_get_main_queue(), ^{
             self.refreshing = NO;
-            if (!self.controlling)
-                [self updateStatus:status];
-            [self updateLog:log];
+            if (!self.refreshTimer || self.controlling)
+                return;
+            [self updateStatus:status];
+            if (refreshLog) {
+                self.nextLogRefresh = NSProcessInfo.processInfo.systemUptime + logRefreshInterval;
+                [self updateLog:log];
+            }
         });
     });
 }
@@ -741,6 +751,7 @@ typedef NS_ENUM(NSInteger, CastarKeysSection) {
                 UIAccessibilityPostNotification(UIAccessibilityAnnouncementNotification, failureMessage);
             }
             [self updateButtons];
+            self.nextLogRefresh = 0;
             [self refreshStatus];
         });
     });

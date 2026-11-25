@@ -20,34 +20,35 @@
         <Border Style="{StaticResource SettingsGroup}">
             <StackPanel>
                 <CheckBox x:Name="EnabledSwitch" Content="Автоматически выбирать категорию"
-                          Style="{StaticResource SettingsSwitchRow}" Checked="Draft_Changed" Unchecked="Draft_Changed"/>
+                          Style="{StaticResource SettingsSwitchRow}" IsChecked="{Binding Enabled}"/>
                 <TextBlock x:Name="ProviderLabel" Text="Провайдер" Style="{StaticResource FormFieldLabel}"/>
                 <c:CastarComboBox x:Name="ProviderPicker" DisplayMemberPath="Label" SelectedValuePath="Value"
-                                  AutomationProperties.LabeledBy="{Binding ElementName=ProviderLabel}" SelectionChanged="TargetSelection_Changed"/>
+                                  ItemsSource="{Binding Providers}" SelectedValue="{Binding Provider}"
+                                  AutomationProperties.LabeledBy="{Binding ElementName=ProviderLabel}"/>
                 <TextBlock x:Name="ModeLabel" Text="Режим запуска" Style="{StaticResource FormFieldLabel}"/>
                 <c:CastarComboBox x:Name="ModePicker" DisplayMemberPath="Label" SelectedValuePath="Value"
-                                  AutomationProperties.LabeledBy="{Binding ElementName=ModeLabel}" SelectionChanged="TargetSelection_Changed"/>
+                                  ItemsSource="{Binding Modes}" SelectedValue="{Binding Mode}"
+                                  AutomationProperties.LabeledBy="{Binding ElementName=ModeLabel}"/>
                 <StackPanel>
                     <StackPanel.Style>
                         <Style TargetType="StackPanel">
                             <Setter Property="Visibility" Value="Collapsed"/>
                             <Style.Triggers>
-                                <DataTrigger Binding="{Binding SelectedValue, ElementName=ModePicker}" Value="{x:Static ai:LocalAiMode.External}">
+                                <DataTrigger Binding="{Binding Mode}" Value="{x:Static ai:LocalAiMode.External}">
                                     <Setter Property="Visibility" Value="Visible"/>
                                 </DataTrigger>
                             </Style.Triggers>
                         </Style>
                     </StackPanel.Style>
                     <TextBlock x:Name="EndpointLabel" Text="Адрес API" Style="{StaticResource FormFieldLabel}"/>
-                    <TextBox x:Name="EndpointInput" AutomationProperties.LabeledBy="{Binding ElementName=EndpointLabel}"
-                             TextChanged="TargetText_Changed"/>
+                    <TextBox x:Name="EndpointInput" Text="{Binding Endpoint, UpdateSourceTrigger=PropertyChanged}" AutomationProperties.LabeledBy="{Binding ElementName=EndpointLabel}"/>
                 </StackPanel>
                 <StackPanel>
                     <StackPanel.Style>
                         <Style TargetType="StackPanel">
                             <Setter Property="Visibility" Value="Collapsed"/>
                             <Style.Triggers>
-                                <DataTrigger Binding="{Binding SelectedValue, ElementName=ModePicker}" Value="{x:Static ai:LocalAiMode.Managed}">
+                                <DataTrigger Binding="{Binding Mode}" Value="{x:Static ai:LocalAiMode.Managed}">
                                     <Setter Property="Visibility" Value="Visible"/>
                                 </DataTrigger>
                             </Style.Triggers>
@@ -57,15 +58,14 @@
                     <DockPanel>
                         <Button DockPanel.Dock="Right" Content="Выбрать…" Margin="8,0,0,0" Style="{StaticResource Castar.SecondaryButton}"
                                 AutomationProperties.Name="Выбрать исполняемый файл" Click="BrowseExecutable_Click"/>
-                        <TextBox x:Name="ExecutableInput" AutomationProperties.LabeledBy="{Binding ElementName=ExecutableLabel}"
-                                 TextChanged="TargetText_Changed"/>
+                        <TextBox x:Name="ExecutableInput" Text="{Binding ExecutablePath, UpdateSourceTrigger=PropertyChanged}" AutomationProperties.LabeledBy="{Binding ElementName=ExecutableLabel}"/>
                     </DockPanel>
                     <StackPanel>
                         <StackPanel.Style>
                             <Style TargetType="StackPanel">
                                 <Setter Property="Visibility" Value="Collapsed"/>
                                 <Style.Triggers>
-                                    <DataTrigger Binding="{Binding SelectedValue, ElementName=ProviderPicker}" Value="{x:Static ai:LocalAiProvider.LlamaCpp}">
+                                    <DataTrigger Binding="{Binding Provider}" Value="{x:Static ai:LocalAiProvider.LlamaCpp}">
                                         <Setter Property="Visibility" Value="Visible"/>
                                     </DataTrigger>
                                 </Style.Triggers>
@@ -75,8 +75,7 @@
                         <DockPanel>
                             <Button DockPanel.Dock="Right" Content="Выбрать…" Margin="8,0,0,0" Style="{StaticResource Castar.SecondaryButton}"
                                     AutomationProperties.Name="Выбрать папку моделей GGUF" Click="BrowseDirectory_Click"/>
-                            <TextBox x:Name="DirectoryInput" AutomationProperties.LabeledBy="{Binding ElementName=DirectoryLabel}"
-                                     TextChanged="TargetText_Changed"/>
+                            <TextBox x:Name="DirectoryInput" Text="{Binding ModelDirectory, UpdateSourceTrigger=PropertyChanged}" AutomationProperties.LabeledBy="{Binding ElementName=DirectoryLabel}"/>
                         </DockPanel>
                     </StackPanel>
                 </StackPanel>
@@ -87,14 +86,15 @@
                 <TextBlock x:Name="ModelLabel" Text="Модель" Style="{StaticResource SettingsGroupTitle}"/>
                 <DockPanel>
                     <Button x:Name="DiscoverButton" DockPanel.Dock="Right" Content="Найти модели" Margin="8,0,0,0"
-                            Style="{StaticResource Castar.SecondaryButton}" Click="DiscoverModels_Click"/>
+                            Style="{StaticResource Castar.SecondaryButton}" IsEnabled="{Binding CanDiscover}" Click="DiscoverModels_Click"/>
                     <c:CastarComboBox x:Name="ModelPicker" AutomationProperties.LabeledBy="{Binding ElementName=ModelLabel}"
-                                      SelectionChanged="DraftSelection_Changed"/>
+                                      ItemsSource="{Binding Models}" SelectedItem="{Binding SelectedModel}"/>
                 </DockPanel>
-                <TextBlock x:Name="DiscoveryStatus" Style="{StaticResource LocalAiStatus}"/>
+                <TextBlock x:Name="DiscoveryStatus" Text="{Binding DiscoveryStatus}" Style="{StaticResource LocalAiStatus}"/>
                 <TextBlock x:Name="IdleLabel" Text="Выгрузка после простоя" Style="{StaticResource FormFieldLabel}"/>
                 <c:CastarComboBox x:Name="IdlePicker" DisplayMemberPath="Label" SelectedValuePath="Value"
-                                  AutomationProperties.LabeledBy="{Binding ElementName=IdleLabel}" SelectionChanged="DraftSelection_Changed"/>
+                                  ItemsSource="{Binding IdleOptions}" SelectedValue="{Binding IdleMinutes}"
+                                  AutomationProperties.LabeledBy="{Binding ElementName=IdleLabel}"/>
                 <TextBlock x:Name="ExternalLlamaHint" Text="Автовыгрузка внешнего llama.cpp зависит от настроек его запуска."
                            Margin="0,8,0,0" TextWrapping="Wrap" Foreground="{DynamicResource Foreground.Gray}">
                     <TextBlock.Style>
@@ -103,8 +103,8 @@
                             <Style.Triggers>
                                 <MultiDataTrigger>
                                     <MultiDataTrigger.Conditions>
-                                        <Condition Binding="{Binding SelectedValue, ElementName=ProviderPicker}" Value="{x:Static ai:LocalAiProvider.LlamaCpp}"/>
-                                        <Condition Binding="{Binding SelectedValue, ElementName=ModePicker}" Value="{x:Static ai:LocalAiMode.External}"/>
+                                        <Condition Binding="{Binding Provider}" Value="{x:Static ai:LocalAiProvider.LlamaCpp}"/>
+                                        <Condition Binding="{Binding Mode}" Value="{x:Static ai:LocalAiMode.External}"/>
                                     </MultiDataTrigger.Conditions>
                                     <Setter Property="Visibility" Value="Visible"/>
                                 </MultiDataTrigger>
@@ -112,20 +112,21 @@
                         </Style>
                     </TextBlock.Style>
                 </TextBlock>
-                <DockPanel x:Name="ManagedProcessRow" Visibility="Collapsed" Margin="0,12,0,0">
+                <DockPanel x:Name="ManagedProcessRow" Visibility="{Binding ShowProcess, Converter={StaticResource Castar.VisibleWhenTrue}}" Margin="0,12,0,0">
                     <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Margin="8,0,0,0" VerticalAlignment="Center">
                         <Button x:Name="StartProcessButton" Content="Запустить" Margin="0,0,8,0"
-                                Style="{StaticResource Castar.SecondaryButton}" Click="StartProcess_Click"/>
+                                Style="{StaticResource Castar.SecondaryButton}" IsEnabled="{Binding CanStartProcess}"
+                                Visibility="{Binding IsManaged, Converter={StaticResource Castar.VisibleWhenTrue}}" Click="StartProcess_Click"/>
                         <Button x:Name="StopProcessButton" Content="Остановить"
-                                Style="{StaticResource Castar.SecondaryButton}" Click="StopProcess_Click"/>
+                                Style="{StaticResource Castar.SecondaryButton}" IsEnabled="{Binding CanStopProcess}" Click="StopProcess_Click"/>
                     </StackPanel>
-                    <TextBlock x:Name="ManagedProcessStatus" VerticalAlignment="Center" TextWrapping="Wrap"
+                    <TextBlock x:Name="ManagedProcessStatus" Text="{Binding ProcessStatus}" VerticalAlignment="Center" TextWrapping="Wrap"
                                Foreground="{DynamicResource Foreground.Gray}" AutomationProperties.LiveSetting="Polite"/>
                 </DockPanel>
             </StackPanel>
         </Border>
-        <TextBlock x:Name="ApplyStatus" Style="{StaticResource LocalAiStatus}"/>
+        <TextBlock x:Name="ApplyStatus" Text="{Binding ApplyStatus}" Style="{StaticResource LocalAiStatus}"/>
         <Button x:Name="ApplyButton" Content="Сохранить изменения" HorizontalAlignment="Right" Margin="0,12,0,0"
-                Style="{StaticResource FormPrimaryAction}" Click="Apply_Click"/>
+                Style="{StaticResource FormPrimaryAction}" IsEnabled="{Binding CanApply}" Click="Apply_Click"/>
     </StackPanel>
 </UserControl>

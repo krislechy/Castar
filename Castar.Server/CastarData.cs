@@ -23,22 +23,19 @@ public static class CastarData
             options.UseSqlite(connectionString).AddInterceptors(provider.GetRequiredService<BudgetSaveInterceptor>()));
 
         services.AddScoped<IPurchasesRepository, PurchasesRepository>();
-        services.AddScoped<IItemsRepository, ItemsRepository>();
         services.AddScoped<IIncomesRepository, IncomesRepository>();
         services.AddScoped<IncomeWriteCommitted>(provider =>
         {
             var publisher = provider.GetRequiredService<BudgetEventPublisher>();
-            return created =>
+            return (created, affectedFrom) =>
             {
-                var change = new BudgetChange(true, 0, null, null);
-                foreach (var income in created)
-                    change = change.AddCreation(income.Id, income.AddedOn);
+                var latest = created.Count > 0 ? created[^1] : null;
+                var change = new BudgetChange(true, created.Count, latest?.Id, latest?.AddedOn, affectedFrom);
                 publisher.Queue(default, change);
             };
         });
         services.AddScoped<IUsersRepository, UsersRepository>();
         services.AddScoped<IPurchasesService, PurchasesService>();
-        services.AddScoped<IItemsService, ItemsService>();
         services.AddScoped<IIncomesService, IncomesService>();
         services.AddScoped<IUsersService, UsersService>();
         return services;

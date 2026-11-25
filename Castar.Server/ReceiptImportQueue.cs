@@ -16,6 +16,8 @@ internal sealed class ReceiptImportQueue(IServiceScopeFactory scopes, SettingsMo
     : BackgroundService, IReceiptImportQueue
 {
     private readonly SemaphoreSlim changed = new(0, 1);
+    private long settingsRevision;
+    private (long Revision, int RetryMinutes)? reconciledSchedule;
     private DateTime UtcNow => clock.GetUtcNow().UtcDateTime;
 
     public async Task<bool> ContainsAsync(string providerId, string source, CancellationToken cancellationToken)
@@ -40,7 +42,9 @@ internal sealed class ReceiptImportQueue(IServiceScopeFactory scopes, SettingsMo
             ChatId = request.ChatId,
             MessageId = request.MessageId
         };
-        Schedule(receipt, UtcNow, retryAfterUtc, settings.Receipts.RetryMinutes);
+        var revision = Interlocked.Read(ref settingsRevision);
+        var retryMinutes = settings.Receipts.RetryMinutes;
+        Schedule(receipt, UtcNow, retryAfterUtc, retryMinutes);
         db.QueuedReceipts.Add(receipt);
         try
         {
@@ -51,6 +55,9 @@ internal sealed class ReceiptImportQueue(IServiceScopeFactory scopes, SettingsMo
             return false;
         }
 
+        // Settings can change before this insert commits, after the worker has already rescheduled existing rows.
+        if (revision != Interlocked.Read(ref settingsRevision) || retryMinutes != settings.Receipts.RetryMinutes)
+            Interlocked.Increment(ref settingsRevision);
         Wake();
         return true;
     }
@@ -67,11 +74,11 @@ internal sealed class ReceiptImportQueue(IServiceScopeFactory scopes, SettingsMo
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        serverSettings.Changed += Wake;
+        serverSettings.Changed += OnSettingsChanged;
         try
         {
             while (activationPending())
-                await Task.Delay(TimeSpan.FromMilliseconds(250), stoppingToken);
+                await Task.Delay(TimeSpan.FromMilliseconds(250), clock, stoppingToken);
 
             while (!stoppingToken.IsCancellationRequested)
             {
@@ -98,19 +105,21 @@ internal sealed class ReceiptImportQueue(IServiceScopeFactory scopes, SettingsMo
         }
         finally
         {
-            serverSettings.Changed -= Wake;
+            serverSettings.Changed -= OnSettingsChanged;
         }
     }
 
     private async Task<DateTime?> RunNextAsync(CancellationToken cancellationToken)
     {
+        var revision = Interlocked.Read(ref settingsRevision);
         var receiptSettings = settings.Receipts;
         if (!settings.Systems.IsEnableTelegramBot || string.IsNullOrWhiteSpace(settings.TelegramBot.TelegramBotApi_KEY))
             return null;
 
         await using var scope = scopes.CreateAsyncScope();
         var db = scope.ServiceProvider.GetRequiredService<CastarDbContext>();
-        if (receiptSettings.IsEnabled)
+        var schedule = (revision, receiptSettings.RetryMinutes);
+        if (receiptSettings.IsEnabled && reconciledSchedule != schedule)
         {
             var reschedule = await db.QueuedReceipts
                 .Where(receipt => receipt.Result == null && receipt.ScheduledRetryMinutes != receiptSettings.RetryMinutes)
@@ -122,6 +131,7 @@ internal sealed class ReceiptImportQueue(IServiceScopeFactory scopes, SettingsMo
                 await db.SaveChangesAsync(cancellationToken);
                 db.ChangeTracker.Clear();
             }
+            reconciledSchedule = schedule;
         }
 
         var receipt = await db.QueuedReceipts
@@ -204,6 +214,12 @@ internal sealed class ReceiptImportQueue(IServiceScopeFactory scopes, SettingsMo
 
     private static string GetKey(string providerId, string source) =>
         Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(string.Concat(providerId, "\0", source.Trim()))));
+
+    private void OnSettingsChanged()
+    {
+        Interlocked.Increment(ref settingsRevision);
+        Wake();
+    }
 
     private void Wake()
     {

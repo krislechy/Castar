@@ -141,11 +141,18 @@ public partial class StatisticsContent : UserControl
         }
         else
         {
+            var now = DateTimeOffset.UtcNow;
+            if (RatesExpired(categoryChartSnapshot?.RatesValidUntil, now))
+                categoryChartStale = true;
             EnsureCategoryChart();
-            if (dataStale) await RefreshAsync();
+            if (dataStale || RatesExpired(snapshot?.RatesValidUntil, now) || RatesExpired(remainingSnapshot?.RatesValidUntil, now)
+                || RatesExpired(burnSnapshot?.RatesValidUntil, now) || RatesExpired(baselineSnapshot?.RatesValidUntil, now))
+                await RefreshAsync();
             else await EnsureCurrentBalanceAsync();
         }
     }
+
+    private static bool RatesExpired(DateTimeOffset? validUntil, DateTimeOffset now) => validUntil is { } expiry && now >= expiry;
     private void Stop()
     {
         listeningForChanges = false;
@@ -248,7 +255,7 @@ public partial class StatisticsContent : UserControl
             await ResetAsync();
         }
     }
-    private Task ResetAsync()
+    private Task ResetAsync(bool reload = true)
     {
         if (periodSelector is not { HasCompleteRange: true })
         {
@@ -256,7 +263,7 @@ public partial class StatisticsContent : UserControl
             uncategorizedPeriod = null;
             uncategorizedStatus.Update(false, false, message: "Укажите период.");
         }
-        else
+        else if (reload)
             _ = EnsureUncategorizedAsync();
         CancelRefresh();
         CancelCategoryChart(clear: true);
@@ -269,6 +276,8 @@ public partial class StatisticsContent : UserControl
         renderedBurnKey = null;
         DrawPeriodTotals();
         foreach (var card in Cards) card.Reset();
+        if (!reload)
+            return Task.CompletedTask;
         EnsureCategoryChart();
         return listeningForChanges ? RefreshAsync() : Task.CompletedTask;
     }
@@ -298,12 +307,14 @@ public partial class StatisticsContent : UserControl
             return Task.CompletedTask;
         var asOf = DateTimeOffset.UtcNow;
         var today = DateOnly.FromDateTime(TimeZoneInfo.ConvertTime(asOf, settings.DisplayTimeZone).DateTime);
-        if (currentBalanceDate != today)
+        if (currentBalanceDate != today || (currentBalanceSnapshot?.NextOperationUtc is { } next && asOf >= next)
+            || RatesExpired(currentBalanceSnapshot?.RatesValidUntil, asOf))
         {
             InvalidateCurrentBalance();
             currentBalanceDate = today;
         }
-        if (currentBalanceTask is not null && currentBalanceError is null) return currentBalanceTask;
+        if (currentBalanceTask is { } previous && (!previous.IsCompleted || currentBalanceSnapshot is not null && currentBalanceError is null))
+            return previous;
         currentBalanceError = null;
         var request = new CancellationTokenSource();
         currentBalanceRequest = request;
@@ -323,6 +334,7 @@ public partial class StatisticsContent : UserControl
             UpdateCurrencyPicker();
         }
         catch (OperationCanceledException) when (request.IsCancellationRequested) { }
+        catch (StatisticsCacheInvalidatedException) { }
         catch (Exception error)
         {
             if (version == currentBalanceVersion)
@@ -373,7 +385,7 @@ public partial class StatisticsContent : UserControl
                 Sign = Math.Sign(period?.Balance ?? 0m)
             },
             new StatisticsTotal("Текущий остаток", amount is { } balance
-                ? HistoricalExchangeRates.Format(decimal.Round(balance, 2, MidpointRounding.AwayFromZero), code)
+                ? MoneyText.FormatRounded(balance, code)
                 : "—", warning, currentBalanceRequest is not null),
             reserve,
             new StatisticsTotal("Категории", "") { CategoryStatus = uncategorizedStatus }
@@ -418,8 +430,7 @@ public partial class StatisticsContent : UserControl
 
         tile = tile with
         {
-            AverageMonthlyExpenses = HistoricalExchangeRates.Format(
-                decimal.Round(average, 2, MidpointRounding.AwayFromZero), currency)
+            AverageMonthlyExpenses = MoneyText.FormatRounded(average, currency)
         };
         if (balance is null)
             return tile with { Warning = "Текущий остаток недоступен." };
@@ -437,7 +448,6 @@ public partial class StatisticsContent : UserControl
     internal Task RefreshAfterServerChangeAsync()
     {
         RefreshCategoryChartAfterServerChange();
-        statistics.InvalidateCache();
         InvalidateCurrentBalance();
         dataStale = true;
         dataVersion++;
@@ -465,6 +475,12 @@ public partial class StatisticsContent : UserControl
             }
         }, DispatcherPriority.Background).Task.Unwrap();
         return scheduledRefresh;
+    }
+
+    internal Task RefreshAfterCacheClearAsync(bool reload = true)
+    {
+        InvalidateCurrentBalance();
+        return ResetAsync(reload);
     }
     private async Task RefreshAsync()
     {
@@ -599,7 +615,7 @@ public partial class StatisticsContent : UserControl
             Stroke = stroke, GeometrySize = 0, EnableNullSplitting = true, LineSmoothness = 0,
             XToolTipLabelFormatter = point => point.Model?.X is { } day ? first.AddDays((int)day).ToString("dd.MM.yyyy") : "",
             YToolTipLabelFormatter = point => point.Model?.X is { } day && points[(int)day].Amount is { } amount
-                ? HistoricalExchangeRates.Format(amount, currency.Currency) : "" }];
+                ? MoneyText.Format(amount, currency.Currency) : "" }];
     }
     private void DrawMonthly()
     {
@@ -618,7 +634,7 @@ public partial class StatisticsContent : UserControl
     }
     private ColumnSeries<decimal?> Bar(string title, string color, IEnumerable<decimal?> values, string currency) =>
         new() { Name = title, Values = values.ToArray(), Fill = Paint(color), Stroke = null,
-            YToolTipLabelFormatter = point => point.Model is { } amount ? HistoricalExchangeRates.Format(amount, currency) : "" };
+            YToolTipLabelFormatter = point => point.Model is { } amount ? MoneyText.Format(amount, currency) : "" };
     private void UpdateBurnMonths()
     {
         var start = new DateOnly(Dates.RangeDate.StartDate.Year, Dates.RangeDate.StartDate.Month, 1);
@@ -743,24 +759,28 @@ public partial class StatisticsContent : UserControl
         HeatPanel.Message("");
         var start = DateOnly.FromDateTime(Dates.RangeDate.StartDate);
         var end = DateOnly.FromDateTime(Dates.RangeDate.EndDate);
-        var byMonth = (start.Year != 9999 || start.Month != 12) && end >= start.AddMonths(1);
-        var cells = byMonth
-            ? currency.DailyPoints.GroupBy(day => new DateOnly(day.Date.Year, day.Date.Month, 1))
-                .Select(month => new ExpenseHeatmapCell(month.Key,
-                    month.Any(day => day.Expenses is null) ? null : month.Sum(day => day.Expenses!.Value))).ToArray()
-            : currency.DailyPoints.Select(day => new ExpenseHeatmapCell(day.Date, day.Expenses)).ToArray();
+        var granularity = HeatmapGranularityFor(start, end);
+        var cells = GroupHeatmapCells(currency.DailyPoints, granularity);
         var maximum = cells.Select(cell => Math.Abs(cell.Amount.GetValueOrDefault())).Max();
         var average = cells.Average(cell => cell.Amount);
-        Action<DateOnly> open = byMonth
-            ? month => Dates.SetMonth(month.ToDateTime(TimeOnly.MinValue))
-            : day => ExpenseDayRequested?.Invoke(day);
-        var periods = cells.GroupBy(cell => new DateOnly(cell.Date.Year, byMonth ? 1 : cell.Date.Month, 1))
-            .Select(group => new ExpenseHeatmapPeriod(group.Key, currency.Currency, byMonth, group.ToArray(),
+        Action<DateOnly> open = granularity switch
+        {
+            ExpenseHeatmapGranularity.Year => year => Dates.SetYear(year.Year),
+            ExpenseHeatmapGranularity.Month => month => Dates.SetMonth(month.ToDateTime(TimeOnly.MinValue)),
+            _ => day => ExpenseDayRequested?.Invoke(day)
+        };
+        var periods = cells.GroupBy(cell => granularity switch
+            {
+                ExpenseHeatmapGranularity.Year => cells[0].Date,
+                ExpenseHeatmapGranularity.Month => new DateOnly(cell.Date.Year, 1, 1),
+                _ => new DateOnly(cell.Date.Year, cell.Date.Month, 1)
+            })
+            .Select(group => new ExpenseHeatmapPeriod(group.Key, currency.Currency, granularity, group.ToArray(),
                 maximum, average, settings, open)).ToArray();
         if (HeatPanel.Plot.Children.OfType<ItemsControl>().FirstOrDefault() is { } previous &&
             previous.ItemsSource is ExpenseHeatmapPeriod[] old && old.Length == periods.Length &&
             old.Zip(periods).All(pair => pair.First.Start == pair.Second.Start && pair.First.Currency == pair.Second.Currency
-                && pair.First.ByMonth == pair.Second.ByMonth && pair.First.Maximum == pair.Second.Maximum
+                && pair.First.Granularity == pair.Second.Granularity && pair.First.Maximum == pair.Second.Maximum
                 && pair.First.Average == pair.Second.Average
                 && pair.First.Cells.SequenceEqual(pair.Second.Cells))) return;
         var template = new DataTemplate();
@@ -769,8 +789,29 @@ public partial class StatisticsContent : UserControl
         HeatPanel.Plot.Children.Clear();
         HeatPanel.Plot.Children.Add(calendars);
     }
+
+    private static ExpenseHeatmapGranularity HeatmapGranularityFor(DateOnly start, DateOnly end)
+    {
+        if (start.Year < DateOnly.MaxValue.Year && end >= start.AddYears(1))
+            return ExpenseHeatmapGranularity.Year;
+        if (start < new DateOnly(9999, 12, 1) && end >= start.AddMonths(1))
+            return ExpenseHeatmapGranularity.Month;
+        return ExpenseHeatmapGranularity.Day;
+    }
+
+    private static ExpenseHeatmapCell[] GroupHeatmapCells(IReadOnlyList<StatisticsDailyPoint> days,
+        ExpenseHeatmapGranularity granularity)
+    {
+        if (granularity == ExpenseHeatmapGranularity.Day)
+            return days.Select(day => new ExpenseHeatmapCell(day.Date, day.Expenses)).ToArray();
+
+        return days.GroupBy(day => new DateOnly(day.Date.Year,
+                granularity == ExpenseHeatmapGranularity.Year ? 1 : day.Date.Month, 1))
+            .Select(group => new ExpenseHeatmapCell(group.Key,
+                group.Any(day => !day.Expenses.HasValue) ? null : group.Sum(day => day.Expenses!.Value))).ToArray();
+    }
     private static StatisticsTotal FormatTotal(string label, decimal? amount, string currency) =>
-        new(label, amount is { } value ? HistoricalExchangeRates.Format(value, currency) : "Недоступно");
+        new(label, amount is { } value ? MoneyText.Format(value, currency) : "Недоступно");
     private LineSeries<decimal?> DrawActualExpenses(decimal?[] actual, decimal?[] baseline, string currency)
     {
         var accent = Paint("Highlight").Color;
@@ -899,7 +940,7 @@ public partial class StatisticsContent : UserControl
         Name = name, Values = values.ToArray(), Stroke = Paint(brush, 2), Fill = null,
         GeometrySize = 0, LineSmoothness = 0, EnableNullSplitting = true,
         YToolTipLabelFormatter = point => point.Model is { } amount
-            ? HistoricalExchangeRates.Format(roundToCents ? decimal.Round(amount, 2, MidpointRounding.AwayFromZero) : amount, currency) : ""
+            ? (roundToCents ? MoneyText.FormatRounded(amount, currency) : MoneyText.Format(amount, currency)) : ""
     };
     private Axis DayAxis(DateOnly first, int count) => new() { MinLimit = -0.5, MaxLimit = Math.Max(0.5, count - 0.5), MinStep = 1,
         Labeler = day => day >= 0 && day < count ? first.AddDays((int)Math.Round(day)).ToString("dd.MM.yy") : "",

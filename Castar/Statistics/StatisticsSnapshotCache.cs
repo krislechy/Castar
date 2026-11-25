@@ -11,6 +11,7 @@ internal sealed class StatisticsSnapshotCache
 {
     internal const int MaxEntries = 16;
     internal const int MaxPoints = 100_000;
+    internal static readonly TimeSpan ExchangeRateLifetime = TimeSpan.FromMinutes(2);
     private readonly object gate = new();
     private readonly Dictionary<Key, Cached> completed = new();
     private readonly Dictionary<(Key Key, long Version), Flight> pending = new();
@@ -162,8 +163,8 @@ internal sealed class StatisticsSnapshotCache
                             points -= oldest.Value.Points;
                             completed.Remove(oldest.Key);
                         }
-                        var lifetime = key.Currency.Length == 0 ? TimeSpan.FromMinutes(10) : TimeSpan.FromMinutes(2);
-                        completed.Add(key, new(snapshot, size, ++access, DateTimeOffset.UtcNow + lifetime));
+                        var expires = snapshot.RatesValidUntil ?? DateTimeOffset.UtcNow.AddMinutes(10);
+                        completed.Add(key, new(snapshot, size, ++access, expires));
                         points += size;
                     }
                 }

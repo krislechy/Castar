@@ -21,7 +21,7 @@ internal class PeriodComparison(bool increaseIsFavorable = true) : BaseSettingsM
     internal void SetComparison(decimal? value, string currency, string hint = "К предыдущему периоду")
     {
         comparison = value;
-        ComparisonText = value is { } amount ? (amount > 0 ? "+" : "") + HistoricalExchangeRates.Format(amount, currency) : "—";
+        ComparisonText = value is { } amount ? (amount > 0 ? "+" : "") + MoneyText.Format(amount, currency) : "—";
         ComparisonHint = hint;
         OnPropertyChanged(nameof(ComparisonAvailable));
         OnPropertyChanged(nameof(IsComparisonFavorable));

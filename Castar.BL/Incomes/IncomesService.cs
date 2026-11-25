@@ -1,4 +1,3 @@
-using System.Collections.ObjectModel;
 using Castar.DAL.Repositories.DataBase;
 using Castar.Domain.Models.DataBase;
 
@@ -7,35 +6,30 @@ namespace Castar.BL
     public sealed class IncomesService(IIncomesRepository incomesRepository, IUsersRepository usersRepository)
         : IIncomesService
     {
-        public async Task<ObservableCollection<Income>> GetEntities(DateTime start, DateTime finish) =>
-            new(await incomesRepository.List(start, finish, includeUser: false));
-
-        public async Task<ObservableCollection<Income>> GetEntitiesWithAllIncludes(DateTime start, DateTime finish) =>
-            new(await incomesRepository.List(start, finish, includeUser: true));
-
-        public async Task<Income> Add(Income income, long telegramUserId, User? user = null)
+        public async Task<Income> Add(Income income, long telegramUserId, User? user = null,
+            CancellationToken cancellationToken = default)
         {
             var owner = user is { Id: var id } && id != Guid.Empty
                 ? user
-                : await GetUser(telegramUserId, CancellationToken.None);
+                : await usersRepository.RequireTelegramUserAsync(telegramUserId, cancellationToken);
             income.UserId = owner.Id;
             income.User = owner;
             income.AddedOn = income.AddedOn == default ? DateTime.UtcNow : income.AddedOn;
             RoundLegacyAmount(income);
-            return await incomesRepository.Add(income);
+            return await incomesRepository.Add(income, cancellationToken);
         }
 
         public async Task<IReadOnlyList<Income>> GetEntityByMessageId(
             long telegramUserId, long messageId, CancellationToken cancellationToken = default)
         {
-            var user = await GetUser(telegramUserId, cancellationToken);
+            var user = await usersRepository.RequireTelegramUserAsync(telegramUserId, cancellationToken);
             return await incomesRepository.ListByMessage(user.Id, messageId, cancellationToken);
         }
 
         public async Task SaveMessageIncomes(long telegramUserId, long messageId, IReadOnlyList<Income> incomes,
             CancellationToken cancellationToken = default)
         {
-            var user = await GetUser(telegramUserId, cancellationToken);
+            var user = await usersRepository.RequireTelegramUserAsync(telegramUserId, cancellationToken);
             var now = DateTime.UtcNow;
             foreach (var income in incomes)
             {
@@ -47,7 +41,7 @@ namespace Castar.BL
             await incomesRepository.SaveMessageIncomes(user.Id, messageId, incomes, cancellationToken);
         }
 
-        public Task Update(Income income, bool updateCategory = false)
+        public Task Update(Income income, bool updateCategory = false, CancellationToken cancellationToken = default)
         {
             if (income.User is { } owner && owner.Id != income.UserId)
             {
@@ -56,14 +50,11 @@ namespace Castar.BL
             }
 
             RoundLegacyAmount(income);
-            return incomesRepository.Update(income, updateCategory);
+            return incomesRepository.Update(income, updateCategory, cancellationToken);
         }
 
-        public Task<bool> Delete(Guid id) => incomesRepository.Delete(id);
-
-        private async Task<User> GetUser(long telegramUserId, CancellationToken cancellationToken) =>
-            await usersRepository.FindByTelegramId(telegramUserId, cancellationToken)
-            ?? throw new InvalidOperationException($"Пользователя с идентификатором {telegramUserId} нет в базе.");
+        public Task<bool> Delete(Guid id, CancellationToken cancellationToken = default) =>
+            incomesRepository.Delete(id, cancellationToken);
 
         private static void RoundLegacyAmount(Income income)
         {

@@ -13,7 +13,6 @@
 
   <ItemGroup>
     <ProjectReference Include="..\Castar.Domain\Castar.Domain.csproj" />
-    <ProjectReference Include="..\Castar.Security.Cryptography\Castar.Security.Cryptography.csproj" />
   </ItemGroup>
 
 </Project>

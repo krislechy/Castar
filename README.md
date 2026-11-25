@@ -2,6 +2,8 @@
 
 Castar учитывает доходы и покупки. Windows-клиент показывает данные за выбранный период и отправляет изменения по HTTP API. Castar Server хранит базу, обрабатывает сообщения Telegram и загружает позиции фискальных чеков по QR-коду.
 
+Размещение кода и правила разработки описаны в [архитектуре Castar](docs/architecture/castar.md).
+
 ## Установка и обновление
 
 1. Скачайте архив Castar Server для Windows x64, Linux x64 или Linux ARM64 из [последнего выпуска](https://github.com/krislechy/Castar/releases/latest) и запустите сервер по [инструкции](Castar.Server/DEPLOYMENT.md).

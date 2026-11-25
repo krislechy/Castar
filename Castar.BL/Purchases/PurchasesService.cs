@@ -1,4 +1,3 @@
-using System.Collections.ObjectModel;
 using Castar.DAL.Repositories.DataBase;
 using Castar.Domain.Models.DataBase;
 
@@ -7,15 +6,10 @@ namespace Castar.BL
     public sealed class PurchasesService(
         IPurchasesRepository purchaseRepository, IUsersRepository usersRepository) : IPurchasesService
     {
-        public async Task<ObservableCollection<Purchase>> GetEntities(DateTime start, DateTime finish) =>
-            new(await purchaseRepository.List(start, finish, includeDetails: false));
-
-        public async Task<ObservableCollection<Purchase>> GetEntitiesWithAllIncludes(DateTime start, DateTime finish) =>
-            new(await purchaseRepository.List(start, finish, includeDetails: true));
+        public Task<IReadOnlyList<Purchase>> ListAsync(DateTime start, DateTime finish, CancellationToken cancellationToken) =>
+            purchaseRepository.ListAsync(start, finish, cancellationToken);
 
         public Task<Purchase?> GetPurchaseById(Guid id) => purchaseRepository.Find(id);
-
-        public Task<bool> IsExistTheSame(byte[]? query) => purchaseRepository.SearchByRawData(query);
 
         public async Task<Purchase> Add(Purchase purchase, long telegramUserId, CancellationToken cancellationToken = default)
         {
@@ -33,7 +27,7 @@ namespace Castar.BL
         public async Task<Purchase?> GetManualPurchaseByMessageId(
             long telegramUserId, long messageId, CancellationToken cancellationToken = default)
         {
-            var owner = await GetUser(telegramUserId, cancellationToken);
+            var owner = await usersRepository.RequireTelegramUserAsync(telegramUserId, cancellationToken);
             return await purchaseRepository.FindManualByMessage(owner.Id, messageId, cancellationToken);
         }
 
@@ -49,13 +43,10 @@ namespace Castar.BL
 
         private async Task AssignOwnerAndDate(Purchase purchase, long telegramUserId, CancellationToken cancellationToken)
         {
-            var owner = await GetUser(telegramUserId, cancellationToken);
+            var owner = await usersRepository.RequireTelegramUserAsync(telegramUserId, cancellationToken);
             purchase.UserId = owner.Id;
             purchase.AddedOn ??= DateTime.UtcNow;
         }
 
-        private async Task<User> GetUser(long telegramUserId, CancellationToken cancellationToken) =>
-            await usersRepository.FindByTelegramId(telegramUserId, cancellationToken)
-            ?? throw new InvalidOperationException($"Пользователя с идентификатором {telegramUserId} нет в базе.");
     }
 }

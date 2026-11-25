@@ -1,8 +1,10 @@
 using Castar.Api;
 using Castar.Currency;
 using Castar.ServerConnection;
+using Castar.Settings;
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
@@ -13,6 +15,8 @@ internal sealed record StatisticsSnapshot(bool HasRecords, int UnconvertedIncome
     IReadOnlyList<StatisticsCurrency> Currencies)
 {
     public DateOnly? EarliestOperationDate { get; init; }
+    public DateTimeOffset? NextOperationUtc { get; init; }
+    public DateTimeOffset? RatesValidUntil { get; init; }
 }
 
 internal sealed record StatisticsCurrency(string Currency, decimal? Income, decimal? Expenses, decimal? Balance)
@@ -27,16 +31,60 @@ internal sealed record StatisticsPoint(string Label, decimal? Income, decimal? E
 internal sealed record StatisticsRemainingPoint(DateOnly Date, decimal? Amount);
 internal sealed record StatisticsDailyPoint(DateOnly Date, decimal? Income, decimal? Expenses);
 internal sealed record StatisticsCategorySnapshot(IReadOnlyList<StatisticsCategoryAmount> Rows, bool HasRecords,
-    long UnconvertedIncomes, long UnconvertedExpenses, IReadOnlyList<BudgetCategoryDto> Categories);
+    long UnconvertedIncomes, long UnconvertedExpenses, IReadOnlyList<BudgetCategoryDto> Categories)
+{
+    public DateTimeOffset? RatesValidUntil { get; init; }
+}
 internal sealed record StatisticsCategoryAmount(bool IsIncome, Guid? CategoryId, string CategoryName, string? IconKey,
     string Currency, decimal? Amount, long UnconvertedCount);
 
-internal sealed class BudgetStatistics(CastarServerClient server, HistoricalExchangeRates exchangeRates)
+internal sealed class BudgetStatistics
 {
     internal const int MaxReserveHistoryMonths = 12;
     private readonly StatisticsSnapshotCache cache = new();
+    private readonly BudgetDayCache dayCache;
+    private readonly CastarServerClient server;
+    private readonly HistoricalExchangeRates exchangeRates;
+    private long financialCacheGeneration;
+
+    public BudgetStatistics(CastarServerClient server, HistoricalExchangeRates exchangeRates)
+        : this(server, exchangeRates, DefaultDayCachePath())
+    {
+    }
+
+    internal BudgetStatistics(CastarServerClient server, HistoricalExchangeRates exchangeRates, string? dayCachePath)
+    {
+        this.server = server;
+        this.exchangeRates = exchangeRates;
+        dayCache = new BudgetDayCache(dayCachePath);
+    }
+
+    private static string? DefaultDayCachePath()
+    {
+#if DEBUG
+        return null;
+#else
+        return Path.Combine(ClientSettings.DataDirectory, "ChartCache", "budget-days.v1");
+#endif
+    }
 
     internal void InvalidateCache() => cache.Invalidate();
+
+    internal Task InvalidateFinancialCacheAsync(DateOnly? affectedDay)
+    {
+        Interlocked.Increment(ref financialCacheGeneration);
+        var invalidation = dayCache.InvalidateAsync(server.StatisticsCacheIdentity, affectedDay);
+        cache.Invalidate();
+        return invalidation;
+    }
+
+    internal Task ClearChartCacheAsync()
+    {
+        Interlocked.Increment(ref financialCacheGeneration);
+        var clear = dayCache.ClearAsync();
+        cache.Invalidate();
+        return clear;
+    }
 
     internal Task<StatisticsSnapshot> LoadAsync(DateTime start, DateTime finish, string displayCurrency,
         CancellationToken token) => LoadCachedAsync(start, finish, displayCurrency, token, includeOpening: true);
@@ -56,10 +104,12 @@ internal sealed class BudgetStatistics(CastarServerClient server, HistoricalExch
         if (operations.Length == 0)
             return new([], false, 0, 0, categories);
 
-        var ratesTask = exchangeRates.GetAsync(operations.Where(row => row.RateDate.HasValue)
-            .Select(row => (row.Currency, row.RateDate!.Value)), displayCurrency, token);
-        var rates = await ratesTask.ConfigureAwait(false);
-        return CalculateCategories(operations, categories, displayCurrency, rates, token);
+        var keys = RateKeys(operations.Select(row => (row.Currency, row.RateDate)), displayCurrency);
+        var rates = await exchangeRates.GetAsync(keys, displayCurrency, token).ConfigureAwait(false);
+        return CalculateCategories(operations, categories, displayCurrency, rates, token) with
+        {
+            RatesValidUntil = RatesValidUntil(keys.Length)
+        };
     }
 
     internal static StatisticsCategorySnapshot CalculateCategories(BudgetCategoryAmountDto[] operations,
@@ -133,23 +183,66 @@ internal sealed class BudgetStatistics(CastarServerClient server, HistoricalExch
     private async Task<StatisticsSnapshot> LoadCoreAsync(DateTime start, DateTime finish, string displayCurrency,
         CancellationToken token, bool includeOpening, DateTimeOffset? asOfUtc = null)
     {
-        var operations = await server.GetBudgetOperationsAsync(start, finish, token, includeOpening).ConfigureAwait(false);
+        await Task.CompletedTask.ConfigureAwait(ConfigureAwaitOptions.ForceYielding);
+        token.ThrowIfCancellationRequested();
+        var first = DateOnly.FromDateTime(start);
+        var last = DateOnly.FromDateTime(finish);
+        var scope = server.StatisticsCacheScope;
+        var identity = server.StatisticsCacheIdentity;
+        var generation = Interlocked.Read(ref financialCacheGeneration);
+        var fullDays = start.TimeOfDay == TimeSpan.Zero
+            && (asOfUtc.HasValue || finish.TimeOfDay.Ticks == TimeSpan.TicksPerDay - 1);
+        var operations = fullDays
+            ? await dayCache.GetAsync(identity, first, last, includeOpening, LoadDaysAsync, ReportDay,
+                IsCurrent, token).ConfigureAwait(false)
+            : await server.GetBudgetOperationsAsync(start, finish, token, includeOpening).ConfigureAwait(false);
+        DateTimeOffset? nextOperation = null;
         if (asOfUtc is { } boundary)
+        {
+            nextOperation = operations.Where(operation => !operation.IsOpening && operation.AddedOnUtc > boundary
+                    && ReportDay(operation) == last)
+                .Min(operation => operation.AddedOnUtc);
             operations = operations.Where(operation => operation.IsOpening || operation.AddedOnUtc is not { } instant
                 || instant <= boundary).ToArray();
+        }
         var entries = operations.Select(operation =>
         {
-            var date = operation.IsOpening ? (DateOnly?)null : server.DisplayOperationDate(null, operation.AddedOnUtc) is { } added
-                ? DateOnly.FromDateTime(added) : operation.ReceiptDate;
+            var date = operation.IsOpening ? (DateOnly?)null : ReportDay(operation);
             return new Entry(operation.IsIncome, operation.Currency, operation.Amount, date, operation.RateDate ?? date,
                 operation.IsOpening, operation.IsOpening ? Math.Max(1, operation.OpeningCount) : 1);
         }).ToArray();
-        var rates = await exchangeRates.GetAsync(entries.Where(entry => entry.RateDate.HasValue)
-            .Select(entry => (entry.Currency, entry.RateDate!.Value)), displayCurrency, token).ConfigureAwait(false);
+        var keys = RateKeys(entries.Select(entry => (entry.Currency, entry.RateDate)), displayCurrency);
+        var rates = await exchangeRates.GetAsync(keys, displayCurrency, token).ConfigureAwait(false);
         token.ThrowIfCancellationRequested();
-        return await Task.Run(() => Calculate(entries, DateOnly.FromDateTime(start), DateOnly.FromDateTime(finish),
-            displayCurrency, rates), token).ConfigureAwait(false);
+        if (!IsCurrent())
+            throw new StatisticsCacheInvalidatedException();
+        var result = Calculate(entries, first, last, displayCurrency, rates) with
+        {
+            NextOperationUtc = nextOperation,
+            RatesValidUntil = RatesValidUntil(keys.Length)
+        };
+        if (!IsCurrent())
+            throw new StatisticsCacheInvalidatedException();
+        return result;
+
+        bool IsCurrent() => generation == Interlocked.Read(ref financialCacheGeneration)
+            && scope == server.StatisticsCacheScope;
     }
+
+    private static (string? Currency, DateOnly Date)[] RateKeys(IEnumerable<(string? Currency, DateOnly? Date)> entries,
+        string target) => HistoricalExchangeRates.IsCurrencyCode(target)
+        ? entries.Where(entry => entry.Date.HasValue && entry.Currency != target && HistoricalExchangeRates.IsCurrencyCode(entry.Currency))
+            .Select(entry => (entry.Currency, entry.Date!.Value)).Distinct().ToArray()
+        : [];
+
+    private static DateTimeOffset? RatesValidUntil(int rateKeys) =>
+        rateKeys == 0 ? null : DateTimeOffset.UtcNow + StatisticsSnapshotCache.ExchangeRateLifetime;
+
+    private DateOnly? ReportDay(BudgetOperationDto operation) =>
+        server.DisplayOperationDate(null, operation.AddedOnUtc) is { } date ? DateOnly.FromDateTime(date) : operation.ReceiptDate;
+
+    private Task<BudgetOperationDto[]> LoadDaysAsync(DateOnly first, DateOnly last, bool includeOpening, CancellationToken token) =>
+        server.GetBudgetOperationsAsync(first.ToDateTime(TimeOnly.MinValue), last.ToDateTime(TimeOnly.MaxValue), token, includeOpening);
 
     private static StatisticsSnapshot Calculate(Entry[] entries, DateOnly start, DateOnly finish, string displayCurrency,
         IReadOnlyDictionary<(string Currency, DateOnly Date), decimal> rates)

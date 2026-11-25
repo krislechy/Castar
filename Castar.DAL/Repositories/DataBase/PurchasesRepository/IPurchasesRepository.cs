@@ -5,11 +5,10 @@ namespace Castar.DAL.Repositories.DataBase
 {
     public interface IPurchasesRepository : IBaseRepository<Purchase>
     {
-        Task<IReadOnlyList<Purchase>> List(DateTime start, DateTime finish, bool includeDetails);
+        Task<IReadOnlyList<Purchase>> ListAsync(DateTime start, DateTime finish, CancellationToken cancellationToken);
         Task<Purchase?> FindManualByMessage(Guid userId, long messageId, CancellationToken cancellationToken);
         Task<Purchase?> FindWithItemsAsync(Guid id, CancellationToken cancellationToken);
         Task<Purchase?> AddReceipt(Purchase purchase, string provider, string receiptId, CancellationToken cancellationToken);
-        Task<bool> SearchByRawData(byte[]? query);
         Task<(bool Found, string? ReceiptSource, bool IsLegacy)> GetReceiptSourceAsync(
             Guid purchaseId, CancellationToken cancellationToken = default);
         Task<PurchaseMutationResult> DeletePurchaseAsync(

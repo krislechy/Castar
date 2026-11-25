@@ -106,7 +106,7 @@ public partial class RecurringPurchasesPanel : UserControl
                     purchase.CalculateManualItemAmounts(line.Quantity, line.Price, line.Currency).Sum), Currency: group.Key))
                 .ToArray();
             var row = new SubscriptionRow(item, template.Purchase.Name, timing,
-                totals.Select(total => HistoricalExchangeRates.Format(total.Amount, total.Currency)).ToArray(),
+                totals.Select(total => MoneyText.Format(total.Amount, total.Currency)).ToArray(),
                 totals.Select(total => ((decimal?)total.Amount, total.Currency)).ToArray());
             if (target.Length == 0 || totals.All(total => total.Currency == target))
                 return row;
@@ -120,11 +120,11 @@ public partial class RecurringPurchasesPanel : UserControl
             var estimate = totals.Sum(total => total.Currency == target ? total.Amount
                 : HistoricalExchangeRates.ConvertAmount(total.Amount, quotes[total.Currency!].Rate));
             var exchange = foreign.Select(total => quotes[total.Currency!]).ToArray();
-            string RateLabel(CurrencyRateDto quote) => $"1 {quote.Currency} = {HistoricalExchangeRates.Format(quote.Rate, target)}";
+            string RateLabel(CurrencyRateDto quote) => $"1 {quote.Currency} = {MoneyText.Format(quote.Rate, target)}";
             return row with
             {
                 SelectionAmounts = [(estimate, target)],
-                EstimatedAmount = $"≈ {HistoricalExchangeRates.Format(estimate, target)}",
+                EstimatedAmount = $"≈ {MoneyText.Format(estimate, target)}",
                 RateSummary = RateLabel(exchange[0]) + (exchange.Length > 1 ? $" · ещё {exchange.Length - 1}" : ""),
                 RateDetails = string.Join("\n", exchange.Select(quote => $"{RateLabel(quote)} · {quote.QuotedOn:dd.MM.yyyy}"))
             };

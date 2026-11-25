@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Threading.Channels;
 using Castar.Api;
 using Castar.DAL;
@@ -7,20 +8,34 @@ using Microsoft.EntityFrameworkCore;
 
 namespace Castar.Server;
 
-internal readonly record struct BudgetChange(bool Changed, int CreatedCount, Guid? EntityId, DateTime? AddedOn)
+internal readonly record struct BudgetChange(bool Changed, int CreatedCount, Guid? EntityId, DateTime? AddedOn,
+    DateTime? AffectedFrom = null)
 {
     public BudgetChange AddCreation(Guid id, DateTime? addedOn) =>
-        new(true, CreatedCount + 1, id, addedOn);
+        Merge(new(true, 1, id, addedOn, addedOn));
 
-    public BudgetChange Merge(BudgetChange newer) => newer.CreatedCount > 0
-        ? newer with { CreatedCount = CreatedCount + newer.CreatedCount }
-        : this with { Changed = Changed || newer.Changed };
+    public BudgetChange AddChange(DateTime? affectedFrom) => Merge(new(true, 0, null, null, affectedFrom));
+
+    public BudgetChange Merge(BudgetChange newer)
+    {
+        if (!Changed)
+            return newer;
+        if (!newer.Changed)
+            return this;
+
+        // One undated change invalidates the whole cache, even when batched with dated changes.
+        DateTime? earliest = AffectedFrom is { } first && newer.AffectedFrom is { } second
+            ? (first < second ? first : second) : null;
+        var latestCreation = newer.CreatedCount > 0 ? newer : this;
+        return latestCreation with { AffectedFrom = earliest, CreatedCount = CreatedCount + newer.CreatedCount };
+    }
 }
 
 internal sealed class BudgetEventPublisher(
     IHubContext<BudgetEventsHub> hub, ApiKeyStore keys,
-    IServiceScopeFactory scopes, ILogger<BudgetEventPublisher> logger) : BackgroundService
+    IServiceScopeFactory scopes, IHttpContextAccessor httpContext, ILogger<BudgetEventPublisher> logger) : BackgroundService
 {
+    private static readonly object ResponseChangeKey = new();
     private readonly Channel<bool> wake = Channel.CreateBounded<bool>(
         new BoundedChannelOptions(1) { SingleReader = true, FullMode = BoundedChannelFullMode.DropWrite });
     private readonly Lock gate = new();
@@ -40,12 +55,33 @@ internal sealed class BudgetEventPublisher(
         if (!purchases.Changed && !incomes.Changed)
             return;
 
+        RecordResponseChange(purchases.Merge(incomes));
         lock (gate)
         {
             pendingPurchases = pendingPurchases.Merge(purchases);
             pendingIncomes = pendingIncomes.Merge(incomes);
             wake.Writer.TryWrite(true);
         }
+    }
+
+    private void RecordResponseChange(BudgetChange change)
+    {
+        if (httpContext.HttpContext is not { Response.HasStarted: false } context)
+            return;
+
+        var method = context.Request.Method;
+        if (!HttpMethods.IsPost(method) && !HttpMethods.IsPut(method) && !HttpMethods.IsDelete(method))
+            return;
+
+        // Only committed changes reach Queue. One undated change makes a precise response hint unsafe.
+        if (context.Items.TryGetValue(ResponseChangeKey, out var value) && value is BudgetChange previous)
+            change = previous.Merge(change);
+        context.Items[ResponseChangeKey] = change;
+        if (change.AffectedFrom is { } instant)
+            context.Response.Headers[BudgetEvents.AffectedFromHeader] =
+                new DateTimeOffset(BudgetTime.AsUtc(instant)).ToString("O", CultureInfo.InvariantCulture);
+        else
+            context.Response.Headers.Remove(BudgetEvents.AffectedFromHeader);
     }
 
     public void QueueSynchronization(string kind, long? revision = null)
@@ -159,6 +195,7 @@ internal sealed class BudgetEventPublisher(
             EntityId = change.EntityId,
             AddedOn = change.AddedOn is { } date ? BudgetTime.InZone(date, BudgetTime.Belgrade) : null,
             AddedOnUtc = change.AddedOn is { } instant ? new DateTimeOffset(BudgetTime.AsUtc(instant)) : null,
+            AffectedFromUtc = change.AffectedFrom is { } affected ? new DateTimeOffset(BudgetTime.AsUtc(affected)) : null,
             Preview = preview
         };
         await SendToActiveKeysAsync(BudgetEvents.Method, notification, stoppingToken);
@@ -167,8 +204,8 @@ internal sealed class BudgetEventPublisher(
     private async Task SendToActiveKeysAsync<T>(string method, T message, CancellationToken stoppingToken)
     {
         // An already connected client loses future events when its key is revoked.
-        var groups = keys.GetActiveKeyIds().Select(id => id.ToString("N")).ToArray();
-        if (groups.Length == 0)
+        var groups = keys.GetActiveGroups();
+        if (groups.Count == 0)
             return;
 
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(stoppingToken);

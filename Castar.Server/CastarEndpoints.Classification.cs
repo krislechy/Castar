@@ -104,11 +104,14 @@ public static partial class CastarEndpoints
     }
 
     private static IResult CompleteManualCategoryWrite(PurchaseMutationResult result, CategorySelectionDto? selection,
-        BudgetEventPublisher events)
+        CastarDbContext db, Guid purchaseId, BudgetEventPublisher events)
     {
         // A category write uses an explicit transaction with its history. The save interceptor skips it.
         if (selection is not null && result == PurchaseMutationResult.Applied)
-            events.Queue(new BudgetChange(true, 0, null, null), default);
+        {
+            var purchase = db.Purchases.Local.FirstOrDefault(purchase => purchase.Id == purchaseId);
+            events.Queue(default(BudgetChange).AddChange(purchase?.AddedOn), default);
+        }
         return PurchaseMutation(result);
     }
 

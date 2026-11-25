@@ -7,8 +7,6 @@
 
     <SolidColorBrush x:Key="PurchaseForm.OwnerSurface" Color="#151923"/>
     <SolidColorBrush x:Key="PurchaseForm.RemoveSurface" Color="#424557"/>
-
-    <BooleanToVisibilityConverter x:Key="PurchaseFormVisibility"/>
     <sys:Boolean x:Key="PurchaseForm.StyledInput">True</sys:Boolean>
     <Style x:Key="PurchaseFormFieldIcon" TargetType="Path">
         <Setter Property="Width" Value="16"/>

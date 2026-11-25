@@ -1,3 +1,4 @@
+using System.Buffers;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
@@ -49,19 +50,45 @@ internal sealed class ApiKeyStore : IDisposable
         }
     }
 
-    public Guid? GetAuthorizedKeyId(string presentedKey)
+    public Guid? GetAuthorizedKeyId(ReadOnlySpan<char> presentedKey)
     {
-        var presentedHash = Hash(presentedKey);
-        Guid? authorized = null;
-        foreach (var entry in Volatile.Read(ref current).Keys)
+        const int stackBytes = 256;
+        Span<byte> presentedHash = stackalloc byte[KeyBytes];
+        var byteCount = Encoding.UTF8.GetByteCount(presentedKey);
+        byte[]? rented = null;
+        Span<byte> utf8 = byteCount <= stackBytes ? stackalloc byte[stackBytes] : rented = ArrayPool<byte>.Shared.Rent(byteCount);
+        try
         {
-            if (Matches(entry.Hash, presentedHash))
-                authorized = entry.Id;
+            var written = Encoding.UTF8.GetBytes(presentedKey, utf8);
+            SHA256.HashData(utf8[..written], presentedHash);
+            Guid? authorized = null;
+            foreach (var entry in Volatile.Read(ref current).Keys)
+            {
+                if (CryptographicOperations.FixedTimeEquals(entry.Hash, presentedHash))
+                    authorized = entry.Id;
+            }
+            return authorized;
         }
-        return authorized;
+        finally
+        {
+            CryptographicOperations.ZeroMemory(utf8[..byteCount]);
+            CryptographicOperations.ZeroMemory(presentedHash);
+            if (rented is not null)
+                ArrayPool<byte>.Shared.Return(rented);
+        }
     }
 
-    public Guid[] GetActiveKeyIds() => Volatile.Read(ref current).Keys.Select(entry => entry.Id).ToArray();
+    public bool IsActive(Guid id)
+    {
+        foreach (var entry in Volatile.Read(ref current).Keys)
+        {
+            if (entry.Id == id)
+                return true;
+        }
+        return false;
+    }
+
+    public IReadOnlyList<string> GetActiveGroups() => Volatile.Read(ref current).Groups;
 
     public IReadOnlyList<ApiKeyInfo> List() => Volatile.Read(ref current).Keys
         .Select(entry => new ApiKeyInfo(entry.Id, entry.Label, entry.Suffix, CanCopy(entry)))
@@ -82,7 +109,7 @@ internal sealed class ApiKeyStore : IDisposable
                 throw new ApiKeyLimitException();
             var value = Convert.ToHexStringLower(RandomNumberGenerator.GetBytes(KeyBytes));
             var entry = NewEntry(value, name, configured: false);
-            var next = current with { Keys = [.. current.Keys, entry] };
+            var next = new State([.. current.Keys, entry], current.RevokedHashes);
             await SaveAsync(next, token);
             Volatile.Write(ref current, next);
             return value;
@@ -130,7 +157,7 @@ internal sealed class ApiKeyStore : IDisposable
             return next;
 
         var imported = NewEntry(configuredKey, "Первоначальный ключ", configured: true);
-        return next with { Keys = [imported, .. next.Keys] };
+        return new State([imported, .. next.Keys], next.RevokedHashes);
     }
 
     private bool CanCopy(KeyEntry entry) => entry.Configured && Matches(entry.Hash, configuredHash);
@@ -198,41 +225,25 @@ internal sealed class ApiKeyStore : IDisposable
 
     private static InvalidDataException InvalidRegistry() => new("Повреждён файл реестра ключей API.");
 
-    private async Task SaveAsync(State value, CancellationToken token)
-    {
-        var temporaryPath = path + "." + Guid.NewGuid().ToString("N") + ".tmp";
-        var options = new FileStreamOptions
-        {
-            Mode = FileMode.CreateNew,
-            Access = FileAccess.Write,
-            Options = FileOptions.Asynchronous
-        };
-        if (!OperatingSystem.IsWindows())
-            options.UnixCreateMode = UnixFileMode.UserRead | UnixFileMode.UserWrite;
-
-        try
-        {
-            await using (var file = new FileStream(temporaryPath, options))
-            {
-                await JsonSerializer.SerializeAsync(file, value, JsonOptions, token);
-                file.Flush(flushToDisk: true);
-            }
-            token.ThrowIfCancellationRequested();
-            File.Move(temporaryPath, path, overwrite: true);
-        }
-        catch
-        {
-            if (File.Exists(temporaryPath))
-                File.Delete(temporaryPath);
-            throw;
-        }
-    }
+    private Task SaveAsync(State value, CancellationToken token) =>
+        PrivateServerFile.ReplaceJsonAsync(path, value, JsonOptions, token);
 
     public void Dispose() => writes.Dispose();
 
     private sealed record State(
         [property: JsonRequired] KeyEntry[] Keys,
-        [property: JsonRequired] byte[][] RevokedHashes);
+        [property: JsonRequired] byte[][] RevokedHashes)
+    {
+        private IReadOnlyList<string>? groups;
+
+        internal IReadOnlyList<string> Groups => Volatile.Read(ref groups) ?? CreateGroups();
+
+        private IReadOnlyList<string> CreateGroups()
+        {
+            var names = Array.AsReadOnly(Keys.Select(key => key.Id.ToString("N")).ToArray());
+            return Interlocked.CompareExchange(ref groups, names, null) ?? names;
+        }
+    }
 
     private sealed record KeyEntry(
         Guid Id,

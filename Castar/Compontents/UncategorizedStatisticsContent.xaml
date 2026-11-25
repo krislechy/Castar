@@ -7,7 +7,6 @@
             <ResourceDictionary.MergedDictionaries>
                 <ResourceDictionary Source="/Castar;component/Styles/LedgerCards.xaml"/>
             </ResourceDictionary.MergedDictionaries>
-            <BooleanToVisibilityConverter x:Key="Visible"/>
             <Style x:Key="CategoryJump" TargetType="Button" BasedOn="{StaticResource LedgerIconButton}">
                 <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
                 <Setter Property="Padding" Value="4,5"/>
@@ -31,7 +30,7 @@
             <ContentControl DockPanel.Dock="Right" Content="{DynamicResource Svg.Warning}" Width="16" Height="16"
                             VerticalAlignment="Center"
                             Foreground="{DynamicResource Warning.Svg.Brush}"
-                            Visibility="{Binding HasMissing, Converter={StaticResource Visible}}"/>
+                            Visibility="{Binding HasMissing, Converter={StaticResource Castar.VisibleWhenTrue}}"/>
             <TextBlock Text="Категории" Style="{StaticResource GrayTextBlock}" VerticalAlignment="Center"/>
         </DockPanel>
         <Button Style="{StaticResource CategoryJump}" IsEnabled="{Binding HasPurchases}"
@@ -48,7 +47,7 @@
                 <ContentControl Grid.Column="2" Content="{DynamicResource Svg.RightArrow}"
                                 Width="16" Height="16" VerticalAlignment="Center" HorizontalAlignment="Right"
                                 Foreground="{DynamicResource Foreground.Gray}"
-                                Visibility="{Binding HasPurchases, Converter={StaticResource Visible}}"/>
+                                Visibility="{Binding HasPurchases, Converter={StaticResource Castar.VisibleWhenTrue}}"/>
             </Grid>
         </Button>
         <Button Style="{StaticResource CategoryJump}" IsEnabled="{Binding HasIncomes}"
@@ -65,10 +64,10 @@
                 <ContentControl Grid.Column="2" Content="{DynamicResource Svg.RightArrow}"
                                 Width="16" Height="16" VerticalAlignment="Center" HorizontalAlignment="Right"
                                 Foreground="{DynamicResource Foreground.Gray}"
-                                Visibility="{Binding HasIncomes, Converter={StaticResource Visible}}"/>
+                                Visibility="{Binding HasIncomes, Converter={StaticResource Castar.VisibleWhenTrue}}"/>
             </Grid>
         </Button>
-        <DockPanel Margin="0,6,0,0" Visibility="{Binding Complete, Converter={StaticResource Visible}}">
+        <DockPanel Margin="0,6,0,0" Visibility="{Binding Complete, Converter={StaticResource Castar.VisibleWhenTrue}}">
             <Viewbox DockPanel.Dock="Left" Width="16" Height="16" Stretch="Uniform" Margin="0,0,8,0">
                 <Canvas Width="24" Height="24">
                     <Path Data="{StaticResource Lucide.check}" Style="{StaticResource LucideAliasStroke}"
@@ -81,6 +80,6 @@
         <TextBlock Text="{Binding Message}" TextWrapping="Wrap" FontSize="12"
                    Foreground="{DynamicResource Foreground.Gray}" AutomationProperties.LiveSetting="Polite"/>
         <ProgressBar Height="2" IsIndeterminate="True" Margin="0,4,0,0"
-                     Visibility="{Binding IsLoading, Converter={StaticResource Visible}}"/>
+                     Visibility="{Binding IsLoading, Converter={StaticResource Castar.VisibleWhenTrue}}"/>
     </StackPanel>
 </UserControl>

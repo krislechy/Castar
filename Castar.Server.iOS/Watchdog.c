@@ -31,6 +31,7 @@
 
 enum {
     healthy_probe_interval = 25000,
+    stopped_probe_interval = 300000,
     retry_probe_interval = 3000,
     recovery_interval = 30000,
     job_check_interval = 300000,
@@ -257,6 +258,14 @@ static void limit_log(const char *path)
     close(log);
 }
 
+static int record_stop_state(struct supervision *service, bool stopped)
+{
+    service->state = stopped ? "stopped\n" : "unavailable\n";
+    service->failures = 0;
+    service->job_check_at = 0;
+    return stopped ? stopped_probe_interval : retry_probe_interval;
+}
+
 static int check_server(struct supervision *service, int64_t now)
 {
     if (access(INSTALL_MARKER, F_OK) == 0) {
@@ -267,13 +276,8 @@ static int check_server(struct supervision *service, int64_t now)
     }
 
     struct stat marker;
-    if (lstat(DISABLED_FILE, &marker) == 0) {
-        const bool stopped = stop_server();
-        service->state = stopped ? "stopped\n" : "unavailable\n";
-        service->failures = 0;
-        service->job_check_at = 0;
-        return stopped ? healthy_probe_interval : retry_probe_interval;
-    }
+    if (lstat(DISABLED_FILE, &marker) == 0)
+        return record_stop_state(service, stop_server());
     if (errno != ENOENT) {
         service->state = "unavailable\n";
         service->failures = 0;
@@ -350,11 +354,8 @@ static void handle_client(int client, uid_t allowed_user, struct supervision *se
         send_text(client, "error\n");
     } else if (strcmp(request, "stop\n") == 0) {
         const bool stopped = save_stopped(true) && stop_server();
-        service->state = stopped ? "stopped\n" : "unavailable\n";
-        service->next_probe = monotonic_milliseconds() +
-            (stopped ? healthy_probe_interval : retry_probe_interval);
-        service->failures = 0;
-        service->job_check_at = 0;
+        const int interval = record_stop_state(service, stopped);
+        service->next_probe = monotonic_milliseconds() + interval;
         send_text(client, stopped ? "ok\n" : "error\n");
     } else if (strcmp(request, "restart\n") == 0) {
         const bool started = save_stopped(false) && start_server(service_job());

@@ -25,12 +25,12 @@ public static partial class CastarEndpoints
     {
         var rows = await db.RecurringPurchases.AsNoTracking()
             .OrderBy(row => row.IsPaused).ThenBy(row => row.NextRunUtc).ThenBy(row => row.Id).ToArrayAsync(token);
-        var schedules = rows.Select(row => (Row: row, Schedule: RecurringPurchaseScheduler.Read(row))).ToArray();
+        var schedules = rows.Select(row => (Row: row, Schedule: RecurringPurchaseTemplate.Read(row))).ToArray();
         if (!SupportsItemCurrency(request) && schedules.Any(entry => ContainsForeignItemCurrency(entry.Schedule.Template)))
             return ItemCurrencyClientRequired();
-        var categories = await RecurringPurchaseScheduler.GetCategoryIdsAsync(db, token);
-        return Results.Ok(schedules.Select(entry => RecurringPurchaseScheduler.ToDto(entry.Row,
-            RecurringPurchaseScheduler.RemoveDeletedCategories(entry.Schedule, categories))).ToArray());
+        var categories = await RecurringPurchaseTemplate.GetCategoryIdsAsync(db, schedules.SelectMany(entry => entry.Schedule.Template.Items), token);
+        return Results.Ok(schedules.Select(entry => RecurringPurchaseTemplate.ToDto(entry.Row,
+            RecurringPurchaseTemplate.RemoveDeletedCategories(entry.Schedule, categories))).ToArray());
     }
 
     private static Task<IResult> CreateRecurringPurchase(RecurringPurchaseWriteDto input, CastarDbContext db,
@@ -76,7 +76,7 @@ public static partial class CastarEndpoints
         var policy = settings.ManualCurrencies;
         await using var transaction = await db.Database.BeginTransactionAsync(token);
         var existing = await db.RecurringPurchases.FindAsync([id], token);
-        var previous = existing is null ? null : RecurringPurchaseScheduler.Read(existing);
+        var previous = existing is null ? null : RecurringPurchaseTemplate.Read(existing);
         if (!supportsItemCurrency && previous is not null && ContainsForeignItemCurrency(previous.Template))
             return ItemCurrencyClientRequired();
         var previousHeaderCurrency = previous?.Template.Purchase.Currency;
@@ -104,7 +104,7 @@ public static partial class CastarEndpoints
                 (int)zone.GetUtcOffset(localStart).TotalMinutes,
             Template = new(id, header with { Currency = currency, AddedOn = localStart, AddedOnUtc = null }, normalizedItems)
         };
-        var json = RecurringPurchaseScheduler.Serialize(schedule);
+        var json = RecurringPurchaseTemplate.Serialize(schedule);
 
         if (revision is { } expected)
         {
@@ -116,7 +116,7 @@ public static partial class CastarEndpoints
         else if (existing is not null)
         {
             return existing.ScheduleJson == json
-                ? Results.Ok(RecurringPurchaseScheduler.ToDto(existing, schedule)) : RecurringPurchaseConflict();
+                ? Results.Ok(RecurringPurchaseTemplate.ToDto(existing, schedule)) : RecurringPurchaseConflict();
         }
 
         if (!itemsOnly && (currency is null || !policy.Allows(currency) && currency != previousHeaderCurrency))
@@ -131,7 +131,7 @@ public static partial class CastarEndpoints
         }
         if (!await db.Users.AnyAsync(user => user.Id == owner, token))
             return InvalidInput("Выберите существующего пользователя.");
-        var categories = await RecurringPurchaseScheduler.GetCategoryIdsAsync(db, token);
+        var categories = await RecurringPurchaseTemplate.GetCategoryIdsAsync(db, items, token);
         if (items.Any(item => item.Category?.Id is { } id && !categories.Contains(id)))
             return InvalidInput("Выберите существующие категории расходов.");
 
@@ -167,7 +167,7 @@ public static partial class CastarEndpoints
         await db.SaveChangesAsync(token);
         await transaction.CommitAsync(token);
         scheduler.Changed();
-        return Results.Ok(RecurringPurchaseScheduler.ToDto(row, schedule));
+        return Results.Ok(RecurringPurchaseTemplate.ToDto(row, schedule));
     }
 
     private static bool ContainsForeignItemCurrency(PurchaseCreateDto template) =>
@@ -209,7 +209,7 @@ public static partial class CastarEndpoints
             return Results.NoContent();
         }
 
-        var schedule = RecurringPurchaseScheduler.Read(row);
+        var schedule = RecurringPurchaseTemplate.Read(row);
         var anchor = schedule.Template.Purchase.AddedOn;
         if (!RecurringPurchaseTime.TryResolve(schedule, out var zone))
             return InvalidInput("Измените часовой пояс регулярной покупки.");
@@ -230,13 +230,13 @@ public static partial class CastarEndpoints
                 RecurringPurchaseScheduler.ResetRetry(row);
                 break;
         }
-        var categories = await RecurringPurchaseScheduler.GetCategoryIdsAsync(db, token);
+        var categories = await RecurringPurchaseTemplate.GetCategoryIdsAsync(db, schedule.Template.Items, token);
         row.Revision++;
         await db.SaveChangesAsync(token);
         await transaction.CommitAsync(token);
         scheduler.Changed();
-        return Results.Ok(RecurringPurchaseScheduler.ToDto(row,
-            RecurringPurchaseScheduler.RemoveDeletedCategories(schedule, categories)));
+        return Results.Ok(RecurringPurchaseTemplate.ToDto(row,
+            RecurringPurchaseTemplate.RemoveDeletedCategories(schedule, categories)));
     }
 
     private static IResult RecurringPurchaseConflict() => Results.Problem(statusCode: StatusCodes.Status409Conflict,

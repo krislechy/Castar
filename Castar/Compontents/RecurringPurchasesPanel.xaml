@@ -7,7 +7,6 @@
             <ResourceDictionary.MergedDictionaries>
                 <ResourceDictionary Source="/Castar;component/Styles/LedgerCards.xaml"/>
             </ResourceDictionary.MergedDictionaries>
-            <BooleanToVisibilityConverter x:Key="VisibleWhenTrue"/>
             <Style x:Key="SubscriptionAction" TargetType="Button" BasedOn="{StaticResource LedgerIconButton}">
                 <Setter Property="Width" Value="32"/>
                 <Setter Property="Height" Value="32"/>
@@ -89,7 +88,7 @@
                                 </ItemsControl.ItemTemplate>
                             </ItemsControl>
                             <TextBlock Text="На паузе" FontSize="12" TextAlignment="Right" Margin="0,4,0,0"
-                                       Visibility="{Binding Subscription.IsPaused, Converter={StaticResource VisibleWhenTrue}}"
+                                       Visibility="{Binding Subscription.IsPaused, Converter={StaticResource Castar.VisibleWhenTrue}}"
                                        Foreground="{DynamicResource Foreground.Gray}"/>
                         </StackPanel>
                         <Button Grid.Column="2" Style="{StaticResource SubscriptionAction}" ToolTip="Редактировать"

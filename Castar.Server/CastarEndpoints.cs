@@ -129,8 +129,8 @@ public static partial class CastarEndpoints
         }
     }
 
-    private static async Task<UserDto[]> GetUsers(IUsersService users) =>
-        (await users.GetEntities()).Select(ToDto).ToArray();
+    private static async Task<UserDto[]> GetUsers(IUsersService users, CancellationToken token) =>
+        (await users.ListAsync(token)).Select(ToDto).ToArray();
 
     private static async Task<IResult> GetUser(Guid id, IUsersRepository users, CancellationToken cancellationToken)
     {
@@ -173,7 +173,7 @@ public static partial class CastarEndpoints
 
         var user = new User();
         Apply(user, input);
-        await users.Add(user);
+        await users.Add(user, cancellationToken);
         events.QueueSynchronization(ServerSynchronization.Users);
         return Results.Created($"/api/users/{user.Id}", ToDto(user));
     }
@@ -191,27 +191,33 @@ public static partial class CastarEndpoints
             return DuplicateTelegramId();
 
         Apply(user, input);
-        await users.Update(user);
+        await users.Update(user, cancellationToken);
         events.QueueSynchronization(ServerSynchronization.Users);
         return Results.Ok(ToDto(user));
     }
 
-    private static async Task<IResult> DeleteUser(Guid id, IUsersService users, BudgetEventPublisher events)
+    private static async Task<IResult> DeleteUser(Guid id, IUsersService users, BudgetEventPublisher events,
+        CancellationToken cancellationToken)
     {
-        if (!await users.Delete(id))
+        if (!await users.Delete(id, cancellationToken))
             return Results.NotFound();
         events.QueueSynchronization(ServerSynchronization.Users);
         return Results.NoContent();
     }
 
     private static async Task<IResult> GetIncomes(DateTime start, DateTime finish,
-        DateTimeOffset? startUtc, DateTimeOffset? finishUtc, IIncomesService incomes)
+        DateTimeOffset? startUtc, DateTimeOffset? finishUtc, IIncomesRepository incomes, CancellationToken token)
     {
         if (!TryReadRange(start, finish, startUtc, finishUtc, out var first, out var last))
             return InvalidInput("Укажите допустимый период.");
 
-        var entries = await incomes.GetEntitiesWithAllIncludes(first, last);
-        return Results.Ok(entries.Select(ToDto).ToArray());
+        var entries = await incomes.ListAsync(first, last, token);
+        return Results.Ok(entries.Select(entry => ToDto(entry.Income,
+            new UserDto(entry.Owner.Id, entry.Owner.TelegramId, entry.Owner.Name, entry.Owner.Sex, entry.Owner.Color, null)
+            {
+                TelegramNotificationsEnabled = entry.Owner.TelegramNotificationsEnabled,
+                HasAvatar = entry.Owner.HasAvatar
+            })).ToArray());
     }
 
     private static async Task<IResult> GetIncome(Guid id, IIncomesRepository incomes,
@@ -253,7 +259,7 @@ public static partial class CastarEndpoints
             CategoryState = input.Category is null ? IncomeCategoryState.Pending : IncomeCategoryState.Confirmed
         };
         Apply(income, input with { Currency = currency }, owner, date);
-        await incomes.Add(income, owner.TelegramId, owner);
+        await incomes.Add(income, owner.TelegramId, owner, cancellationToken);
         return Results.Created($"/api/incomes/{income.Id}", ToDto(income));
     }
 
@@ -287,12 +293,12 @@ public static partial class CastarEndpoints
         Apply(income, input, owner, date);
         if (input.Category is not null)
             income.CategoryId = input.Category.Id;
-        await incomes.Update(income, updateCategory: input.Category is not null);
+        await incomes.Update(income, updateCategory: input.Category is not null, cancellationToken);
         return Results.Ok(ToDto(income));
     }
 
-    private static async Task<IResult> DeleteIncome(Guid id, IIncomesService incomes) =>
-        await incomes.Delete(id) ? Results.NoContent() : Results.NotFound();
+    private static async Task<IResult> DeleteIncome(Guid id, IIncomesService incomes, CancellationToken cancellationToken) =>
+        await incomes.Delete(id, cancellationToken) ? Results.NoContent() : Results.NotFound();
 
     private static async Task<IResult> GetPurchases(DateTime start, DateTime finish,
         DateTimeOffset? startUtc, DateTimeOffset? finishUtc, IPurchasesService purchases, CastarDbContext db,
@@ -301,7 +307,7 @@ public static partial class CastarEndpoints
         if (!TryReadRange(start, finish, startUtc, finishUtc, out var first, out var last))
             return InvalidInput("Укажите допустимый период.");
 
-        var entries = await purchases.GetEntitiesWithAllIncludes(first, last);
+        var entries = await purchases.ListAsync(first, last, token);
         if (!SupportsItemCurrency(request) && entries.Any(purchase => purchase.HasMultipleCurrencies()))
             return ItemCurrencyClientRequired();
         var categories = await ReadItemCategories(db, entries.SelectMany(entry => entry.Items), token);
@@ -421,7 +427,7 @@ public static partial class CastarEndpoints
             input.Currency, policy, SupportsItemCurrency(request));
         if (result == PurchaseMutationResult.InvalidCurrency)
             return InvalidManualCurrency(policy);
-        return CompleteManualCategoryWrite(result, input.Category, events);
+        return CompleteManualCategoryWrite(result, input.Category, db, purchaseId, events);
     }
 
     private static async Task<IResult> CreatePurchase(PurchaseCreateDto input, IPurchasesRepository purchases,
@@ -523,7 +529,7 @@ public static partial class CastarEndpoints
             input.Currency, policy, SupportsItemCurrency(request));
         if (result == PurchaseMutationResult.InvalidCurrency)
             return InvalidManualCurrency(policy);
-        return CompleteManualCategoryWrite(result, input.Category, events);
+        return CompleteManualCategoryWrite(result, input.Category, db, purchaseId, events);
     }
 
     private static IResult? ValidatePurchase(PurchaseWriteDto input)
@@ -662,8 +668,10 @@ public static partial class CastarEndpoints
             HasAvatar = user.ImageRaw is { Length: > 0 }
         };
 
-    private static IncomeDto ToDto(Income income) =>
-        new(income.Id, income.UserId, ToDto(income.User) with { ImageRaw = null }, income.MessageId,
+    private static IncomeDto ToDto(Income income) => ToDto(income, ToDto(income.User) with { ImageRaw = null });
+
+    private static IncomeDto ToDto(Income income, UserDto owner) =>
+        new(income.Id, income.UserId, owner, income.MessageId,
             income.Sum, income.Source, BudgetTime.InZone(income.AddedOn, BudgetTime.Belgrade))
         {
             CategoryId = income.CategoryId, CategoryConfirmed = income.CategoryState == IncomeCategoryState.Confirmed,

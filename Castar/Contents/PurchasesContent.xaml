@@ -6,7 +6,6 @@
  IsVisibleChanged="Purchases_IsVisibleChanged" ContextMenuOpening="Purchases_ContextMenuOpening" FontFamily="Segoe UI" FontSize="14">
  <UserControl.Resources><ResourceDictionary>
   <ResourceDictionary.MergedDictionaries><ResourceDictionary Source="/Castar;component/Styles/ExpenseLedger.xaml"/></ResourceDictionary.MergedDictionaries>
-  <BooleanToVisibilityConverter x:Key="PurchaseActionVisibility"/>
   <c:BudgetCategoryIconConverter x:Key="CategoryIcon"/>
   <Style x:Key="ExpenseCategoryStatusIcon" TargetType="Path">
    <Setter Property="Width" Value="14"/><Setter Property="Height" Value="14"/>
@@ -21,9 +20,9 @@
    <Style.Triggers><Trigger Property="ToolTip" Value="{x:Null}"><Setter Property="Visibility" Value="Collapsed"/></Trigger></Style.Triggers>
   </Style>
   <ContextMenu x:Key="PurchaseRowMenu" Style="{StaticResource LedgerContextMenu}">
-   <MenuItem Header="Редактировать" Style="{StaticResource LedgerMenuItem}" Icon="{StaticResource Ledger.EditIcon}" Click="EditPurchaseMenu_Click" Visibility="{Binding CanDelete, Converter={StaticResource PurchaseActionVisibility}}"/>
-   <MenuItem Header="Показать исходные данные" Style="{StaticResource LedgerMenuItem}" Icon="{StaticResource Ledger.SourceIcon}" Click="ShowReceiptSource_Click" Visibility="{Binding HasReceiptSource, Converter={StaticResource PurchaseActionVisibility}}"/>
-   <MenuItem Header="Удалить покупку" Style="{StaticResource LedgerMenuItem}" Icon="{StaticResource Ledger.DeleteIcon}" Click="DeletePurchase_Click" Visibility="{Binding CanDelete, Converter={StaticResource PurchaseActionVisibility}}"/>
+   <MenuItem Header="Редактировать" Style="{StaticResource LedgerMenuItem}" Icon="{StaticResource Ledger.EditIcon}" Click="EditPurchaseMenu_Click" Visibility="{Binding CanDelete, Converter={StaticResource Castar.VisibleWhenTrue}}"/>
+   <MenuItem Header="Показать исходные данные" Style="{StaticResource LedgerMenuItem}" Icon="{StaticResource Ledger.SourceIcon}" Click="ShowReceiptSource_Click" Visibility="{Binding HasReceiptSource, Converter={StaticResource Castar.VisibleWhenTrue}}"/>
+   <MenuItem Header="Удалить покупку" Style="{StaticResource LedgerMenuItem}" Icon="{StaticResource Ledger.DeleteIcon}" Click="DeletePurchase_Click" Visibility="{Binding CanDelete, Converter={StaticResource Castar.VisibleWhenTrue}}"/>
   </ContextMenu>
   <ContextMenu x:Key="PurchaseItemRowMenu" Style="{StaticResource LedgerContextMenu}">
    <MenuItem Header="Редактировать" Style="{StaticResource LedgerMenuItem}" Icon="{StaticResource Ledger.EditIcon}" Click="EditPurchaseItemMenu_Click"/>
@@ -59,7 +58,7 @@
                   Foreground="{DynamicResource Foreground.White}" AutomationProperties.Name="Сумма расходов за период"/>
       </Viewbox>
       <ScrollViewer Style="{StaticResource LedgerScrollViewer}" MaxHeight="112" HorizontalScrollBarVisibility="Disabled"
-                    VerticalScrollBarVisibility="Auto" Visibility="{Binding HasItems, ElementName=ExpenseNativeTotals, Converter={StaticResource PurchaseActionVisibility}}">
+                    VerticalScrollBarVisibility="Auto" Visibility="{Binding HasItems, ElementName=ExpenseNativeTotals, Converter={StaticResource Castar.VisibleWhenTrue}}">
        <ItemsControl x:Name="ExpenseNativeTotals" AutomationProperties.Name="Суммы расходов по валютам">
         <ItemsControl.ItemTemplate>
          <DataTemplate>
@@ -270,7 +269,7 @@
           </ContentControl>
           <Path x:Name="ItemCategoryGlyph" Data="{Binding CategoryIconKey, Converter={StaticResource CategoryIcon}}"
                 Stroke="{StaticResource LedgerMuted}"
-                Visibility="{Binding HasCategory, Converter={StaticResource PurchaseActionVisibility}}">
+                Visibility="{Binding HasCategory, Converter={StaticResource Castar.VisibleWhenTrue}}">
            <Path.Style>
             <Style TargetType="Path" BasedOn="{StaticResource ExpenseCategoryStatusIcon}">
              <Setter Property="HorizontalAlignment" Value="Center"/>

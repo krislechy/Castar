@@ -11,7 +11,6 @@
                 <ResourceDictionary Source="/Castar;component/Styles/LedgerCards.xaml"/>
             </ResourceDictionary.MergedDictionaries>
             <c:BudgetCategoryIconConverter x:Key="CategoryIcon"/>
-            <BooleanToVisibilityConverter x:Key="CategoryVisibility"/>
             <Style x:Key="CategoryRow" TargetType="ListViewItem" BasedOn="{StaticResource BudgetListItem}">
                 <Setter Property="MinHeight" Value="42"/>
                 <Setter Property="Margin" Value="0,0,0,2"/>
@@ -106,7 +105,7 @@
                             <ProgressBar Width="104" Height="4" HorizontalAlignment="Center" VerticalAlignment="Top"
                                          Margin="0,24,0,0" IsIndeterminate="True"
                                          AutomationProperties.Name="Загрузка категорий"
-                                         Visibility="{Binding DataContext.ShowInitialLoading, RelativeSource={RelativeSource AncestorType=local:CategoriesContent}, Converter={StaticResource CategoryVisibility}}"/>
+                                         Visibility="{Binding DataContext.ShowInitialLoading, RelativeSource={RelativeSource AncestorType=local:CategoriesContent}, Converter={StaticResource Castar.VisibleWhenTrue}}"/>
                         </Grid>
                     </Grid>
                 </Border>
@@ -119,7 +118,7 @@
             <RowDefinition/>
         </Grid.RowDefinitions>
         <Border Style="{StaticResource Castar.Panel}" Padding="12,8" Margin="0,0,0,12"
-                Visibility="{Binding HasError, Converter={StaticResource CategoryVisibility}}">
+                Visibility="{Binding HasError, Converter={StaticResource Castar.VisibleWhenTrue}}">
             <DockPanel>
                 <Button DockPanel.Dock="Right" Style="{StaticResource Castar.SecondaryButton}" Margin="12,0,0,0"
                         Content="Повторить" Click="RetryCategories_Click"/>

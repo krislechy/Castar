@@ -3,7 +3,6 @@ using Castar.Domain.Models.SettingsModel;
 using Castar.ServerConnection;
 using System;
 using System.Collections.Generic;
-using System.Globalization;
 using System.Linq;
 using System.Net;
 using System.Net.Http;
@@ -179,19 +178,6 @@ public sealed class HistoricalExchangeRates : IDisposable
 
     internal static decimal ConvertAmount(decimal amount, decimal rate) =>
         decimal.Round(amount * rate, 2, MidpointRounding.AwayFromZero);
-
-    internal static string Format(decimal amount, string? currency)
-    {
-        var number = amount.ToString("#,0.00##########################", CultureInfo.CurrentCulture);
-        return string.IsNullOrEmpty(currency) ? number : $"{number} {currency}";
-    }
-
-    internal static string FormatTotals(IEnumerable<(decimal Amount, string? Currency)> amounts)
-    {
-        var totals = amounts.GroupBy(amount => amount.Currency)
-            .Select(group => Format(group.Sum(amount => amount.Amount), group.Key));
-        return string.Join(" · ", totals);
-    }
 
     public void Dispose() => http.Dispose();
 

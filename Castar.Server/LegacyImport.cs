@@ -152,7 +152,7 @@ internal static class LegacyImport
     private static async Task SnapshotAsync(string sourcePath, string destinationPath, CancellationToken token)
     {
         token.ThrowIfCancellationRequested();
-        await using (ServerSettings.CreatePrivateFile(destinationPath))
+        await using (PrivateServerFile.Create(destinationPath))
         { }
         try
         {

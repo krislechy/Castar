@@ -1,5 +1,3 @@
-using System.Security.AccessControl;
-using System.Security.Principal;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using Castar.Api;
@@ -301,48 +299,8 @@ internal sealed class ServerSettings : IDisposable
     private static ManualCurrencySettingsDto ToDto(ManualCurrencySettings policy) =>
         new(policy.DefaultCurrency, policy.Currencies.ToArray());
 
-    private async Task SaveAsync(StoredSettings value, CancellationToken cancellationToken)
-    {
-        var temporaryPath = path + "." + Guid.NewGuid().ToString("N") + ".tmp";
-        try
-        {
-            await using (var file = CreatePrivateFile(temporaryPath, FileOptions.Asynchronous))
-            {
-                await JsonSerializer.SerializeAsync(file, value, JsonOptions, cancellationToken);
-                file.Flush(flushToDisk: true);
-            }
-            cancellationToken.ThrowIfCancellationRequested();
-            File.Move(temporaryPath, path, overwrite: true);
-        }
-        catch
-        {
-            if (File.Exists(temporaryPath))
-                File.Delete(temporaryPath);
-            throw;
-        }
-    }
-
-    internal static FileStream CreatePrivateFile(string path, FileOptions options = FileOptions.None)
-    {
-        if (OperatingSystem.IsWindows())
-        {
-            using var identity = WindowsIdentity.GetCurrent();
-            var account = identity.User ?? throw new InvalidOperationException("Cannot identify the Castar Server Windows account.");
-            var security = new FileSecurity();
-            security.SetAccessRuleProtection(isProtected: true, preserveInheritance: false);
-            security.AddAccessRule(new FileSystemAccessRule(account, FileSystemRights.FullControl, AccessControlType.Allow));
-            return new FileInfo(path).Create(FileMode.CreateNew, FileSystemRights.Write, FileShare.None,
-                4096, options, security);
-        }
-
-        return new FileStream(path, new FileStreamOptions
-        {
-            Mode = FileMode.CreateNew,
-            Access = FileAccess.Write,
-            Options = options,
-            UnixCreateMode = UnixFileMode.UserRead | UnixFileMode.UserWrite
-        });
-    }
+    private Task SaveAsync(StoredSettings value, CancellationToken cancellationToken) =>
+        PrivateServerFile.ReplaceJsonAsync(path, value, JsonOptions, cancellationToken);
 
     private void Apply(StoredSettings value, ManualCurrencySettings policy)
     {

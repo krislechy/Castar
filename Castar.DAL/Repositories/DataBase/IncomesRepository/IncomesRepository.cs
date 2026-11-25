@@ -6,13 +6,12 @@ namespace Castar.DAL.Repositories.DataBase
     public sealed partial class IncomesRepository(CastarDbContext db, IncomeWriteCommitted? publish = null)
         : BaseRepository<Income>(db), IIncomesRepository
     {
-        public async Task<IReadOnlyList<Income>> List(DateTime start, DateTime finish, bool includeUser)
-        {
-            var incomes = Context.Incomes.AsNoTracking().Where(x => x.AddedOn >= start && x.AddedOn <= finish);
-            if (includeUser)
-                incomes = incomes.AsNoTrackingWithIdentityResolution().Include(x => x.User);
-            return await incomes.ToListAsync();
-        }
+        public async Task<IReadOnlyList<IncomeListEntry>> ListAsync(DateTime start, DateTime finish, CancellationToken cancellationToken) =>
+            await Context.Incomes.AsNoTracking().Where(income => income.AddedOn >= start && income.AddedOn <= finish)
+                .Select(income => new IncomeListEntry(income, new IncomeOwner(income.User.Id, income.User.TelegramId,
+                    income.User.Name, income.User.Sex, income.User.ColorRaw, income.User.TelegramNotificationsEnabled,
+                    income.User.ImageRaw != null && income.User.ImageRaw.Length != 0)))
+                .ToListAsync(cancellationToken);
 
         public async Task<IReadOnlyList<Income>> ListByMessage(
             Guid userId, long messageId, CancellationToken cancellationToken)
@@ -40,7 +39,7 @@ namespace Castar.DAL.Repositories.DataBase
             if (transaction is not null)
             {
                 await transaction.CommitAsync(cancellationToken);
-                publish?.Invoke([income]);
+                publish?.Invoke([income], income.AddedOn);
             }
             return income;
         }
@@ -50,6 +49,7 @@ namespace Castar.DAL.Repositories.DataBase
             await using var transaction = Context.Database.CurrentTransaction is null
                 ? await Context.Database.BeginTransactionAsync(cancellationToken) : null;
             var current = await FindForUpdate(income.Id, cancellationToken);
+            var oldDate = current.AddedOn;
             current.UserId = income.UserId;
             current.MessageId = income.MessageId;
             var classificationChanged = UpdateSource(current, income.Source) ||
@@ -66,7 +66,7 @@ namespace Castar.DAL.Repositories.DataBase
             {
                 await transaction.CommitAsync(cancellationToken);
                 if (changes > 0)
-                    publish?.Invoke([]);
+                    publish?.Invoke([], oldDate < current.AddedOn ? oldDate : current.AddedOn);
             }
             income.Currency = current.Currency;
             income.RateDate = current.RateDate;
@@ -79,13 +79,18 @@ namespace Castar.DAL.Repositories.DataBase
         {
             await using var transaction = Context.Database.CurrentTransaction is null
                 ? await Context.Database.BeginTransactionAsync(cancellationToken) : null;
-            var deleted = await base.Delete(id, cancellationToken);
-            if (deleted && transaction is not null)
+            var income = await Context.Incomes.FindAsync([id], cancellationToken);
+            if (income is null)
+                return false;
+
+            Context.Incomes.Remove(income);
+            await Context.SaveChangesAsync(cancellationToken);
+            if (transaction is not null)
             {
                 await transaction.CommitAsync(cancellationToken);
-                publish?.Invoke([]);
+                publish?.Invoke([], income.AddedOn);
             }
-            return deleted;
+            return true;
         }
 
         public async Task SaveMessageIncomes(
@@ -122,12 +127,15 @@ namespace Castar.DAL.Repositories.DataBase
             }
 
             Context.Incomes.RemoveRange(existing.Values);
+            var affectedFrom = Context.ChangeTracker.Entries<Income>()
+                .Where(entry => entry.State is EntityState.Added or EntityState.Modified or EntityState.Deleted)
+                .Min(entry => (DateTime?)entry.Entity.AddedOn);
             var changes = await Context.SaveChangesAsync(cancellationToken);
             if (transaction is not null)
             {
                 await transaction.CommitAsync(cancellationToken);
                 if (changes > 0)
-                    publish?.Invoke(created);
+                    publish?.Invoke(created, affectedFrom);
             }
         }
 

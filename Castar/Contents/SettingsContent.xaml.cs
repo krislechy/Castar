@@ -13,6 +13,7 @@ using System.IO;
 using System.Linq;
 using System.Net;
 using System.Net.Http;
+using System.Security;
 using System.Security.Cryptography;
 using System.Threading;
 using System.Threading.Tasks;
@@ -38,6 +39,8 @@ public partial class SettingsContent : UserControl
     private string savedConnectionStatus = "";
     private string pendingKey = "";
     private PasswordBox? telegramTokenInput;
+    internal Func<Task>? ClearChartCacheAsync { get; set; }
+    internal event Action? ScreenClosed;
 
     public SettingsContent(ClientSettings settings, CastarServerClient server, GitHubUpdateService updateService,
         HistoricalExchangeRates exchangeRates, BudgetEventConnection? events = null, LocalAiService? localAi = null)
@@ -96,6 +99,27 @@ public partial class SettingsContent : UserControl
         ApiKeyInput.Clear();
         context.IsApiKeyEditorVisible = false;
         context.ServerConfiguration.ClearSensitiveDraft();
+        ScreenClosed?.Invoke();
+    }
+
+    private async void ClearChartCache_Click(object sender, RoutedEventArgs e)
+    {
+        if (ClearChartCacheAsync is not { } clear)
+            return;
+
+        await ButtonLoading.RunAsync(sender, async () =>
+        {
+            ChartCacheStatus.Text = "";
+            try
+            {
+                await clear();
+                ChartCacheStatus.Text = "Кеш графиков очищен.";
+            }
+            catch (Exception error) when (error is IOException or UnauthorizedAccessException or SecurityException)
+            {
+                ChartCacheStatus.Text = "Не удалось очистить кеш графиков.";
+            }
+        });
     }
 
     internal Task RetryUnavailableDataAsync()

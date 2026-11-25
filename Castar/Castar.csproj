@@ -4,7 +4,7 @@
     <OutputType>WinExe</OutputType>
     <TargetFramework>net11.0-windows10.0.19041.0</TargetFramework>
     <RootNamespace>Castar</RootNamespace>
-    <Version>0.11.23</Version>
+    <Version>0.11.24</Version>
     <Nullable>enable</Nullable>
     <UseWPF>true</UseWPF>
     <Copyright>krislechy</Copyright>
@@ -22,7 +22,6 @@
     <PackageReference Include="LiveChartsCore.SkiaSharpView.WPF" />
     <PackageReference Include="SkiaSharp.Views.WPF" />
     <PackageReference Include="SkiaSharp.HarfBuzz" />
-    <PackageReference Include="System.Security.Cryptography.ProtectedData" />
     <PackageReference Include="ZXingCpp" />
   </ItemGroup>
 

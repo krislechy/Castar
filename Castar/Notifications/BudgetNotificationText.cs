@@ -24,8 +24,8 @@ internal static class BudgetNotificationText
     internal static string Details(BudgetOperationPreviewDto preview)
     {
         var amount = preview.AmountsByCurrency is { Count: > 0 } amounts
-            ? HistoricalExchangeRates.FormatTotals(amounts.Select(row => (row.Amount, row.Currency)))
-            : HistoricalExchangeRates.Format(preview.Amount, preview.Currency);
+            ? MoneyText.FormatTotals(amounts.Select(row => (row.Amount, row.Currency)))
+            : MoneyText.Format(preview.Amount, preview.Currency);
         return $"{Limit(preview.Author, 56)} · {amount}";
     }
 

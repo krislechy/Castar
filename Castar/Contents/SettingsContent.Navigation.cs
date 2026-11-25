@@ -46,6 +46,8 @@ public partial class SettingsContent
 
         activeSection = page;
         activeSectionButton = button;
+        if (ReferenceEquals(button, ChartCacheSectionButton))
+            ChartCacheStatus.Text = "";
         SectionMenu.Visibility = Visibility.Collapsed;
         SettingsTitle.Text = title;
         BackToSections.Visibility = Visibility.Visible;

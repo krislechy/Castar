@@ -197,7 +197,7 @@ namespace Castar.Compontents
             (MonthPopup.PlacementTarget as Button)?.Focus();
         }
 
-        private void SetYear(int year) => RangeDate = new RangeDate(new DateTime(year, 1, 1), new DateTime(year, 12, 31));
+        internal void SetYear(int year) => RangeDate = new RangeDate(new DateTime(year, 1, 1), new DateTime(year, 12, 31));
 
         internal void SetMonth(DateTime date)
         {

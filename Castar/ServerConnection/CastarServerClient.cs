@@ -31,14 +31,17 @@ public sealed class CastarServerClient(ClientSettings settings) : IDisposable
     private readonly HttpClient localClient = CreateHttpClient(useProxy: false);
     private ConcurrentDictionary<(string Server, string Key, Guid Id), byte[]> avatars = new();
     private long statisticsFinancialRevision;
+    internal Func<DateTimeOffset?, Task>? FinancialMutationAsync { get; set; }
 
     internal void ClearAvatarCache() => Interlocked.Exchange(ref avatars, new());
 
     // An opaque cache partition; never expose the API credential in keys or diagnostics.
-    internal string StatisticsCacheScope => Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(
+    internal string StatisticsCacheIdentity => Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(
         System.Text.Encoding.UTF8.GetBytes(settings.ServerUrl + "\n" + settings.ProtectedApiKey + "\n"
-            + settings.DisplayTimeZone.Id + "\n" + Interlocked.Read(ref statisticsFinancialRevision)
-                .ToString(CultureInfo.InvariantCulture))));
+            + settings.DisplayTimeZone.ToSerializedString())));
+
+    internal string StatisticsCacheScope => StatisticsCacheIdentity + ":" +
+        Interlocked.Read(ref statisticsFinancialRevision).ToString(CultureInfo.InvariantCulture);
 
     internal event EventHandler? ConnectionChanged
     {
@@ -568,12 +571,14 @@ public sealed class CastarServerClient(ClientSettings settings) : IDisposable
         CancellationToken cancellationToken = default, bool readProblemDetails = false,
         Action<HttpResponseMessage>? observeResponse = null) where T : class
     {
-        using var request = CreateRequest(method, ParseServerUrl(settings.ServerUrl), settings.ApiKey, path);
+        var connection = (settings.ServerUrl, settings.ProtectedApiKey);
+        using var request = CreateRequest(method, ParseServerUrl(connection.ServerUrl), settings.ApiKey, path);
         if (payload is not null)
             request.Content = JsonContent.Create(payload);
         using var response = await SendRequestAsync(request, cancellationToken).ConfigureAwait(false);
         await EnsureSuccessAsync(response, readProblemDetails, cancellationToken).ConfigureAwait(false);
-        MarkFinancialMutation(method, path);
+        if (connection == (settings.ServerUrl, settings.ProtectedApiKey))
+            await MarkFinancialMutationAsync(method, path, response).ConfigureAwait(false);
         observeResponse?.Invoke(response);
         return await ReadResponseAsync<T>(response, cancellationToken).ConfigureAwait(false);
     }
@@ -640,19 +645,20 @@ public sealed class CastarServerClient(ClientSettings settings) : IDisposable
     private async Task<bool> SendMutationAsync(HttpMethod method, string path, CancellationToken cancellationToken,
         object? payload = null, bool modifiesAmounts = true)
     {
-        using var request = CreateRequest(method, ParseServerUrl(settings.ServerUrl), settings.ApiKey, path);
+        var connection = (settings.ServerUrl, settings.ProtectedApiKey);
+        using var request = CreateRequest(method, ParseServerUrl(connection.ServerUrl), settings.ApiKey, path);
         if (payload is not null)
             request.Content = JsonContent.Create(payload);
         using var response = await SendRequestAsync(request, cancellationToken).ConfigureAwait(false);
         if (response.StatusCode == HttpStatusCode.NotFound)
             return false;
         await EnsureSuccessAsync(response, readProblemDetails: payload is not null, cancellationToken).ConfigureAwait(false);
-        if (modifiesAmounts)
-            MarkFinancialMutation(method, path);
+        if (modifiesAmounts && connection == (settings.ServerUrl, settings.ProtectedApiKey))
+            await MarkFinancialMutationAsync(method, path, response).ConfigureAwait(false);
         return true;
     }
 
-    private void MarkFinancialMutation(HttpMethod method, string path)
+    private async Task MarkFinancialMutationAsync(HttpMethod method, string path, HttpResponseMessage response)
     {
         if (method != HttpMethod.Post && method != HttpMethod.Put && method != HttpMethod.Delete) return;
         var route = path.Split('?', 2)[0];
@@ -661,7 +667,16 @@ public sealed class CastarServerClient(ClientSettings settings) : IDisposable
         if (route is "api/incomes" or "api/purchases"
             || route.StartsWith("api/incomes/", StringComparison.Ordinal)
             || route.StartsWith("api/purchases/", StringComparison.Ordinal))
+        {
             Interlocked.Increment(ref statisticsFinancialRevision);
+            if (FinancialMutationAsync is { } changed)
+            {
+                var affected = response.Headers.TryGetValues(BudgetEvents.AffectedFromHeader, out var values)
+                    && DateTimeOffset.TryParseExact(values.FirstOrDefault(), "O", CultureInfo.InvariantCulture,
+                        DateTimeStyles.None, out var date) ? date : (DateTimeOffset?)null;
+                await changed(affected).ConfigureAwait(false);
+            }
+        }
     }
 
     private static HttpRequestMessage CreateRequest(HttpMethod method, Uri server, string apiKey, string path)

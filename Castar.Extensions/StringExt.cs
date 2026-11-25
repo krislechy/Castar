@@ -1,5 +1,4 @@
 ﻿using System.Globalization;
-using System.Text.RegularExpressions;
 
 namespace Castar.Extensions
 {
@@ -14,10 +13,6 @@ namespace Castar.Extensions
                 return @decimal;
             }
             return null;
-        }
-        public static string RemoveMultipleSpaces(this string value)
-        {
-            return Regex.Replace(value, @"\s+", " ");
         }
     }
 }

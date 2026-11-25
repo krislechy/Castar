@@ -1,14 +1,3 @@
-﻿using Castar.Extensions;
-using System;
-using System.Collections.Generic;
-using System.ComponentModel;
-using System.Linq;
-using System.Reflection;
-using System.Runtime.CompilerServices;
-using System.Security;
-using System.Text;
-using System.Threading;
-using System.Threading.Tasks;
 using System.Xml.Serialization;
 
 namespace Castar.Domain.Models.SettingsModel
@@ -37,41 +26,6 @@ namespace Castar.Domain.Models.SettingsModel
         {
             get => Volatile.Read(ref manualCurrencies);
             set => Volatile.Write(ref manualCurrencies, value);
-        }
-
-        public void SetHandlersEvents(Action handler)
-        {
-            //var properties = typeof(SettingsModel).GetProperties(System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance);
-            //if (properties != null)
-            //{
-            //    foreach (var property in properties)
-            //    {
-            //        var currentObj = property.GetValue(this);
-            //        var eventInfo = (EventInfo)currentObj.GetType().GetEvent("PropertyChanged");
-            //        var handler = Delegate.CreateDelegate(hanlder.GetType(),
-            //                        this,
-            //                         eventInfo.AddMethod);
-            //        eventInfo?.AddEventHandler(currentObj, handler);
-            //    }
-            //}
-            this.Systems.PropertyChanged += (q, e) => handler();
-            this.TelegramBot.PropertyChanged += (_, e) =>
-            {
-                if (e.PropertyName != nameof(TelegramBot.Status))
-                    handler();
-            };
-            this.NalogFNS.PropertyChanged += (q, e) => handler();
-            Receipts.PropertyChanged += (_, _) => handler();
-        }
-        public SettingsModel Copy()
-        {
-            var serializer = new XmlSerializer(typeof(SettingsModel));
-            using var stream = new MemoryStream();
-            serializer.Serialize(stream, this);
-            stream.Position = 0;
-            var copy = (SettingsModel)serializer.Deserialize(stream)!;
-            copy.ManualCurrencies = ManualCurrencies;
-            return copy;
         }
     }
 
@@ -156,7 +110,6 @@ namespace Castar.Domain.Models.SettingsModel
 
         [XmlIgnore]
         private string? telegramBotApi_KEY;
-        [Encryption]
         public string? TelegramBotApi_KEY
         {
             get => this.telegramBotApi_KEY;
@@ -227,7 +180,6 @@ namespace Castar.Domain.Models.SettingsModel
     {
         [XmlIgnore]
         private string? inn;
-        [Encryption]
         public string? INN
         {
             get => this.inn;
@@ -235,7 +187,6 @@ namespace Castar.Domain.Models.SettingsModel
         }
         [XmlIgnore]
         private string? password;
-        [Encryption]
         public string? Password
         {
             get => this.password;

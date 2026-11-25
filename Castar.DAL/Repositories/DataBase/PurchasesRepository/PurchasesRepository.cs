@@ -12,13 +12,9 @@ namespace Castar.DAL.Repositories.DataBase
     {
         private static readonly Encoding StrictUtf8 = new UTF8Encoding(false, true);
 
-        public async Task<IReadOnlyList<Purchase>> List(DateTime start, DateTime finish, bool includeDetails)
-        {
-            var purchases = Context.Purchases.AsNoTracking().Where(x => x.AddedOn >= start && x.AddedOn <= finish);
-            if (includeDetails)
-                purchases = WithDetails(purchases);
-            return await purchases.ToListAsync();
-        }
+        public async Task<IReadOnlyList<Purchase>> ListAsync(DateTime start, DateTime finish, CancellationToken cancellationToken) =>
+            await WithDetails(Context.Purchases.Where(x => x.AddedOn >= start && x.AddedOn <= finish))
+                .ToListAsync(cancellationToken);
 
         public Task<Purchase?> FindManualByMessage(Guid userId, long messageId, CancellationToken cancellationToken) =>
             WithDetails(Context.Purchases)
@@ -305,15 +301,6 @@ namespace Castar.DAL.Repositories.DataBase
             if (historyTransaction is not null)
                 await historyTransaction.CommitAsync(cancellationToken);
             return PurchaseMutationResult.Applied;
-        }
-
-        public async Task<bool> SearchByRawData(byte[]? query)
-        {
-            if (query is not { Length: > 0 and <= 100 })
-                return false;
-
-            var padded = PadRawData(query);
-            return await Context.Purchases.AnyAsync(x => x.RawData == padded);
         }
 
         public async Task<PurchaseMutationResult> AddPurchaseItemAsync(Guid purchaseId, long expectedRevision,

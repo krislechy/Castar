@@ -23,7 +23,7 @@ internal sealed class BudgetEventsHub(ApiKeyStore keys) : Hub
         };
         Context.Items[RevocationHandler] = close;
         keys.Revoked += close;
-        if (!keys.GetActiveKeyIds().Contains(keyId))
+        if (!keys.IsActive(keyId))
         {
             UnsubscribeRevocation();
             Context.Abort();

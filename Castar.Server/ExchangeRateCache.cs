@@ -68,15 +68,19 @@ internal sealed class ExchangeRateCache(
     private static async Task<Dictionary<(string Currency, DateOnly Date), ExchangeRateEntry>> ReadAsync(
         CastarDbContext database, string target, CurrencyRateKeyDto[] keys, bool track, CancellationToken cancellationToken)
     {
-        var requested = keys.Select(key => (key.Currency, key.Date)).ToHashSet();
-        var sources = requested.Select(key => key.Currency).Distinct().ToArray();
-        var dates = requested.Select(key => key.Date).Distinct().ToArray();
-        IQueryable<ExchangeRateEntry> query = database.ExchangeRates;
+        var requested = JsonSerializer.Serialize(keys.Distinct().Select(key => new { key.Currency, key.Date }));
+        // Seek the composite key for each requested pair, even when many unrelated dates are cached.
+        IQueryable<ExchangeRateEntry> query = database.ExchangeRates.FromSql($"""
+            SELECT rate.*
+            FROM json_each({requested}) AS requested
+            CROSS JOIN "ExchangeRates" AS rate
+            WHERE rate."Target" = {target}
+              AND rate."Source" = json_extract(requested.value, '$.Currency')
+              AND rate."Date" = json_extract(requested.value, '$.Date')
+            """);
         if (!track)
             query = query.AsNoTracking();
-        var rows = await query.Where(row => row.Target == target && sources.Contains(row.Source) && dates.Contains(row.Date))
-            .ToListAsync(cancellationToken);
-        return rows.Where(row => requested.Contains((row.Source, row.Date))).ToDictionary(row => (row.Source, row.Date));
+        return await query.ToDictionaryAsync(row => (row.Source, row.Date), cancellationToken);
     }
 
     private CurrencyRateKeyDto[] GetMissing(string target, CurrencyRateKeyDto[] keys,

@@ -1,13 +1,9 @@
-using Castar.Api;
 using Castar.Compontents;
 using Castar.Contents;
-using Castar.Currency;
-using Castar.LocalAi;
 using Castar.Logger;
 using Castar.Notifications;
 using Castar.ServerConnection;
 using Castar.Settings;
-using Castar.Statistics;
 using Castar.TrayNotify.Windows;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Win32;
@@ -72,33 +68,7 @@ public partial class App : Application
             settings = new ClientSettings();
         }
 
-        var services = new ServiceCollection();
-        services.AddSingleton(cLogger);
-        services.AddSingleton(settings);
-        services.AddSingleton<CastarServerClient>();
-        services.AddSingleton<HistoricalExchangeRates>();
-        services.AddSingleton<BudgetEventConnection>();
-        services.AddSingleton<LocalAiService>();
-        services.AddSingleton<ExpenseCategorizationService>();
-        services.AddSingleton<Updates.GitHubUpdateService>();
-        services.AddSingleton<ITrayIcon>(_ => CreateTray("Castar", RestoreFromTray, RestoreFromTray, ExitFromTray));
-        services.AddSingleton<MainWindow>();
-        services.AddSingleton<SettingsContent>();
-        services.AddSingleton<IncomesContent>();
-        services.AddSingleton<PurchasesContent>();
-        services.AddSingleton<CategoriesContent>();
-        services.AddSingleton<BudgetStatistics>();
-        services.AddSingleton(provider => new StatisticsContent(provider.GetRequiredService<BudgetStatistics>(),
-            provider.GetRequiredService<CastarServerClient>(), settings));
-        services.AddSingleton(provider => new Lazy<StatisticsContent>(provider.GetRequiredService<StatisticsContent>));
-        services.AddSingleton(provider =>
-        {
-            var window = provider.GetRequiredService<MainWindow>();
-            return new CastarNotificationCenter(window, window.ShowBudgetNotification,
-                provider.GetRequiredService<CastarServerClient>().GetUserAvatarAsync);
-        });
-
-        serviceProvider = services.BuildServiceProvider(validateScopes: true);
+        serviceProvider = CreateClientServices(settings);
         if (isCategorizationAgent)
         {
             StartCategorizationAgent(settings);
@@ -148,97 +118,7 @@ public partial class App : Application
         if (settingsReadFailed)
             _ = ShowSettingsWarning("Не удалось прочитать настройки. Укажите адрес и ключ сервера.");
 
-        var budgetEvents = serviceProvider.GetRequiredService<BudgetEventConnection>();
-        var purchases = serviceProvider.GetRequiredService<PurchasesContent>();
-        var incomes = serviceProvider.GetRequiredService<IncomesContent>();
-        var categories = serviceProvider.GetRequiredService<CategoriesContent>();
-        var statistics = serviceProvider.GetRequiredService<Lazy<StatisticsContent>>();
-        void RefreshOpenStatistics()
-        {
-            if (statistics.IsValueCreated)
-                _ = statistics.Value.RefreshAfterServerChangeAsync();
-        }
-
-        void RefreshOpenCategoryChart()
-        {
-            if (statistics.IsValueCreated)
-                statistics.Value.RefreshCategoryChartAfterServerChange();
-        }
-
-        budgetEvents.Changed += change =>
-        {
-            switch (change.Kind)
-            {
-                case BudgetEvents.Purchase:
-                    _ = purchases.RefreshAfterServerChangeAsync();
-                    break;
-                case BudgetEvents.Income:
-                    _ = incomes.RefreshAfterServerChangeAsync();
-                    break;
-                default:
-                    return;
-            }
-            if (change.Created)
-            {
-                if (settings.NotificationMode == NotificationMode.Castar)
-                    notifications.Publish(change with
-                    {
-                        AddedOn = serviceProvider.GetRequiredService<CastarServerClient>()
-                            .DisplayOperationDate(change.AddedOn, change.AddedOnUtc)
-                    });
-                else
-                    tray.Notify(BudgetNotificationText.Format(change.Kind, Math.Max(1, change.CreatedCount), change.Preview));
-            }
-            RefreshOpenStatistics();
-        };
-        budgetEvents.Synchronized += () =>
-        {
-            serviceProvider.GetRequiredService<CastarServerClient>().ClearAvatarCache();
-            incomes.InvalidateCategoryNames();
-            purchases.ResumePurchaseItemQueue();
-            purchases.RefreshRecurringPurchasesAfterServerChange();
-            _ = purchases.RefreshAfterServerChangeAsync();
-            _ = incomes.RefreshAfterServerChangeAsync();
-            _ = categories.RefreshAfterServerChangeAsync();
-            RefreshOpenStatistics();
-        };
-        budgetEvents.ConfigurationChanged += change =>
-        {
-            if (change.Kind == ServerSynchronization.RecurringPurchases)
-            {
-                purchases.RefreshRecurringPurchasesAfterServerChange();
-                return;
-            }
-            if (change.Kind == ServerSynchronization.PurchaseClassification)
-            {
-                _ = purchases.RefreshAfterServerChangeAsync();
-                RefreshOpenCategoryChart();
-                return;
-            }
-            if (change.Kind == ServerSynchronization.IncomeClassification)
-            {
-                _ = incomes.RefreshAfterServerChangeAsync();
-                RefreshOpenCategoryChart();
-                return;
-            }
-            if (change.Kind == ServerSynchronization.Categories)
-            {
-                _ = categories.RefreshAfterServerChangeAsync();
-                purchases.RefreshRecurringPurchasesAfterServerChange();
-                _ = purchases.RefreshAfterServerChangeAsync();
-                incomes.InvalidateCategoryNames();
-                _ = incomes.RefreshAfterServerChangeAsync();
-                RefreshOpenCategoryChart();
-                return;
-            }
-            if (change.Kind == ServerSynchronization.Users)
-            {
-                serviceProvider.GetRequiredService<CastarServerClient>().ClearAvatarCache();
-                purchases.RefreshRecurringPurchasesAfterServerChange();
-                _ = purchases.RefreshAfterServerChangeAsync();
-                _ = incomes.RefreshAfterServerChangeAsync();
-            }
-        };
+        var budgetEvents = AttachBudgetSynchronization(serviceProvider, settings, tray, notifications);
         TryStartCategorization();
         budgetEvents.Start(new DispatcherSynchronizationContext(Dispatcher, DispatcherPriority.Background));
     }

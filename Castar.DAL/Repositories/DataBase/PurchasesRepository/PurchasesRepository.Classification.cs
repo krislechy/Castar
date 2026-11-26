@@ -34,17 +34,18 @@ public sealed partial class PurchasesRepository
             .OrderBy(item => item.CreatedOn).ThenBy(item => item.Id)
             .Select(item => new
             {
-                item.Id, item.Name, item.PurchaseId, item.Purchase!.Revision, Merchant = item.Purchase.RetailPlace ?? ""
+                item.Id, item.Name, item.PurchaseId, item.Purchase!.Revision,
+                Merchant = item.Purchase.RetailPlace ?? "", PurchaseName = item.Purchase.Name
             }).Take(limit).ToArrayAsync(cancellationToken);
         var rows = pending.Select(item => new { Item = item, Key = CategoryKey(item.Name, item.Merchant) }).ToArray();
         var history = await ReadCategoryHistoryAsync(rows.Select(row => row.Key), cancellationToken);
-        return rows.GroupBy(row => new { row.Item.PurchaseId, row.Item.Revision, row.Item.Merchant })
+        return rows.GroupBy(row => new { row.Item.PurchaseId, row.Item.Revision, row.Item.Merchant, row.Item.PurchaseName })
             .Select(group => new PendingPurchaseClassification(group.Key.PurchaseId, group.Key.Revision, group.Key.Merchant,
                 group.Select(row =>
                 {
                     var found = history.TryGetValue(row.Key, out var categoryId);
                     return new PendingItemClassification(row.Item.Id, row.Item.Name, found, categoryId);
-                }).ToArray())).ToArray();
+                }).ToArray(), group.Key.PurchaseName)).ToArray();
     }
 
     private IQueryable<Item> ItemsInPeriod(DateTime? first, DateTime? endExclusive) =>

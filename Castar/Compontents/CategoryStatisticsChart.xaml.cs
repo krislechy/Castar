@@ -79,7 +79,7 @@ public partial class CategoryStatisticsChart : UserControl
             var negative = Math.Max(0, -value);
             var positive = Math.Max(0, value);
             return new BarRow(row.Name, row.IconKey,
-                row.Amount is { } amount ? MoneyText.Format(amount, currency) : "—", isIncome,
+                row.Amount is { } amount ? MoneyText.FormatRounded(amount, currency) : "—", isIncome,
                 Stars(minimum - negative), Stars(negative), Stars(positive), Stars(maximum - positive));
         }).ToArray();
         var message = "";

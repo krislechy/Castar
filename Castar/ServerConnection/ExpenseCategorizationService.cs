@@ -64,7 +64,7 @@ public sealed class ExpenseCategorizationService(
         try
         {
             assignments = await localAi.ClassifyAsync(options, purchase.RetailPlace, items, categories, token,
-                progress: progress).ConfigureAwait(false);
+                progress: progress, purchaseTitle: purchase.Name).ConfigureAwait(false);
         }
         catch (LocalAiProtocol.ContextLimitException)
         {
@@ -306,8 +306,8 @@ public sealed class ExpenseCategorizationService(
                         else
                         {
                             var items = unknown.Select(item => new LocalAiItem(item.ItemId, item.Name)).ToArray();
-                            var proposed = await localAi.ClassifyAsync(options, purchase.Merchant, items, categories, token)
-                                .ConfigureAwait(false);
+                            var proposed = await localAi.ClassifyAsync(options, purchase.Merchant, items, categories, token,
+                                purchaseTitle: purchase.PurchaseName).ConfigureAwait(false);
                             assignments.AddRange(proposed.Select(result => new PurchaseClassificationResultDto(result.ItemId, result.CategoryId)));
                         }
                     }

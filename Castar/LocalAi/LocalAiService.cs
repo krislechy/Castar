@@ -88,7 +88,7 @@ public sealed class LocalAiService : IDisposable
 
     public Task<IReadOnlyList<LocalAiAssignment>> ClassifyAsync(LocalAiOptions options, string? shop,
         IReadOnlyList<LocalAiItem> items, IReadOnlyList<LocalAiCategory> categories, CancellationToken token = default,
-        bool isIncome = false, IProgress<int>? progress = null) =>
+        bool isIncome = false, IProgress<int>? progress = null, string? purchaseTitle = null) =>
         RunAsync<IReadOnlyList<LocalAiAssignment>>(async current =>
         {
             if (items.Count == 0 || categories.Count == 0)
@@ -103,6 +103,8 @@ public sealed class LocalAiService : IDisposable
                 || categories.Select(category => category.Id).Distinct().Count() != categories.Count)
                 throw new ArgumentException("Товары и категории должны иметь уникальные идентификаторы.");
 
+            var titleContext = !isIncome && string.IsNullOrWhiteSpace(shop)
+                ? LocalAiProtocol.PreparePurchaseTitle(purchaseTitle, items) : null;
             var endpoint = await OpenEndpointAsync(options, current).ConfigureAwait(false);
             var managed = options.Mode == LocalAiMode.Managed;
             var target = new IdleTarget(endpoint, managed ? null : options.Model);
@@ -122,11 +124,12 @@ public sealed class LocalAiService : IDisposable
                     try
                     {
                         result.AddRange(await WithTimeoutAsync(
-                            ct => protocol.ClassifyAsync(endpoint, batchOptions, shop, batch, categories, ct, isIncome),
+                            ct => protocol.ClassifyAsync(endpoint, batchOptions, shop, batch, categories, ct, isIncome, titleContext, purchaseTitle),
                             InferenceTimeout, current).ConfigureAwait(false));
                         progress?.Report(result.Count);
                     }
-                    catch (LocalAiProtocol.ContextLimitException) when (batch.Length > 1)
+                    catch (Exception error) when (batch.Length > 1
+                        && error is LocalAiProtocol.ContextLimitException or InvalidDataException or JsonException)
                     {
                         batchSize = (batch.Length + 1) / 2;
                     }

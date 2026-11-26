@@ -57,7 +57,7 @@ namespace Castar.DAL.Repositories.DataBase
     }
 
     public sealed record PendingPurchaseClassification(Guid PurchaseId, long Revision, string Merchant,
-        IReadOnlyList<PendingItemClassification> Items);
+        IReadOnlyList<PendingItemClassification> Items, string? PurchaseName);
 
     public sealed record PendingItemClassification(Guid ItemId, string Name, bool HasHistory, Guid? CategoryId);
 }

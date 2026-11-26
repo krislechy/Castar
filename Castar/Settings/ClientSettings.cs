@@ -41,6 +41,7 @@ public sealed class ClientSettings : INotifyPropertyChanged
     private int legacyHeatmapColorSensitivity = 50;
     private int? dailyHeatmapColorSensitivity;
     private int? monthlyHeatmapColorSensitivity;
+    private int? yearlyHeatmapColorSensitivity;
     private Guid[] excludedIncomeChartCategories = [];
     private Guid[] excludedPurchaseChartCategories = [];
     private bool automaticCategorizationEnabled;
@@ -105,7 +106,7 @@ public sealed class ClientSettings : INotifyPropertyChanged
             TimeZoneInfo.TryFindSystemTimeZoneById(value, out _) ? value : "");
     }
 
-    // Read the shared value from older profiles as the initial value for both modes.
+    // Read the shared value from older profiles as the initial value for each mode.
     public int HeatmapColorSensitivity
     {
         get => legacyHeatmapColorSensitivity;
@@ -124,6 +125,12 @@ public sealed class ClientSettings : INotifyPropertyChanged
     {
         get => monthlyHeatmapColorSensitivity ?? legacyHeatmapColorSensitivity;
         set => Set(ref monthlyHeatmapColorSensitivity, (int?)Math.Clamp(value, 0, 100));
+    }
+
+    public int YearlyHeatmapColorSensitivity
+    {
+        get => yearlyHeatmapColorSensitivity ?? legacyHeatmapColorSensitivity;
+        set => Set(ref yearlyHeatmapColorSensitivity, (int?)Math.Clamp(value, 0, 100));
     }
 
     public Guid[] ExcludedIncomeChartCategories

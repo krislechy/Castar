@@ -615,7 +615,7 @@ public partial class StatisticsContent : UserControl
             Stroke = stroke, GeometrySize = 0, EnableNullSplitting = true, LineSmoothness = 0,
             XToolTipLabelFormatter = point => point.Model?.X is { } day ? first.AddDays((int)day).ToString("dd.MM.yyyy") : "",
             YToolTipLabelFormatter = point => point.Model?.X is { } day && points[(int)day].Amount is { } amount
-                ? MoneyText.Format(amount, currency.Currency) : "" }];
+                ? MoneyText.FormatRounded(amount, currency.Currency) : "" }];
     }
     private void DrawMonthly()
     {
@@ -634,7 +634,7 @@ public partial class StatisticsContent : UserControl
     }
     private ColumnSeries<decimal?> Bar(string title, string color, IEnumerable<decimal?> values, string currency) =>
         new() { Name = title, Values = values.ToArray(), Fill = Paint(color), Stroke = null,
-            YToolTipLabelFormatter = point => point.Model is { } amount ? MoneyText.Format(amount, currency) : "" };
+            YToolTipLabelFormatter = point => point.Model is { } amount ? MoneyText.FormatRounded(amount, currency) : "" };
     private void UpdateBurnMonths()
     {
         var start = new DateOnly(Dates.RangeDate.StartDate.Year, Dates.RangeDate.StartDate.Month, 1);
@@ -743,7 +743,7 @@ public partial class StatisticsContent : UserControl
         burnChart.XAxes = [new Axis { Labels = selected.Select(point => point.Date.ToString("dd.MM")).ToArray(), MinStep = 1, LabelsPaint = Paint("Foreground.Gray") }];
         burnChart.YAxes = [AmountAxis()];
         var historyLabel = BurnHistoryPeriods.First(option => option.Key == burnHistoryMonths).Value;
-        var expected = DrawLine($"Среднее за {historyLabel}", "Foreground.Gray", baseline, currency.Currency, roundToCents: true);
+        var expected = DrawLine($"Среднее за {historyLabel}", "Foreground.Gray", baseline, currency.Currency);
         expected.Stroke = new SolidColorPaint(((SolidColorPaint)expected.Stroke!).Color, 2) { PathEffect = new DashEffect([5, 5]) };
         burnChart.Series = [DrawActualExpenses(actual, baseline, currency.Currency), expected];
     }
@@ -811,12 +811,12 @@ public partial class StatisticsContent : UserControl
                 group.Any(day => !day.Expenses.HasValue) ? null : group.Sum(day => day.Expenses!.Value))).ToArray();
     }
     private static StatisticsTotal FormatTotal(string label, decimal? amount, string currency) =>
-        new(label, amount is { } value ? MoneyText.Format(value, currency) : "Недоступно");
+        new(label, amount is { } value ? MoneyText.FormatRounded(value, currency) : "Недоступно");
     private LineSeries<decimal?> DrawActualExpenses(decimal?[] actual, decimal?[] baseline, string currency)
     {
         var accent = Paint("Highlight").Color;
         var blue = new SKColor(87, 134, 255);
-        var series = DrawLine("Расходы", "Highlight", actual, currency, roundToCents: true);
+        var series = DrawLine("Расходы", "Highlight", actual, currency);
         series.Fill = new LinearGradientPaint(
             [accent.WithAlpha(32), blue.WithAlpha(16), blue.WithAlpha(0)],
             new SKPoint(0, 0), new SKPoint(0.2f, 1), [0, 0.4f, 1]);
@@ -934,13 +934,11 @@ public partial class StatisticsContent : UserControl
         }
     }
 
-    private LineSeries<decimal?> DrawLine(string name, string brush, IEnumerable<decimal?> values, string currency,
-        bool roundToCents = false) => new()
+    private LineSeries<decimal?> DrawLine(string name, string brush, IEnumerable<decimal?> values, string currency) => new()
     {
         Name = name, Values = values.ToArray(), Stroke = Paint(brush, 2), Fill = null,
         GeometrySize = 0, LineSmoothness = 0, EnableNullSplitting = true,
-        YToolTipLabelFormatter = point => point.Model is { } amount
-            ? (roundToCents ? MoneyText.FormatRounded(amount, currency) : MoneyText.Format(amount, currency)) : ""
+        YToolTipLabelFormatter = point => point.Model is { } amount ? MoneyText.FormatRounded(amount, currency) : ""
     };
     private Axis DayAxis(DateOnly first, int count) => new() { MinLimit = -0.5, MaxLimit = Math.Max(0.5, count - 0.5), MinStep = 1,
         Labeler = day => day >= 0 && day < count ? first.AddDays((int)Math.Round(day)).ToString("dd.MM.yy") : "",

@@ -56,7 +56,10 @@ public static partial class CastarEndpoints
         return Results.Ok(pending.Select(purchase => new PurchaseClassificationWorkDto(
             purchase.PurchaseId, purchase.Revision, purchase.Merchant,
             purchase.Items.Select(item => new PurchaseClassificationItemDto(
-                item.ItemId, item.Name, item.HasHistory, item.CategoryId)).ToArray())).ToArray());
+                item.ItemId, item.Name, item.HasHistory, item.CategoryId)).ToArray())
+        {
+            PurchaseName = string.IsNullOrWhiteSpace(purchase.Merchant) ? purchase.PurchaseName : null
+        }).ToArray());
     }
 
     private static bool TryClassificationRange(DateTimeOffset? startUtc, DateTimeOffset? endExclusiveUtc,

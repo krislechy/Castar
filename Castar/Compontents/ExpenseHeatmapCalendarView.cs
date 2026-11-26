@@ -20,16 +20,35 @@ internal sealed record ExpenseHeatmapPeriod(DateOnly Start, string Currency, Exp
 {
     public bool IsGrouped => Granularity != ExpenseHeatmapGranularity.Day;
 
-    public string ColorSensitivityProperty => IsGrouped
-        ? nameof(ClientSettings.MonthlyHeatmapColorSensitivity) : nameof(ClientSettings.DailyHeatmapColorSensitivity);
+    public string ColorSensitivityProperty => Granularity switch
+    {
+        ExpenseHeatmapGranularity.Year => nameof(ClientSettings.YearlyHeatmapColorSensitivity),
+        ExpenseHeatmapGranularity.Month => nameof(ClientSettings.MonthlyHeatmapColorSensitivity),
+        _ => nameof(ClientSettings.DailyHeatmapColorSensitivity)
+    };
 
     public int ColorSensitivity
     {
-        get => IsGrouped ? Preferences.MonthlyHeatmapColorSensitivity : Preferences.DailyHeatmapColorSensitivity;
+        get => Granularity switch
+        {
+            ExpenseHeatmapGranularity.Year => Preferences.YearlyHeatmapColorSensitivity,
+            ExpenseHeatmapGranularity.Month => Preferences.MonthlyHeatmapColorSensitivity,
+            _ => Preferences.DailyHeatmapColorSensitivity
+        };
         set
         {
-            if (IsGrouped) Preferences.MonthlyHeatmapColorSensitivity = value;
-            else Preferences.DailyHeatmapColorSensitivity = value;
+            switch (Granularity)
+            {
+                case ExpenseHeatmapGranularity.Year:
+                    Preferences.YearlyHeatmapColorSensitivity = value;
+                    break;
+                case ExpenseHeatmapGranularity.Month:
+                    Preferences.MonthlyHeatmapColorSensitivity = value;
+                    break;
+                default:
+                    Preferences.DailyHeatmapColorSensitivity = value;
+                    break;
+            }
         }
     }
 }
